@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'all_new_task_page.dart';
-import 'student_profile_page.dart';
 
 class StudentPage extends StatelessWidget {
   final Function(Map<String, dynamic>) onAcceptTask;
@@ -36,7 +35,7 @@ class StudentPage extends StatelessWidget {
             child: CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
-                _buildAppBar(context),
+                _buildAppBar(),
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
                   sliver: SliverList(
@@ -142,126 +141,90 @@ class StudentPage extends StatelessWidget {
   }
 
   // --- APP BAR Component ---
-  // --- UPDATED APP BAR ---
-  Widget _buildAppBar(BuildContext context) {
+  Widget _buildAppBar() {
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+        padding: const EdgeInsets.all(24),
         child: Row(
           children: [
-            // PROFILE IMAGE: Navigates to StudentProfilePage
-            GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const StudentProfilePage(),
+            Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [brandAccent, brandAccent.withOpacity(0.2)],
                 ),
               ),
-              child: Hero(
-                tag: 'profile-image', // Smooth transition to profile page
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: brandAccent.withOpacity(0.3),
-                      width: 2,
-                    ),
-                  ),
-                  child: const CircleAvatar(
-                    radius: 24,
-                    backgroundImage: NetworkImage(
-                      'https://i.pravatar.cc/150?u=alexj',
-                    ),
-                  ),
+              child: const CircleAvatar(
+                radius: 22,
+                backgroundImage: NetworkImage(
+                  'https://img.freepik.com/premium-vector/purple-circle-with-white-person-icon_876006-6.jpg?w=360',
                 ),
               ),
             ),
-            const SizedBox(width: 14),
-            // GREETING & DATE
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Good Morning,",
-                    style: TextStyle(
-                      color: textSub,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.3,
-                    ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Friday, Feb 06",
+                  style: TextStyle(
+                    color: textSub,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
                   ),
-                  Row(
-                    children: [
-                      Text(
-                        "Alex Johnson",
-                        style: TextStyle(
-                          color: textMain,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(
-                        Icons.verified_rounded,
-                        color: brandAccent,
-                        size: 16,
-                      ),
-                    ],
+                ),
+                Text(
+                  "Annish Litisha",
+                  style: TextStyle(
+                    color: textMain,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            // NOTIFICATION HUB
-            _buildNotificationBadge(context, 4),
+            const Spacer(),
+            _buildNotificationBadge(4),
           ],
         ),
       ),
     );
   }
 
-  // --- REFINED NOTIFICATION BADGE ---
-  Widget _buildNotificationBadge(BuildContext context, int count) {
-    return GestureDetector(
-      onTap: () {
-        // Navigate to your Notification List Screen
-      },
-      child: Container(
-        height: 48,
-        width: 48,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          border: Border.all(color: dividerColor, width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: brandPrimary.withOpacity(0.04),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Icon(Icons.notifications_none_rounded, color: textMain, size: 24),
-            if (count > 0)
-              Positioned(
-                top: 12,
-                right: 12,
-                child: Container(
-                  height: 10,
-                  width: 10,
-                  decoration: BoxDecoration(
-                    color: destructive,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                ),
+  Widget _buildNotificationBadge(int count) {
+    return Container(
+      height: 44,
+      width: 44,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: brandPrimary.withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(Icons.notifications_none_rounded, color: textMain, size: 22),
+          Positioned(
+            top: 12,
+            right: 12,
+            child: Container(
+              height: 8,
+              width: 8,
+              decoration: BoxDecoration(
+                color: destructive,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1.5),
               ),
-          ],
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }

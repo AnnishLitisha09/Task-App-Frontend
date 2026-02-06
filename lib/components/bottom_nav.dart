@@ -3,9 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:task_app/screens/student/student_page.dart';
 import 'package:task_app/screens/student/personal_calendar_page.dart';
-import 'package:task_app/screens/student/students_quickaction_page.dart';
-
-import '../screens/student/score_performance_page.dart'; // Ensure these files exist
+import '../screens/student/score_performance_page.dart';
+import '../screens/student/student_profile_page.dart'; // Ensure these files exist
 
 class MainWrapper extends StatefulWidget {
   const MainWrapper({super.key});
@@ -42,7 +41,7 @@ class _MainWrapperState extends State<MainWrapper> {
       StudentPage(onAcceptTask: _handleAcceptTask),
       PersonalCalendarPage(tasks: acceptedTasks),
       const ScorePerformancePage(),
-      const StudentQuickActionPage(),
+      const StudentProfilePage(),
     ];
 
     return Scaffold(
@@ -78,7 +77,7 @@ class _MainWrapperState extends State<MainWrapper> {
               _navItem(0, Icons.dashboard_rounded, "Home"),
               _navItem(1, Icons.calendar_today_rounded, "Schedule"),
               _navItem(2, Icons.insights_rounded, "Score"),
-              _navItem(3, Icons.bolt_rounded, "Actions"),
+              _navItem(3, Icons.person_rounded, "Profile"),
             ],
           ),
         ),

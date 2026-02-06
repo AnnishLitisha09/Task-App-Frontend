@@ -1,0 +1,362 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import '../../components/new_leave_request_sheet.dart';
+
+class LeaveApplicationPage extends StatefulWidget {
+  const LeaveApplicationPage({super.key});
+
+  @override
+  State<LeaveApplicationPage> createState() => _LeaveApplicationPageState();
+}
+
+class _LeaveApplicationPageState extends State<LeaveApplicationPage> {
+  final Color brandAccent = const Color(0xFF6366F1);
+  final Color slate900 = const Color(0xFF0F172A);
+  final Color slate500 = const Color(0xFF64748B);
+  final Color surfaceColor = const Color(0xFFF8FAFC);
+
+  // Status Colors
+  final Color successGreen = const Color(0xFF10B981);
+  final Color warningOrange = const Color(0xFFF59E0B);
+  final Color errorRed = const Color(0xFFF43F5E);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: slate900,
+            size: 20,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          "Leave Management",
+          style: TextStyle(
+            color: slate900,
+            fontWeight: FontWeight.w900,
+            fontSize: 18,
+            letterSpacing: -0.5,
+          ),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        physics: const BouncingScrollPhysics(),
+        children: [
+          const SizedBox(height: 12),
+
+          // --- NEW ATTRACTIVE ATTENDANCE CARD ---
+          _buildAttendanceOverview(),
+
+          const SizedBox(height: 32),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _sectionHeader("Activity History"),
+              Text(
+                "View All",
+                style: TextStyle(
+                  color: brandAccent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: surfaceColor, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: slate900.withOpacity(0.03),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                _buildActivityTile(
+                  "Sick Leave",
+                  "Feb 12 - 14",
+                  "Pending",
+                  warningOrange,
+                ),
+                _divider(),
+                _buildActivityTile(
+                  "On-Duty (Seminar)",
+                  "Feb 05",
+                  "Approved",
+                  successGreen,
+                ),
+                _divider(),
+                _buildActivityTile("Gate Pass", "Feb 01", "Rejected", errorRed),
+                _divider(),
+                _buildActivityTile(
+                  "Emergency",
+                  "Jan 15",
+                  "Completed",
+                  slate500,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 100),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showApplyBottomSheet(context),
+        backgroundColor: brandAccent,
+        elevation: 6,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        label: const Text(
+          "New Request",
+          style: TextStyle(
+            color: Color.fromARGB(255, 238, 238, 238),
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.2,
+          ),
+        ),
+        icon: const Icon(
+          Icons.add_rounded,
+          color: Color.fromARGB(255, 238, 238, 238),
+        ),
+      ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.2, end: 0),
+    );
+  }
+
+  // --- ATTENDANCE OVERVIEW CARD ---
+  // --- UPDATED LIGHT THEMED ATTENDANCE CARD ---
+  Widget _buildAttendanceOverview() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: surfaceColor, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: slate900.withOpacity(0.04),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.school_rounded, color: brandAccent, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        "ACADEMIC ATTENDANCE",
+                        style: TextStyle(
+                          color: slate500,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "92.5%",
+                    style: TextStyle(
+                      color: slate900,
+                      fontSize: 36,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -1,
+                    ),
+                  ),
+                  Text(
+                    "High Standing",
+                    style: TextStyle(
+                      color: successGreen,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              // Clean Minimalist Circle
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox(
+                    width: 70,
+                    height: 70,
+                    child: CircularProgressIndicator(
+                      value: 0.92,
+                      strokeWidth: 8,
+                      strokeCap: StrokeCap.round,
+                      backgroundColor: surfaceColor,
+                      valueColor: AlwaysStoppedAnimation<Color>(brandAccent),
+                    ),
+                  ),
+                  Text(
+                    "92",
+                    style: TextStyle(
+                      color: slate900,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 28),
+          // Stats Row with a subtle "Surface" background
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+            decoration: BoxDecoration(
+              color: surfaceColor,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _miniStatLight("180", "Total Days"),
+                _vDividerSlate(),
+                _miniStatLight("166", "Present"),
+                _vDividerSlate(),
+                _miniStatLight("14", "Absent"),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.05, end: 0);
+  }
+
+  Widget _miniStatLight(String value, String label) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            color: slate900,
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label.toUpperCase(),
+          style: TextStyle(
+            color: slate500,
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _vDividerSlate() =>
+      Container(height: 24, width: 1.5, color: Colors.grey.withOpacity(0.15));
+
+  // --- UPDATED ACTIVITY TILE: Uses BrandAccent for Calendar Icons ---
+  Widget _buildActivityTile(
+    String type,
+    String date,
+    String status,
+    Color statusColor,
+  ) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+      leading: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: brandAccent.withOpacity(
+            0.08,
+          ), // Default Theme Color background
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Icon(
+          Icons.calendar_month_rounded,
+          color: brandAccent,
+          size: 18,
+        ), // Default Brand Color
+      ),
+      title: Text(
+        type,
+        style: TextStyle(
+          color: slate900,
+          fontWeight: FontWeight.w700,
+          fontSize: 14,
+        ),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Text(date, style: TextStyle(color: slate500, fontSize: 12)),
+      ),
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: statusColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          status.toUpperCase(),
+          style: TextStyle(
+            color: statusColor,
+            fontSize: 9,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Text(
+      title.toUpperCase(),
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w800,
+        color: slate500,
+        letterSpacing: 1.2,
+      ),
+    );
+  }
+
+  Widget _divider() => Divider(
+    height: 1,
+    thickness: 1,
+    color: surfaceColor,
+    indent: 20,
+    endIndent: 20,
+  );
+
+  void _showApplyBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const NewLeaveRequestSheet(),
+    );
+  }
+}
