@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../../../features/student/presentation/pages/morning_acknowledgement_page.dart';
 import '../../../../core/widgets/custom_button.dart';
 import '../../../../core/widgets/custom_text_field.dart';
+import '../../../../features/staff/presentation/pages/staff_dashboard_page.dart';
+import '../../../../features/faculty/presentation/pages/faculty_dashboard_page.dart';
+import '../../../../features/admin/presentation/pages/admin_dashboard_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -25,6 +29,13 @@ class _LoginPageState extends State<LoginPage> {
 
   void _handleLogin() {
     debugPrint('Login with: ${_emailController.text}');
+    // TODO: Implement actual login logic
+    // For now, simulate error if empty
+    if (_emailController.text.isEmpty) {
+        setState(() {
+            // Show error (placeholder logic)
+        });
+    }
   }
 
   @override
@@ -97,11 +108,35 @@ class _LoginPageState extends State<LoginPage> {
                   children: [
                     CustomTextField(
                       controller: _emailController,
-                      hintText: 'Email address',
-                      keyboardType: TextInputType.emailAddress,
-                      prefixIcon: Icons.email_outlined,
+                      hintText: 'User ID', // Changed from Email address
+                      keyboardType: TextInputType.text, // Changed to text for User ID
+                      prefixIcon: Icons.person_outline, // Changed icon
                     ),
                     const SizedBox(height: 20),
+                    // Placeholder for Error Message Area
+                    // In a real app, this would be a StreamBuilder or ValueListenableBuilder
+                    if (false) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                "Invalid User ID or Password",
+                                style: TextStyle(color: Theme.of(context).colorScheme.error),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
                     CustomTextField(
                       controller: _passwordController,
                       hintText: 'Password',
@@ -136,7 +171,39 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 32),
                     CustomButton(
                       text: 'Login',
-                      onPressed: _handleLogin,
+                      onPressed: () {
+                         final email = _emailController.text.trim().toLowerCase();
+                         if (email == 'student@gmail.com') {
+                             Navigator.pushReplacement(
+                               context, 
+                               MaterialPageRoute(builder: (_) => const MorningAcknowledgementPage())
+                             );
+                         } else if (email == 'staff@gmail.com') {
+                             Navigator.pushReplacement(
+                               context, 
+                               MaterialPageRoute(builder: (_) => const StaffDashboardPage())
+                             );
+                         } else if (email == 'faculty@gmail.com') {
+                             Navigator.pushReplacement(
+                               context, 
+                               MaterialPageRoute(builder: (_) => const FacultyDashboardPage())
+                             );
+                         } else if (email == 'admin@gmail.com') {
+                             Navigator.pushReplacement(
+                               context, 
+                               MaterialPageRoute(builder: (_) => const AdminDashboardPage())
+                             );
+                         } else {
+                           // Show error for unknown user or empty
+                            debugPrint('Unknown user: $email');
+                            setState(() {
+                              // Trigger error state visually if we had a variable for it
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Invalid User ID. Try "student@gmail.com"'))
+                            );
+                         }
+                      },
                     ),
                   ],
                 ),

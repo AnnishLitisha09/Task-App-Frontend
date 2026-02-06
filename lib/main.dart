@@ -15,6 +15,8 @@ class TaskApp extends StatelessWidget {
       title: 'Task App',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.system,
       home: const LoginPage(),
     );
   }
