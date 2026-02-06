@@ -28,12 +28,12 @@ class AppTheme {
     useMaterial3: true,
     brightness: Brightness.light,
     primaryColor: primaryColor,
-    scaffoldBackgroundColor: scaffoldLight,
-    cardColor: cardLight,
+    scaffoldBackgroundColor: Colors.white, // pure white
+    cardColor: Colors.white,
     colorScheme: const ColorScheme.light(
       primary: primaryColor,
       secondary: mixedColor,
-      surface: cardLight,
+      surface: Colors.white,
       error: Color(0xFFD32F2F),
       onPrimary: Colors.white,
     ),
@@ -42,7 +42,7 @@ class AppTheme {
     // Input Decoration
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: Colors.white,
+      fillColor: const Color(0xFFF5F7FA), // Very light grey/blue for inputs
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
@@ -54,7 +54,7 @@ class AppTheme {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: primaryColor, width: 2),
+        borderSide: const BorderSide(color: primaryColor, width: 1.5),
       ),
       hintStyle: TextStyle(color: Colors.grey.shade400),
     ),

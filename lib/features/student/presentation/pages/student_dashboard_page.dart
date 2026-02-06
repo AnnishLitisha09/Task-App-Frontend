@@ -8,6 +8,7 @@ import 'personal_calendar_page.dart';
 import 'on_duty_wallet_page.dart';
 import 'upload_documentation_page.dart';
 import 'my_score_page.dart';
+import 'profile_page.dart';
 
 class StudentDashboardPage extends StatelessWidget {
   const StudentDashboardPage({super.key});
@@ -50,154 +51,172 @@ class StudentDashboardPage extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'Logout') {
-                 // Return to Login (remove all history)
-                 Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-              }
-            },
-            child: const CircleAvatar(
-              backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=student'),
-              radius: 18,
-            ),
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(
-                value: 'Profile',
-                child: Text('My Profile'),
-              ),
-              const PopupMenuItem<String>(
-                value: 'Logout',
-                child: Text('Logout', style: TextStyle(color: Colors.red)),
-              ),
-            ],
+          GestureDetector(
+             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfilePage())),
+             child: const CircleAvatar(
+                backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=student'),
+                radius: 18,
+             ),
           ),
           const SizedBox(width: 16),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Stats Row
-            Row(
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 100), // Extra padding for floating nav
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: GestureDetector(
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyScorePage())),
-                  child: _buildStatCard(context, 'Score', '850', Icons.stars_rounded, Colors.amber)
-                )),
-                const SizedBox(width: 12),
-                Expanded(child: _buildStatCard(context, 'Pending', '12', Icons.pending_actions, Colors.orange)),
-                const SizedBox(width: 12),
-                Expanded(child: _buildStatCard(context, 'Penalty', '0', Icons.warning_rounded, Colors.red)),
-              ],
-            ).animate().slideY(begin: 0.2, end: 0, duration: 400.ms),
-
-            const SizedBox(height: 32),
-
-            // New Task Requests (Inbox)
-            _buildSectionHeader(context, 'Task Requests', '3 New', onTap: () {
-               Navigator.push(context, MaterialPageRoute(builder: (_) => const TaskInboxPage()));
-            }),
-            const SizedBox(height: 12),
-            _buildRequestCard(context).animate().fadeIn(delay: 200.ms).slideX(),
-
-            const SizedBox(height: 32),
-
-            // Overdue Tasks
-            _buildSectionHeader(context, 'Attention Needed', '1 Overdue', isWarning: true),
-            const SizedBox(height: 12),
-            _buildOverdueCard(context).animate().fadeIn(delay: 300.ms).slideX(),
-
-            const SizedBox(height: 32),
-
-            // Today's Tasks
-            _buildSectionHeader(context, "Today's Tasks", 'See All'),
-            const SizedBox(height: 12),
-            ListView.separated(
-              physics: const NeverScrollableScrollPhysics(),
-              shrinkWrap: true,
-              itemCount: 3,
-              separatorBuilder: (c, i) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                return _buildTaskRow(context, index);
-              },
-            ).animate().fadeIn(delay: 400.ms),
-
-            const SizedBox(height: 32),
-            
-            // Documentation Pending
-            GestureDetector(
-              onTap: () {
-                 Navigator.push(context, MaterialPageRoute(builder: (_) => const UploadDocumentationPage()));
-              },
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Theme.of(context).primaryColor, Theme.of(context).primaryColor.withValues(alpha: 0.8)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                   boxShadow: [
-                    BoxShadow(
-                      color: Theme.of(context).primaryColor.withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Row(
+                // Stats Row
+                Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.upload_file_rounded, color: Colors.white),
-                    ),
-                    const SizedBox(width: 16),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Upload Pending Documents',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                          ),
-                          Text(
-                            'Medical Cert - 2 Days left',
-                            style: TextStyle(color: Colors.white70, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 16),
+                    Expanded(child: GestureDetector(
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyScorePage())),
+                      child: _buildStatCard(context, 'Score', '850', Icons.stars_rounded, Colors.amber)
+                    )),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildStatCard(context, 'Pending', '12', Icons.pending_actions, Colors.orange)),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildStatCard(context, 'Penalty', '0', Icons.warning_rounded, Colors.red)),
                   ],
-                ),
+                ).animate().slideY(begin: 0.2, end: 0, duration: 400.ms),
+
+                const SizedBox(height: 32),
+
+                // New Task Requests (Inbox)
+                _buildSectionHeader(context, 'Task Requests', '3 New', onTap: () {
+                   Navigator.push(context, MaterialPageRoute(builder: (_) => const TaskInboxPage()));
+                }),
+                const SizedBox(height: 12),
+                _buildRequestCard(context).animate().fadeIn(delay: 200.ms).slideX(),
+
+                const SizedBox(height: 32),
+
+                // Overdue Tasks
+                _buildSectionHeader(context, 'Attention Needed', '1 Overdue', isWarning: true),
+                const SizedBox(height: 12),
+                _buildOverdueCard(context).animate().fadeIn(delay: 300.ms).slideX(),
+
+                const SizedBox(height: 32),
+
+                // Today's Tasks
+                _buildSectionHeader(context, "Today's Tasks", 'See All'),
+                const SizedBox(height: 12),
+                ListView.separated(
+                  physics: const NeverScrollableScrollPhysics(),
+                  shrinkWrap: true,
+                  itemCount: 3,
+                  separatorBuilder: (c, i) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    return _buildTaskRow(context, index);
+                  },
+                ).animate().fadeIn(delay: 400.ms),
+
+                const SizedBox(height: 32),
+                
+                // Documentation Pending
+                GestureDetector(
+                  onTap: () {
+                     Navigator.push(context, MaterialPageRoute(builder: (_) => const UploadDocumentationPage()));
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Theme.of(context).primaryColor, Theme.of(context).primaryColor.withValues(alpha: 0.8)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                       boxShadow: [
+                        BoxShadow(
+                          color: Theme.of(context).primaryColor.withValues(alpha: 0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.upload_file_rounded, color: Colors.white),
+                        ),
+                        const SizedBox(width: 16),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Upload Pending Documents',
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                              ),
+                              Text(
+                                'Medical Cert - 2 Days left',
+                                style: TextStyle(color: Colors.white70, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 16),
+                      ],
+                    ),
+                  ),
+                ).animate().scale(delay: 500.ms),
+              ],
+            ),
+          ),
+          
+          // Floating Bottom Navigation
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 20,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.black87, // Dark contrast for floating bar
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, 10)),
+                ],
               ),
-            ).animate().scale(delay: 500.ms),
-          ],
-        ),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 0,
-        backgroundColor: Theme.of(context).cardColor,
-        elevation: 10,
-        indicatorColor: Theme.of(context).primaryColor.withValues(alpha: 0.2),
-        onDestinationSelected: (index) {
-          if (index == 1) Navigator.push(context, MaterialPageRoute(builder: (_) => const PersonalCalendarPage()));
-          if (index == 2) Navigator.push(context, MaterialPageRoute(builder: (_) => const OnDutyWalletPage()));
-        },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard_rounded), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.calendar_today_outlined), selectedIcon: Icon(Icons.calendar_today_rounded), label: 'Calendar'),
-          NavigationDestination(icon: Icon(Icons.wallet_giftcard_outlined), selectedIcon: Icon(Icons.wallet_giftcard_rounded), label: 'Wallet'),
-          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person_rounded), label: 'Profile'),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildNavItem(context, Icons.dashboard_rounded, true, () {}),
+                  _buildNavItem(context, Icons.calendar_today_rounded, false, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PersonalCalendarPage()))),
+                  _buildNavItem(context, Icons.wallet_giftcard_rounded, false, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OnDutyWalletPage()))),
+                  _buildNavItem(context, Icons.person_rounded, false, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfilePage()))),
+                ],
+              ),
+            ).animate().slideY(begin: 1, end: 0, delay: 600.ms),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildNavItem(BuildContext context, IconData icon, bool isSelected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.white.withValues(alpha: 0.2) : Colors.transparent,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          icon,
+          color: isSelected ? Colors.white : Colors.white60,
+          size: 24,
+        ),
       ),
     );
   }

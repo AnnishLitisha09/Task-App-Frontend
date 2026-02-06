@@ -195,32 +195,94 @@ class _TaskExecutionPageState extends State<TaskExecutionPage> {
   }
 
   void _showCompletionDialog() {
+    bool isUploaded = false; // Local state for dialog
+    
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text("Task Completed"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.check_circle, color: Colors.green, size: 64),
-            const SizedBox(height: 16),
-            Text("Duration: ${_formatTime(_secondsElapsed)}"),
-            const SizedBox(height: 8),
-            const Text("Your submission has been recorded and sent for verification."),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context); // Back to Detail
-              Navigator.pop(context); // Back to Dashboard (ideally)
-            },
-            child: const Text("Done"),
-          ),
-        ],
-      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              title: const Text("Complete Task"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("To complete this task, please upload a photo proof of your work."),
+                  const SizedBox(height: 16),
+                  
+                  // Upload Area
+                  GestureDetector(
+                    onTap: () {
+                      // Simulate upload delay
+                      Future.delayed(const Duration(seconds: 1), () {
+                        setDialogState(() {
+                           isUploaded = true;
+                        });
+                      });
+                    },
+                    child: Container(
+                      height: 150,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid),
+                      ),
+                      child: isUploaded 
+                        ? Stack(
+                            children: [
+                              Center(child: Icon(Icons.check_circle, color: Colors.green, size: 50)),
+                              Positioned(bottom: 8, left: 0, right: 0, child: Text("Proof Attached", textAlign: TextAlign.center, style: TextStyle(color: Colors.green)))
+                            ],
+                          )
+                        : const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.camera_alt_rounded, color: Colors.grey, size: 40),
+                              SizedBox(height: 8),
+                              Text("Tap to Attach Proof", style: TextStyle(color: Colors.grey)),
+                            ],
+                          ),
+                    ),
+                  ),
+                  
+                  if (isUploaded)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 12),
+                      child: Text("✅ Proof Verified: image_001.jpg", style: TextStyle(fontSize: 12, color: Colors.green)),
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                     Navigator.pop(context); // Close dialog to resume if needed
+                  },
+                  child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  onPressed: isUploaded ? () {
+                    Navigator.pop(context); // Close dialog
+                    Navigator.pop(context); // Back to Detail
+                    Navigator.pop(context); // Back to Dashboard
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Task Submitted Successfully!"), backgroundColor: Colors.green)
+                    );
+                  } : null, // Disable if not uploaded
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).primaryColor,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text("Submit Final"),
+                ),
+              ],
+            );
+          }
+        );
+      },
     );
   }
 }
