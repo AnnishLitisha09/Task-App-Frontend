@@ -22,8 +22,15 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   final Color surfaceColor = const Color(0xFFF8FAFC);
 
   // OTP State
+  // ... inside _TaskDetailsPageState class
+
   @override
   Widget build(BuildContext context) {
+    // Determine the type once for efficiency
+    final String type = (widget.taskData['completionType'] ?? "OTP")
+        .toUpperCase();
+    final bool isApprovalWorkflow = type == "APPROVAL";
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: _buildCustomAppBar(context),
@@ -35,23 +42,29 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildPriorityBadge(),
+                _buildPriorityBadge(isApprovalWorkflow),
                 const SizedBox(height: 12),
                 _buildHeaderSection(),
                 const SizedBox(height: 24),
-                _buildTimeFrameSection(), // NEW SECTION
+                _buildVenueSection(), // NEW: Added Venue
+                const SizedBox(height: 16),
+                _buildTimeFrameSection(),
                 const SizedBox(height: 24),
-                _buildScoreCard(),
+                _buildScoreCard(type),
                 const SizedBox(height: 32),
                 _buildSectionLabel("Assignment Description"),
                 const SizedBox(height: 12),
-                _buildDescriptionBox(),
+                _buildDescriptionBox(
+                  isApprovalWorkflow,
+                ), // UPDATED: Adaptive text
                 const SizedBox(height: 32),
                 _buildHistoryLogs(),
               ],
             ),
           ),
-          _buildFloatingBottomAction(),
+          _buildFloatingBottomAction(
+            isApprovalWorkflow,
+          ), // UPDATED: Adaptive button
         ],
       ),
     );
@@ -97,6 +110,233 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         ),
         const SizedBox(width: 8),
       ],
+    );
+  }
+
+  // --- NEW: Venue Section ---
+  Widget _buildVenueSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: surfaceColor.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              Icons.location_on_rounded,
+              color: brandAccent,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "ASSIGNED VENUE",
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: textSub,
+                  letterSpacing: 1,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                widget.taskData['venue'] ?? "Main Engineering Block, Room 402",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: textMain,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- UPDATED: Adaptive Description ---
+  Widget _buildDescriptionBox(bool isApproval) {
+    String description = isApproval
+        ? "This task requires administrative review. Upon completion, submit your proof or report. Your instructor will then manually approve or reject the submission based on the quality of work."
+        : "This task requires a One-Time Password to close. Please enter the code provided by your instructor or sent to your academic dashboard to authorize submission.";
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: surfaceColor),
+        boxShadow: [
+          BoxShadow(
+            color: brandPrimary.withOpacity(0.02),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Text(
+        description,
+        style: TextStyle(
+          fontSize: 14,
+          color: textMain.withOpacity(0.8),
+          height: 1.6,
+        ),
+      ),
+    );
+  }
+
+  // --- UPDATED: Floating Action Button ---
+  Widget _buildFloatingBottomAction(bool isApproval) {
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.white.withOpacity(0), Colors.white],
+          ),
+        ),
+        child: isApproval
+            ? _buildApprovalActions() // New Accept/Reject Layout
+            : _buildStandardAction(), // Original End Activity Layout
+      ),
+    );
+  }
+
+  // Layout for Approval Tasks (Accept / Reject)
+  Widget _buildApprovalActions() {
+    return Row(
+      children: [
+        // Reject Button
+        Expanded(
+          flex: 1,
+          child: ElevatedButton(
+            onPressed: () => Navigator.pop(context, "rejected"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: destructive.withOpacity(0.9),
+              foregroundColor: destructive,
+              elevation: 0,
+              minimumSize: const Size(double.infinity, 64),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: destructive.withOpacity(0.2)),
+              ),
+            ),
+            child: const Text(
+              "Reject",
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Accept Button
+        Expanded(
+          flex: 2,
+          child: ElevatedButton(
+            onPressed: () => Navigator.pop(context, "approved"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: successColor,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 64),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+            child: const Text(
+              "Accept Request",
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Original Layout for OTP/Standard Tasks
+  Widget _buildStandardAction() {
+    return ElevatedButton(
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => TaskClosurePage(taskData: widget.taskData),
+          ),
+        );
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: brandAccent,
+        foregroundColor: Colors.white,
+        minimumSize: const Size(double.infinity, 64),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+      child: const Text(
+        "End Activity",
+        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+      ),
+    );
+  } // --- UPDATED: Badge color based on type ---
+
+  Widget _buildPriorityBadge(bool isApproval) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: (isApproval ? successColor : destructive).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        isApproval ? "MANUAL APPROVAL" : "REQUIRED AUTHENTICATION",
+        style: TextStyle(
+          color: isApproval ? successColor : destructive,
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 1,
+        ),
+      ),
+    );
+  }
+
+  // Update ScoreCard to accept type
+  Widget _buildScoreCard(String type) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: brandAccent.withOpacity(0.05)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _scoreItem("CREDITS", "+50", successColor, Icons.bolt_rounded),
+          _scoreItem(
+            "PENALTY",
+            "-1 / day",
+            destructive,
+            Icons.history_toggle_off_rounded,
+          ),
+          _scoreItem(
+            "CLOSURE",
+            type,
+            brandAccent,
+            Icons.verified_user_outlined,
+          ),
+        ],
+      ),
     );
   }
 
@@ -166,99 +406,54 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     );
   }
 
-  Widget _buildPriorityBadge() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: destructive.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        "REQUIRED AUTHENTICATION",
-        style: TextStyle(
-          color: destructive,
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 1,
-        ),
-      ),
-    );
-  }
-
   Widget _buildHeaderSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          widget.taskData['title'] ?? "Peer Review Analysis",
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
-            color: textMain,
-            height: 1.1,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Row(
+    return Hero(
+      tag:
+          "task_${widget.taskData['title']}", // Must match the tag in FacultyPage
+      child: Material(
+        color: Colors.transparent,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const CircleAvatar(
-              radius: 14,
-              backgroundImage: NetworkImage(
-                'https://ui-avatars.com/api/?name=Dr+Aris&background=6366F1&color=fff',
+            Text(
+              widget.taskData['title'] ?? "Peer Review Analysis",
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                color: textMain,
+                height: 1.1,
               ),
             ),
-            const SizedBox(width: 10),
-            RichText(
-              text: TextSpan(
-                style: TextStyle(color: textSub, fontSize: 13),
-                children: [
-                  const TextSpan(text: "Managed by "),
-                  TextSpan(
-                    text: "Dr. Aris",
-                    style: TextStyle(
-                      color: textMain,
-                      fontWeight: FontWeight.bold,
-                    ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const CircleAvatar(
+                  radius: 14,
+                  backgroundImage: NetworkImage(
+                    'https://ui-avatars.com/api/?name=Dr+Aris&background=6366F1&color=fff',
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 10),
+                RichText(
+                  text: TextSpan(
+                    style: TextStyle(color: textSub, fontSize: 13),
+                    children: [
+                      const TextSpan(text: "Managed by "),
+                      TextSpan(
+                        text: "Dr. Aris",
+                        style: TextStyle(
+                          color: textMain,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+              ],
             ),
-            const Spacer(),
           ],
         ),
-      ],
-    );
-  }
-
-  Widget _buildScoreCard() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      decoration: BoxDecoration(
-        color: surfaceColor,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: brandAccent.withOpacity(0.05)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          // Credits - Keeping this as requested
-          _scoreItem("CREDITS", "+50", successColor, Icons.bolt_rounded),
-
-          // Estimated Time - Gives context on the task's weight
-          _scoreItem(
-            "PENALTY",
-            "-1 / day",
-            destructive,
-            Icons.history_toggle_off_rounded,
-          ),
-          // Closure Type - Directly informs the user about the next step
-          _scoreItem(
-            "CLOSURE",
-            widget.taskData['completionType']?.toUpperCase() ?? "OTP",
-            brandAccent,
-            Icons.verified_user_outlined,
-          ),
-        ],
       ),
     );
   }
@@ -287,32 +482,6 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildDescriptionBox() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: surfaceColor),
-        boxShadow: [
-          BoxShadow(
-            color: brandPrimary.withOpacity(0.02),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Text(
-        "This task requires a One-Time Password to close. Please enter the code provided by your instructor or sent to your academic dashboard to authorize submission.",
-        style: TextStyle(
-          fontSize: 14,
-          color: textMain.withOpacity(0.8),
-          height: 1.6,
-        ),
-      ),
     );
   }
 
@@ -384,45 +553,6 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         fontWeight: FontWeight.w900,
         color: textSub,
         letterSpacing: 1.5,
-      ),
-    );
-  }
-
-  Widget _buildFloatingBottomAction() {
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.white.withOpacity(0), Colors.white],
-          ),
-        ),
-        child: ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    TaskClosurePage(taskData: widget.taskData),
-              ),
-            );
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: brandAccent,
-            foregroundColor: Colors.white,
-            minimumSize: const Size(double.infinity, 64),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-          ),
-          child: const Text(
-            "End Activity",
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-          ),
-        ),
       ),
     );
   }

@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:intl/intl.dart'; // Add this to your pubspec.yaml for easy date formatting
 import 'all_new_task_page.dart';
 import 'all_tasks_page.dart';
 import '../common/task_detail_page.dart';
 
-class StudentPage extends StatelessWidget {
+class StudentPage extends StatefulWidget {
   final Function(Map<String, dynamic>) onAcceptTask;
   const StudentPage({super.key, required this.onAcceptTask});
 
+  @override
+  State<StudentPage> createState() => _StudentPageState();
+}
+
+class _StudentPageState extends State<StudentPage> {
   // --- Charming Design Tokens ---
   final Color brandPrimary = const Color(0xFF0F172A);
   final Color brandAccent = const Color(0xFF6366F1);
@@ -19,8 +25,66 @@ class StudentPage extends StatelessWidget {
   final Color successColor = const Color(0xFF10B981);
   final Color warningColor = const Color(0xFFF59E0B);
 
+  // --- State Data ---
+  // We move tasks into lists so we can remove them when approved/rejected
+  List<Map<String, dynamic>> todayTasks = [
+    {
+      "title": "Advanced Calculus Quiz",
+      "sub": "Mathematics • 10:30 AM",
+      "color": const Color(0xFF6366F1),
+      "icon": Icons.auto_awesome_outlined,
+    },
+    {
+      "title": "Lab Submission",
+      "sub": "Organic Chemistry • 02:00 PM",
+      "color": Colors.purpleAccent,
+      "icon": Icons.biotech_outlined,
+    },
+  ];
+
+  List<Map<String, dynamic>> requestTasks = [
+    {
+      "title": "Peer Review",
+      "sub": "From: Dr. Aris • Due Tomorrow",
+      "color": Colors.lightBlue,
+      "icon": Icons.people_outline_rounded,
+    },
+  ];
+
+  int completedCount = 12;
+
+  // --- Logic Methods ---
+  void _handleApprove(int index) {
+    setState(() {
+      var task = requestTasks.removeAt(index);
+      // Update Stats
+      completedCount++;
+      // Notify parent/callback
+      widget.onAcceptTask({
+        "title": task['title'],
+        "sub": task['sub'].split('•')[0],
+        "start": 14.0,
+        "dur": 60.0,
+        "icon": task['icon'],
+      });
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Task added to your schedule!")),
+    );
+  }
+
+  void _handleReject(int index) {
+    setState(() {
+      requestTasks.removeAt(index);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Automatically fetch today's date
+    String formattedDate = DateFormat('EEEE, MMM dd').format(DateTime.now());
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
@@ -37,7 +101,7 @@ class StudentPage extends StatelessWidget {
             child: CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
-                _buildAppBar(),
+                _buildAppBar(formattedDate),
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
                   sliver: SliverList(
@@ -48,7 +112,7 @@ class StudentPage extends StatelessWidget {
                       // 1. TODAY'S TASKS
                       _buildSectionHeader(
                         "Today's Tasks",
-                        count: 3,
+                        count: todayTasks.length,
                         onViewAll: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -56,60 +120,51 @@ class StudentPage extends StatelessWidget {
                           ),
                         ),
                       ),
-                      _taskItem(
-                        context, // Pass context for navigation
-                        "Advanced Calculus Quiz",
-                        "Mathematics • 10:30 AM",
-                        brandAccent,
-                        Icons.auto_awesome_outlined,
-                      ),
-                      _taskItem(
-                        context,
-                        "Lab Submission",
-                        "Organic Chemistry • 02:00 PM",
-                        Colors.purpleAccent,
-                        Icons.biotech_outlined,
+                      ...todayTasks.map(
+                        (task) => _taskItem(
+                          context,
+                          task['title'],
+                          task['sub'],
+                          task['color'],
+                          task['icon'],
+                        ),
                       ),
 
                       const SizedBox(height: 32),
 
                       // 2. NEW REQUESTS
-                      _buildSectionHeader(
-                        "New Task Requests",
-                        isStatus: true,
-                        onViewAll: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                AllNewTasksPage(onAccept: onAcceptTask),
+                      // 2. NEW REQUESTS
+                      if (requestTasks.isNotEmpty) ...[
+                        _buildSectionHeader(
+                          "New Task Requests",
+                          isStatus: true,
+                          onViewAll: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => AllNewTasksPage(
+                                onAccept: widget.onAcceptTask,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                      _taskItem(
-                        context,
-                        "Peer Review",
-                        "From: Dr. Aris • Due Tomorrow",
-                        Colors.lightBlue,
-                        Icons.people_outline_rounded,
-                        isRequest: true,
-                        onApprove: () {
-                          onAcceptTask({
-                            "title": "Peer Review",
-                            "sub": "Dr. Aris",
-                            "start": 14.0,
-                            "dur": 60.0,
-                            "icon": Icons.people_outline_rounded,
-                          });
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text("Task added to your schedule!"),
-                            ),
+                        // Use asMap().entries to get the index for the logic methods
+                        ...requestTasks.asMap().entries.map((entry) {
+                          int idx = entry.key;
+                          var task = entry.value;
+                          return _taskItem(
+                            context,
+                            task['title'],
+                            task['sub'],
+                            task['color'],
+                            task['icon'],
+                            isRequest: true,
+                            // Link the buttons to your logic methods
+                            onApprove: () => _handleApprove(idx),
+                            onRejectTrigger: () => _handleReject(idx),
                           );
-                        },
-                      ),
-
-                      const SizedBox(height: 32),
-
+                        }),
+                        const SizedBox(height: 32),
+                      ],
                       // 3. OVERDUE
                       _buildSectionHeader(
                         "Overdue Tasks",
@@ -163,7 +218,7 @@ class StudentPage extends StatelessWidget {
   }
 
   // --- APP BAR Component ---
-  Widget _buildAppBar() {
+  Widget _buildAppBar(String dateStr) {
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -189,7 +244,7 @@ class StudentPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Friday, Feb 06",
+                  dateStr,
                   style: TextStyle(
                     color: textSub,
                     fontSize: 12,
@@ -261,8 +316,18 @@ class StudentPage extends StatelessWidget {
       mainAxisSpacing: 16,
       childAspectRatio: 1.4,
       children: [
-        _statTile("Total Tasks", "12", Icons.assignment_rounded, brandAccent),
-        _statTile("Pending", "04", Icons.schedule_rounded, warningColor),
+        _statTile(
+          "Total Tasks",
+          completedCount.toString(),
+          Icons.assignment_rounded,
+          brandAccent,
+        ),
+        _statTile(
+          "Pending",
+          requestTasks.length.toString().padLeft(2, '0'),
+          Icons.schedule_rounded,
+          warningColor,
+        ),
         _statTile("Overdue", "01", Icons.bolt_rounded, destructive),
         _statTile("Current GPA", "3.9", Icons.auto_graph_rounded, successColor),
       ],
@@ -369,7 +434,6 @@ class StudentPage extends StatelessWidget {
     );
   }
 
-  // --- MODIFIED TASK ITEM (Now with Navigation) ---
   Widget _taskItem(
     BuildContext context,
     String title,
@@ -378,106 +442,129 @@ class StudentPage extends StatelessWidget {
     IconData icon, {
     bool isRequest = false,
     VoidCallback? onApprove,
+    VoidCallback? onRejectTrigger,
   }) {
-    return InkWell(
-      onTap: isRequest
-          ? null
-          : () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => TaskDetailsPage(
-                  taskData: {
-                    "title": title,
-                    "sub": sub,
-                    "accent": accent,
-                    "icon": icon,
-                  },
-                ),
+    final String heroTag = "task_${title}_$sub";
+
+    return Hero(
+      tag: heroTag,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          // UPDATED: Now it always navigates, regardless of whether it's a request or not
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => TaskDetailsPage(
+                taskData: {
+                  "title": title,
+                  "sub": sub,
+                  "accent": accent,
+                  "icon": icon,
+                  "startDate": "Feb 06, 08:00 AM",
+                  "deadline": isRequest
+                      ? "Feb 07, 11:59 PM"
+                      : "Feb 10, 11:59 PM",
+                  "completionType": isRequest ? "APPROVAL" : "OTP",
+                  "heroTag": heroTag,
+                  "isRequest": isRequest, // Pass this to the detail page
+                },
               ),
             ),
-      borderRadius: BorderRadius.circular(24),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
+          ),
           borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: brandPrimary.withOpacity(0.04),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Container(
-                  height: 48,
-                  width: 48,
-                  decoration: BoxDecoration(
-                    color: accent.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Icon(icon, color: accent, size: 22),
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: brandPrimary.withOpacity(0.04),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          color: textMain,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      height: 48,
+                      width: 48,
+                      decoration: BoxDecoration(
+                        color: accent.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(16),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        sub,
-                        style: TextStyle(
-                          color: textSub,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
+                      child: Icon(icon, color: accent, size: 22),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: TextStyle(
+                              color: textMain,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            sub,
+                            style: TextStyle(
+                              color: textSub,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (!isRequest)
+                      Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 14,
+                        color: textSub.withOpacity(0.3),
+                      ),
+                  ],
+                ),
+                if (isRequest) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _miniActionButton("Reject", destructive, () {
+                          _showRejectDialog(
+                            context,
+                            title,
+                            destructive: destructive,
+                            surfaceColor: surfaceColor,
+                            textSub: textSub,
+                            textMain: textMain,
+                            brandPrimary: brandPrimary,
+                            onConfirmDecline: onRejectTrigger ?? () {},
+                          );
+                        }),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _miniActionButton(
+                          "Approve",
+                          successColor,
+                          onApprove ?? () {},
                         ),
                       ),
                     ],
                   ),
-                ),
-                if (!isRequest)
-                  Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 14,
-                    color: textSub.withOpacity(0.3),
-                  ),
+                ],
               ],
             ),
-            // --- NEW ACTION BUTTONS ---
-            if (isRequest) ...[
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _miniActionButton("Reject", destructive, () {
-                      // Link your rejection modal here
-                    }),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _miniActionButton(
-                      "Approve",
-                      successColor,
-                      onApprove ?? () {},
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     ).animate().fadeIn().slideX(begin: 0.1, end: 0);
@@ -549,4 +636,202 @@ class StudentPage extends StatelessWidget {
       ),
     );
   }
+}
+
+// --- MODIFIED DIALOG TO ACCEPT CALLBACK ---
+void _showRejectDialog(
+  BuildContext context,
+  String taskTitle, {
+  required Color destructive,
+  required Color surfaceColor,
+  required Color textSub,
+  required Color textMain,
+  required Color brandPrimary,
+  required VoidCallback onConfirmDecline,
+}) {
+  String? selectedReason;
+  final TextEditingController otherController = TextEditingController();
+  final List<String> reasons = [
+    "Exam Preparation",
+    "Class Overlap",
+    "Personal Emergency",
+    "Missing Prerequisites",
+    "Health Issue",
+    "Other",
+  ];
+
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setModalState) => BackdropFilter(
+        filter: ColorFilter.mode(
+          brandPrimary.withOpacity(0.2),
+          BlendMode.srcOver,
+        ),
+        child: Container(
+          padding: EdgeInsets.only(
+            top: 24,
+            left: 32,
+            right: 32,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 32,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: textSub.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                "Unable to Assist?",
+                style: TextStyle(
+                  color: textMain,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "We'll let the requester know you can't take on '$taskTitle' right now.",
+                style: TextStyle(color: textSub, fontSize: 14, height: 1.4),
+              ),
+              const SizedBox(height: 24),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: reasons.map((reason) {
+                  bool isSelected = selectedReason == reason;
+                  return GestureDetector(
+                    onTap: () => setModalState(() => selectedReason = reason),
+                    child: AnimatedContainer(
+                      duration: 200.ms,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected ? destructive : surfaceColor,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isSelected
+                              ? destructive
+                              : textSub.withOpacity(0.1),
+                        ),
+                      ),
+                      child: Text(
+                        reason,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : textMain,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.w500,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              if (selectedReason == "Other")
+                Padding(
+                  padding: const EdgeInsets.only(top: 20),
+                  child: TextField(
+                    controller: otherController,
+                    autofocus: true,
+                    maxLines: 3,
+                    onChanged: (val) => setModalState(() {}),
+                    style: TextStyle(color: textMain, fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: "Briefly explain why...",
+                      hintStyle: TextStyle(color: textSub.withOpacity(0.5)),
+                      filled: true,
+                      fillColor: surfaceColor,
+                      contentPadding: const EdgeInsets.all(16),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 32),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(
+                        "Go Back",
+                        style: TextStyle(
+                          color: textSub,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton(
+                      onPressed:
+                          (selectedReason == null ||
+                              (selectedReason == "Other" &&
+                                  otherController.text.trim().isEmpty))
+                          ? null
+                          : () {
+                              onConfirmDecline(); // Trigger the removal from list
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text("Request declined"),
+                                  behavior: SnackBarBehavior.floating,
+                                  backgroundColor: destructive,
+                                ),
+                              );
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: destructive,
+                        disabledBackgroundColor: destructive.withOpacity(0.15),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        "Confirm Decline",
+                        style: TextStyle(
+                          color:
+                              (selectedReason == null ||
+                                  (selectedReason == "Other" &&
+                                      otherController.text.trim().isEmpty))
+                              ? destructive.withOpacity(0.5)
+                              : Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }

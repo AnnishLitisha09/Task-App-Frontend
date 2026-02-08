@@ -6,6 +6,7 @@ import 'package:task_app/screens/student/student_page.dart';
 import 'package:task_app/screens/common/personal_calendar_page.dart';
 import '../screens/common/score_performance_page.dart';
 import '../screens/common/profile_page.dart';
+import '../screens/common/task_management_page.dart';
 
 class MainWrapper extends StatefulWidget {
   final String userRole;
@@ -44,7 +45,7 @@ class _MainWrapperState extends State<MainWrapper> {
         ? [
             const FacultyPage(),
             PersonalCalendarPage(tasks: acceptedTasks),
-            const ScorePerformancePage(),
+            const TaskManagementPage(),
             const ProfilePage(role: 'faculty'),
           ]
         : [
@@ -107,8 +108,8 @@ class _MainWrapperState extends State<MainWrapper> {
                 _navItem(1, Icons.calendar_today_rounded, "Schedule"),
                 _navItem(
                   2,
-                  isFaculty ? Icons.analytics_rounded : Icons.insights_rounded,
-                  isFaculty ? "Stats" : "Score",
+                  isFaculty ? Icons.assignment_rounded : Icons.insights_rounded,
+                  isFaculty ? "Directives" : "Score",
                 ),
                 _navItem(3, Icons.person_rounded, "Profile"),
               ],
