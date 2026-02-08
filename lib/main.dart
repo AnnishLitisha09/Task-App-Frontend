@@ -91,9 +91,6 @@ class _RootWrapperState extends State<RootWrapper> {
     _hasAcknowledged = widget.initialAck;
   }
 
-  // Updates local state and refreshes UI
-  void _handleLogin() => setState(() => _isLoggedIn = true);
-
   void _handleAcknowledge() => setState(() => _hasAcknowledged = true);
 
   @override

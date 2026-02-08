@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'all_new_task_page.dart';
+import 'all_tasks_page.dart';
+import 'task_detail_page.dart';
 
 class StudentPage extends StatelessWidget {
   final Function(Map<String, dynamic>) onAcceptTask;
@@ -47,15 +49,22 @@ class StudentPage extends StatelessWidget {
                       _buildSectionHeader(
                         "Today's Tasks",
                         count: 3,
-                        onViewAll: () {},
+                        onViewAll: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const AllTasksArchivePage(),
+                          ),
+                        ),
                       ),
                       _taskItem(
+                        context, // Pass context for navigation
                         "Advanced Calculus Quiz",
                         "Mathematics • 10:30 AM",
                         brandAccent,
                         Icons.auto_awesome_outlined,
                       ),
                       _taskItem(
+                        context,
                         "Lab Submission",
                         "Organic Chemistry • 02:00 PM",
                         Colors.purpleAccent,
@@ -64,7 +73,7 @@ class StudentPage extends StatelessWidget {
 
                       const SizedBox(height: 32),
 
-                      // 2. NEW REQUESTS (Now with Reject/Approve logic)
+                      // 2. NEW REQUESTS
                       _buildSectionHeader(
                         "New Task Requests",
                         isStatus: true,
@@ -77,6 +86,7 @@ class StudentPage extends StatelessWidget {
                         ),
                       ),
                       _taskItem(
+                        context,
                         "Peer Review",
                         "From: Dr. Aris • Due Tomorrow",
                         Colors.lightBlue,
@@ -86,7 +96,7 @@ class StudentPage extends StatelessWidget {
                           onAcceptTask({
                             "title": "Peer Review",
                             "sub": "Dr. Aris",
-                            "start": 14.0, // Example start time
+                            "start": 14.0,
                             "dur": 60.0,
                             "icon": Icons.people_outline_rounded,
                           });
@@ -97,15 +107,22 @@ class StudentPage extends StatelessWidget {
                           );
                         },
                       ),
+
                       const SizedBox(height: 32),
 
                       // 3. OVERDUE
                       _buildSectionHeader(
                         "Overdue Tasks",
                         color: destructive,
-                        onViewAll: () {},
+                        onViewAll: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const AllTasksArchivePage(),
+                          ),
+                        ),
                       ),
                       _taskItem(
+                        context,
                         "Ethics Essay",
                         "Deadline: 3 days ago",
                         destructive,
@@ -117,7 +134,12 @@ class StudentPage extends StatelessWidget {
                       // 4. DOCUMENTATION
                       _buildSectionHeader(
                         "Pending Documentation",
-                        onViewAll: () {},
+                        onViewAll: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const AllTasksArchivePage(),
+                          ),
+                        ),
                       ),
                       _docItem(
                         "Registration Form",
@@ -347,8 +369,9 @@ class StudentPage extends StatelessWidget {
     );
   }
 
-  // --- MODIFIED TASK ITEM ---
+  // --- MODIFIED TASK ITEM (Now with Navigation) ---
   Widget _taskItem(
+    BuildContext context,
     String title,
     String sub,
     Color accent,
@@ -356,88 +379,106 @@ class StudentPage extends StatelessWidget {
     bool isRequest = false,
     VoidCallback? onApprove,
   }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: brandPrimary.withOpacity(0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                height: 48,
-                width: 48,
-                decoration: BoxDecoration(
-                  color: accent.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(icon, color: accent, size: 22),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: textMain,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      sub,
-                      style: TextStyle(
-                        color: textSub,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+    return InkWell(
+      onTap: isRequest
+          ? null
+          : () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => TaskDetailsPage(
+                  taskData: {
+                    "title": title,
+                    "sub": sub,
+                    "accent": accent,
+                    "icon": icon,
+                  },
                 ),
               ),
-              if (!isRequest)
-                Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 14,
-                  color: textSub.withOpacity(0.3),
-                ),
-            ],
-          ),
-          // --- NEW ACTION BUTTONS ---
-          if (isRequest) ...[
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _miniActionButton("Reject", destructive, () {
-                    // Link your rejection modal here
-                  }),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _miniActionButton(
-                    "Approve",
-                    successColor,
-                    onApprove ?? () {},
-                  ),
-                ),
-              ],
+            ),
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: brandPrimary.withOpacity(0.04),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
             ),
           ],
-        ],
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  height: 48,
+                  width: 48,
+                  decoration: BoxDecoration(
+                    color: accent.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(icon, color: accent, size: 22),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: textMain,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        sub,
+                        style: TextStyle(
+                          color: textSub,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!isRequest)
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 14,
+                    color: textSub.withOpacity(0.3),
+                  ),
+              ],
+            ),
+            // --- NEW ACTION BUTTONS ---
+            if (isRequest) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _miniActionButton("Reject", destructive, () {
+                      // Link your rejection modal here
+                    }),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _miniActionButton(
+                      "Approve",
+                      successColor,
+                      onApprove ?? () {},
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
       ),
     ).animate().fadeIn().slideX(begin: 0.1, end: 0);
   }

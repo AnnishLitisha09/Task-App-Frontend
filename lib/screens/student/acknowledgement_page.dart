@@ -3,14 +3,17 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 
 class MorningAcknowledgementPage extends StatefulWidget {
-  final VoidCallback onAcknowledged; // Needed to tell RootWrapper to switch screens
+  final VoidCallback
+  onAcknowledged; // Needed to tell RootWrapper to switch screens
   const MorningAcknowledgementPage({super.key, required this.onAcknowledged});
 
   @override
-  State<MorningAcknowledgementPage> createState() => _MorningAcknowledgementPageState();
+  State<MorningAcknowledgementPage> createState() =>
+      _MorningAcknowledgementPageState();
 }
 
-class _MorningAcknowledgementPageState extends State<MorningAcknowledgementPage> {
+class _MorningAcknowledgementPageState
+    extends State<MorningAcknowledgementPage> {
   final Color brandAccent = const Color(0xFF6366F1);
   final Color textMain = const Color(0xFF1E293B);
   final Color textSub = const Color(0xFF64748B);
@@ -40,7 +43,10 @@ class _MorningAcknowledgementPageState extends State<MorningAcknowledgementPage>
           Positioned(
             top: -50,
             left: -50,
-            child: CircleAvatar(radius: 120, backgroundColor: brandAccent.withOpacity(0.05)),
+            child: CircleAvatar(
+              radius: 120,
+              backgroundColor: brandAccent.withOpacity(0.05),
+            ),
           ),
           SafeArea(
             child: Padding(
@@ -51,22 +57,41 @@ class _MorningAcknowledgementPageState extends State<MorningAcknowledgementPage>
                   const SizedBox(height: 20),
                   _buildHeader(currentTime),
                   const SizedBox(height: 40),
-                  
+
                   // Dynamic Warning/Penalty Banner
                   _buildStatusBanner(activeThemeColor, late),
-                  
+
                   const SizedBox(height: 32),
-                  Text("TODAY'S OVERVIEW", 
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: textSub, letterSpacing: 1.2)),
+                  Text(
+                    "TODAY'S OVERVIEW",
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: textSub,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
                   const SizedBox(height: 16),
-                  
+
                   Expanded(
                     child: ListView(
                       physics: const BouncingScrollPhysics(),
                       children: [
-                        _taskPreviewTile("Morning Briefing", "General", "09:00 AM"),
-                        _taskPreviewTile("Advanced Calculus", "Lecture", "10:30 AM"),
-                        _taskPreviewTile("Lab Submission", "Assignment", "02:00 PM"),
+                        _taskPreviewTile(
+                          "Morning Briefing",
+                          "General",
+                          "09:00 AM",
+                        ),
+                        _taskPreviewTile(
+                          "Advanced Calculus",
+                          "Lecture",
+                          "10:30 AM",
+                        ),
+                        _taskPreviewTile(
+                          "Lab Submission",
+                          "Assignment",
+                          "02:00 PM",
+                        ),
                       ],
                     ),
                   ),
@@ -85,15 +110,32 @@ class _MorningAcknowledgementPageState extends State<MorningAcknowledgementPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text("Good Morning, Alex", 
-          style: TextStyle(color: textMain, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+        Text(
+          "Good Morning, Annish Litisha",
+          style: TextStyle(
+            color: textMain,
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.5,
+          ),
+        ),
         const SizedBox(height: 8),
         Row(
           children: [
-            Icon(Icons.access_time_filled_rounded, size: 16, color: brandAccent),
+            Icon(
+              Icons.access_time_filled_rounded,
+              size: 16,
+              color: brandAccent,
+            ),
             const SizedBox(width: 6),
-            Text("It is currently $time", 
-              style: TextStyle(color: textSub, fontSize: 14, fontWeight: FontWeight.w500)),
+            Text(
+              "It is currently $time",
+              style: TextStyle(
+                color: textSub,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ],
@@ -112,20 +154,39 @@ class _MorningAcknowledgementPageState extends State<MorningAcknowledgementPage>
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: themeColor, shape: BoxShape.circle),
-            child: Icon(late ? Icons.error_outline_rounded : Icons.priority_high_rounded, color: Colors.white, size: 20),
+            decoration: BoxDecoration(
+              color: themeColor,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              late ? Icons.error_outline_rounded : Icons.priority_high_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(late ? "Late Acknowledgement" : "Action Required", 
-                  style: TextStyle(color: themeColor.withDarkerColor(), fontSize: 15, fontWeight: FontWeight.bold)),
-                Text(late 
-                  ? "The $deadlineString deadline has passed. A penalty may be applied to your score."
-                  : "Please acknowledge your tasks before $deadlineString to avoid penalties.", 
-                  style: TextStyle(color: themeColor.withDarkerColor().withOpacity(0.8), fontSize: 12, fontWeight: FontWeight.w500)),
+                Text(
+                  late ? "Late Acknowledgement" : "Action Required",
+                  style: TextStyle(
+                    color: themeColor.withDarkerColor(),
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  late
+                      ? "The $deadlineString deadline has passed. A penalty may be applied to your score."
+                      : "Please acknowledge your tasks before $deadlineString to avoid penalties.",
+                  style: TextStyle(
+                    color: themeColor.withDarkerColor().withOpacity(0.8),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
           ),
@@ -145,20 +206,45 @@ class _MorningAcknowledgementPageState extends State<MorningAcknowledgementPage>
       child: Row(
         children: [
           Container(
-            width: 4, height: 20,
-            decoration: BoxDecoration(color: brandAccent, borderRadius: BorderRadius.circular(2)),
+            width: 4,
+            height: 20,
+            decoration: BoxDecoration(
+              color: brandAccent,
+              borderRadius: BorderRadius.circular(2),
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(color: textMain, fontWeight: FontWeight.w700, fontSize: 14)),
-                Text(type, style: TextStyle(color: textSub, fontSize: 11, fontWeight: FontWeight.w500)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: textMain,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+                Text(
+                  type,
+                  style: TextStyle(
+                    color: textSub,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
           ),
-          Text(time, style: TextStyle(color: textMain, fontSize: 12, fontWeight: FontWeight.w800)),
+          Text(
+            time,
+            style: TextStyle(
+              color: textMain,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ],
       ),
     );
@@ -175,13 +261,21 @@ class _MorningAcknowledgementPageState extends State<MorningAcknowledgementPage>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Checkbox(
-                  value: _isAcknowledged, 
+                  value: _isAcknowledged,
                   onChanged: (v) => setState(() => _isAcknowledged = v!),
                   activeColor: btnColor,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                 ),
-                Text("I acknowledge today's schedule", 
-                  style: TextStyle(color: textMain, fontWeight: FontWeight.w600, fontSize: 13)),
+                Text(
+                  "I acknowledge today's schedule",
+                  style: TextStyle(
+                    color: textMain,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
               ],
             ),
           ),
@@ -191,25 +285,35 @@ class _MorningAcknowledgementPageState extends State<MorningAcknowledgementPage>
           width: double.infinity,
           height: 60,
           child: ElevatedButton(
-            onPressed: _isAcknowledged ? widget.onAcknowledged : null, // Fires callback to RootWrapper
+            onPressed: _isAcknowledged
+                ? widget.onAcknowledged
+                : null, // Fires callback to RootWrapper
             style: ElevatedButton.styleFrom(
               backgroundColor: btnColor,
               foregroundColor: Colors.white,
               disabledBackgroundColor: const Color(0xFFF1F5F9),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
               elevation: 0,
             ),
-            child: const Text("Enter Dashboard", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            child: const Text(
+              "Enter Dashboard",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
           ),
         ),
         const SizedBox(height: 16),
-        Text("Ref: ${DateFormat('HH:mm:ss').format(DateTime.now())}", 
-          style: TextStyle(color: textSub, fontSize: 10, letterSpacing: 1)),
+        Text(
+          "Ref: ${DateFormat('HH:mm:ss').format(DateTime.now())}",
+          style: TextStyle(color: textSub, fontSize: 10, letterSpacing: 1),
+        ),
       ],
     );
   }
 }
 
 extension ColorExt on Color {
-  Color withDarkerColor() => HSLColor.fromColor(this).withLightness(0.2).toColor();
+  Color withDarkerColor() =>
+      HSLColor.fromColor(this).withLightness(0.2).toColor();
 }

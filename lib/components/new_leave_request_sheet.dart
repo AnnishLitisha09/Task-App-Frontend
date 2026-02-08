@@ -23,8 +23,8 @@ class _NewLeaveRequestSheetState extends State<NewLeaveRequestSheet> {
     "Sick Leave",
     "Emergency Leave",
     "On-Duty (OD)",
-    "Gate Pass (GP)",
-    "Special Permission",
+    "General Permission (GP)",
+    "Special Permission (SP)",
   ];
 
   @override

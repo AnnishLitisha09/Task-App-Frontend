@@ -81,14 +81,6 @@ class StudentProfilePage extends StatelessWidget {
                   );
                 },
               ),
-              _settingsTile(
-                Icons.description_outlined,
-                "Documentation",
-                "Upload evidence or view pending files",
-                onTap: () {
-                  // Add documentation logic here
-                },
-              ),
             ]),
 
             // SECTION 2: Security & Session
