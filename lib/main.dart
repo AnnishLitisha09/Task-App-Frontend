@@ -1,56 +1,57 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import 'components/bottom_nav.dart';
+import 'components/bottom_nav.dart'; // This contains your MainWrapper
 import 'screens/auth/loginpage.dart';
-import 'screens/student/acknowledgement_page.dart';
+import 'screens/common/acknowledgement_page.dart';
 
 void main() async {
-  // Required for Shared Preferences and other plugins before runApp
   WidgetsFlutterBinding.ensureInitialized();
 
   final prefs = await SharedPreferences.getInstance();
 
-  // Logic to determine the initial state
+  // 1. Initial State Detection
   bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+  String userRole = prefs.getString('userRole') ?? 'student';
 
-  // Check if today's acknowledgement is already done
+  // 2. Acknowledgement Logic (Strictly for Faculty)
   String todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
   bool hasAcknowledgedToday = prefs.getBool('ack_$todayKey') ?? false;
 
   runApp(
-    TaskApp(isLoggedIn: isLoggedIn, hasAcknowledgedToday: hasAcknowledgedToday),
+    TaskApp(
+      isLoggedIn: isLoggedIn,
+      hasAcknowledgedToday: hasAcknowledgedToday,
+      userRole: userRole,
+    ),
   );
 }
 
 class TaskApp extends StatelessWidget {
   final bool isLoggedIn;
   final bool hasAcknowledgedToday;
+  final String userRole;
 
   const TaskApp({
     super.key,
     required this.isLoggedIn,
     required this.hasAcknowledgedToday,
+    required this.userRole,
   });
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      // REMOVE home: RootWrapper(...)
-
-      // Use initialRoute instead. This is the entry point.
       initialRoute: '/',
-
       routes: {
-        '/': (context) {
-          // We check the prefs specifically for this route
-          // to ensure navigation always has fresh data.
-          return RootWrapper(
-            initialLogin: false, // On logout, we want this to be false
-            initialAck: false, // And this to be false
-          );
-        },
+        '/': (context) => RootWrapper(
+          key: UniqueKey(),
+          // PASS THE CLASS VARIABLES, NOT HARD-CODED FALSE
+          initialLogin: isLoggedIn,
+          initialAck: hasAcknowledgedToday,
+          initialRole: userRole,
+        ),
       },
     );
   }
@@ -59,11 +60,13 @@ class TaskApp extends StatelessWidget {
 class RootWrapper extends StatefulWidget {
   final bool initialLogin;
   final bool initialAck;
+  final String initialRole;
 
   const RootWrapper({
     super.key,
     required this.initialLogin,
     required this.initialAck,
+    required this.initialRole,
   });
 
   @override
@@ -73,44 +76,54 @@ class RootWrapper extends StatefulWidget {
 class _RootWrapperState extends State<RootWrapper> {
   late bool _isLoggedIn;
   late bool _hasAcknowledged;
+  late String _userRole;
 
   @override
   void initState() {
     super.initState();
+    // Initialize state from the widget parameters passed by main()
     _isLoggedIn = widget.initialLogin;
     _hasAcknowledged = widget.initialAck;
+    _userRole = widget.initialRole;
   }
 
-  // --- ADD THIS TO RE-SYNC STATE ON NAVIGATION ---
-  @override
-  void didUpdateWidget(covariant RootWrapper oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // If we navigate back to '/' via pushNamedAndRemoveUntil,
-    // the widget might be rebuilt with new initial values.
-    _isLoggedIn = widget.initialLogin;
-    _hasAcknowledged = widget.initialAck;
+  // This function is called when login is successful to refresh the local state
+  void _syncStateAfterLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isLoggedIn = true;
+      _userRole = prefs.getString('userRole') ?? 'student';
+
+      // Re-check acknowledgement in case they logged in on a new day
+      String todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      _hasAcknowledged = prefs.getBool('ack_$todayKey') ?? false;
+    });
   }
 
-  void _handleAcknowledge() => setState(() => _hasAcknowledged = true);
+  void _handleAcknowledge() async {
+    final prefs = await SharedPreferences.getInstance();
+    String todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    await prefs.setBool('ack_$todayKey', true);
+    setState(() => _hasAcknowledged = true);
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Stage 1: Login Requirement
-    // Inside RootWrapper's build method:
+    // STAGE 1: AUTH GATE
     if (!_isLoggedIn) {
-      return LoginPage(
-        onLoginSuccess: () {
-          setState(() {
-            _isLoggedIn = true;
-          });
-        },
-      );
-    } // Stage 2: Morning Acknowledgement (Rule: Must do before 08:45 AM)
-    if (!_hasAcknowledged) {
+      return LoginPage(onLoginSuccess: _syncStateAfterLogin);
+    }
+
+    // STAGE 2: ACKNOWLEDGEMENT GATE (Only if User is Faculty & Student)
+    if (_userRole == 'faculty' && !_hasAcknowledged) {
       return MorningAcknowledgementPage(onAcknowledged: _handleAcknowledge);
     }
 
-    // Stage 3: The Main Dashboard
-    return const MainWrapper();
+    if (_userRole == 'student' && !_hasAcknowledged) {
+      return MorningAcknowledgementPage(onAcknowledged: _handleAcknowledge);
+    }
+
+    // STAGE 3: THE MAIN WRAPPER (Role-Aware)
+    return MainWrapper(userRole: _userRole);
   }
 }

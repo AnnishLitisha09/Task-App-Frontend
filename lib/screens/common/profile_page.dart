@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:task_app/screens/student/leave_application_page.dart';
-import 'on_duty_wallet_page.dart';
+import '../student/on_duty_wallet_page.dart';
 
-class StudentProfilePage extends StatelessWidget {
-  const StudentProfilePage({super.key});
+class ProfilePage extends StatelessWidget {
+  final String role; // Pass 'student', 'faculty', etc.
+
+  const ProfilePage({super.key, required this.role});
 
   // Theme Colors
   final Color brandAccent = const Color(0xFF6366F1);
@@ -17,22 +19,19 @@ class StudentProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Helper to keep logic clean
+    final bool isFaculty = role == 'faculty';
+    final bool isStudent = role == 'student';
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: slate900,
-            size: 20,
-          ),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: false,
         title: Text(
-          "Student Identity",
+          isFaculty ? "Faculty Profile" : "Student Identity",
           style: TextStyle(
             color: slate900,
             fontWeight: FontWeight.w800,
@@ -45,106 +44,92 @@ class StudentProfilePage extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 10),
-            _buildIdentityHeader(),
+            _buildIdentityHeader(isFaculty),
             const SizedBox(height: 24),
 
-            // Performance Bar (Stats)
-            _buildPerformanceBar(),
+            // Performance Bar (Passes the role to change metrics)
+            _buildPerformanceBar(role),
 
             const SizedBox(height: 32),
 
-            // SECTION 1: Resources & Management
-            _buildSettingsGroup("Resources & Requests", [
-              _settingsTile(
-                Icons.account_balance_wallet_outlined,
-                "On-Duty Wallet",
-                "12 Active coupons • Next expiry Feb 12",
-                onTap: () {
-                  Navigator.push(
+            // SECTION: ROLE-SPECIFIC ACTIONS
+            if (isStudent)
+              _buildSettingsGroup("Resources & Requests", [
+                _settingsTile(
+                  Icons.account_balance_wallet_outlined,
+                  "On-Duty Wallet",
+                  "12 Active coupons • Next expiry Feb 12",
+                  onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => const OnDutyWalletPage(),
                     ),
-                  );
-                },
-              ),
-              _settingsTile(
-                Icons.event_note_outlined,
-                "Leave Application",
-                "Apply for leave or view status",
-                onTap: () {
-                  Navigator.push(
+                  ),
+                ),
+                _settingsTile(
+                  Icons.event_note_outlined,
+                  "Leave Application",
+                  "Apply for leave or view status",
+                  onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => const LeaveApplicationPage(),
                     ),
-                  );
-                },
-              ),
-            ]),
+                  ),
+                ),
+              ]),
 
-            // SECTION 2: Security & Session
+            if (isFaculty)
+              _buildSettingsGroup("Management", [
+                _settingsTile(
+                  Icons.assignment_ind_outlined,
+                  "Duty Roster",
+                  "View assigned invigilation or duties",
+                  onTap: () {},
+                ),
+                _settingsTile(
+                  Icons.rate_review_outlined,
+                  "Approve Requests",
+                  "Review student OD and Leave forms",
+                  onTap: () {},
+                ),
+              ]),
+
+            // SECTION: COMMON SECURITY
             _buildSettingsGroup("Security", [
               _settingsTile(
                 Icons.logout_rounded,
                 "Sign Out",
-                "Log out of the student portal",
+                "Log out of the $role portal",
                 color: penaltyRed,
                 onTap: () => _showLogoutConfirmation(context),
               ),
             ]),
 
-            const SizedBox(height: 40),
+            const SizedBox(height: 110), // Space for floating nav
           ],
         ),
       ),
     );
   }
 
-  // --- Profile Header ---
-  Widget _buildIdentityHeader() {
+  // --- Identity Header (Uses Role to change labels) ---
+  Widget _buildIdentityHeader(bool isFaculty) {
     return Column(
       children: [
         Hero(
           tag: 'profile-image',
-          child: Stack(
-            alignment: Alignment.bottomRight,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: brandAccent.withOpacity(0.2),
-                    width: 2,
-                  ),
-                ),
-                child: const CircleAvatar(
-                  radius: 55,
-                  backgroundImage: NetworkImage(
-                    'https://img.freepik.com/premium-vector/purple-circle-with-white-person-icon_876006-6.jpg?w=360',
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: brandAccent,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
-                ),
-                child: const Icon(
-                  Icons.qr_code_scanner_rounded,
-                  color: Colors.white,
-                  size: 18,
-                ),
-              ),
-            ],
+          child: CircleAvatar(
+            radius: 55,
+            backgroundColor: brandAccent.withOpacity(0.1),
+            backgroundImage: const NetworkImage(
+              'https://img.freepik.com/premium-vector/purple-circle-with-white-person-icon_876006-6.jpg?w=360',
+            ),
           ),
         ),
         const SizedBox(height: 16),
         Text(
-          "Annish Litisha",
+          isFaculty ? "Dr. Alan Turing" : "Annish Litisha",
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w900,
@@ -152,7 +137,7 @@ class StudentProfilePage extends StatelessWidget {
           ),
         ),
         Text(
-          "ID: 7376232IT110",
+          isFaculty ? "Faculty ID: 232CS1021" : " Student ID: 7376232IT110",
           style: TextStyle(
             fontSize: 14,
             color: slate500,
@@ -163,26 +148,37 @@ class StudentProfilePage extends StatelessWidget {
     );
   }
 
-  // --- Performance Stats Bar ---
-  Widget _buildPerformanceBar() {
+  // --- Performance Stats (Switches metrics based on role string) ---
+  Widget _buildPerformanceBar(String userRole) {
+    List<Widget> stats = [];
+
+    if (userRole == 'faculty') {
+      stats = [
+        _performanceStat("2,450", "Total Score", brandAccent),
+        _vDivider(),
+        _performanceStat("12", "Pass Rate", successGreen),
+        _vDivider(),
+        _performanceStat("12", "Publications", Colors.orange),
+      ];
+    } else {
+      stats = [
+        _performanceStat("2,450", "Total Score", brandAccent),
+        _vDivider(),
+        _performanceStat("12", "Penalties", penaltyRed),
+        _vDivider(),
+        _performanceStat("3.9", "GPA", successGreen),
+      ];
+    }
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24),
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
       decoration: BoxDecoration(
         color: surfaceColor,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: slate500.withOpacity(0.05)),
       ),
-      child: Row(
-        children: [
-          _performanceStat("2,450", "Total Score", brandAccent),
-          _vDivider(),
-          _performanceStat("12", "Penalties", penaltyRed),
-          _vDivider(),
-          _performanceStat("3.9", "Current GPA", successGreen),
-        ],
-      ),
-    ).animate().slideY(begin: 0.2, end: 0, curve: Curves.easeOut);
+      child: Row(children: stats),
+    ).animate().slideY(begin: 0.2, end: 0);
   }
 
   Widget _performanceStat(String value, String label, Color color) {
@@ -324,17 +320,17 @@ class StudentProfilePage extends StatelessWidget {
             margin: const EdgeInsets.only(right: 8),
             child: ElevatedButton(
               onPressed: () async {
-                // 1. Initialize SharedPreferences
                 final prefs = await SharedPreferences.getInstance();
 
-                // 2. DELETE ALL DATA
-                // .clear() removes every key-value pair in your app's storage
+                // 1. Wipe the data
                 await prefs.clear();
 
+                // 2. Extra safety: Ensure these keys are null/false
+                await prefs.setBool('isLoggedIn', false);
+
                 if (context.mounted) {
-                  // 3. Reset Navigation
-                  // This wipes the screen stack and goes back to '/'
-                  // Since the prefs are clear, RootWrapper will show LoginPage
+                  // 3. Clear the entire navigation stack and go to Root
+                  // The UniqueKey() we added in main.dart will now catch this and reset
                   Navigator.of(
                     context,
                   ).pushNamedAndRemoveUntil('/', (route) => false);

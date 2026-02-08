@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'task_detail_page.dart';
+import '../common/task_detail_page.dart';
 
 class AllTasksArchivePage extends StatelessWidget {
   const AllTasksArchivePage({super.key});

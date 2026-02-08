@@ -1,13 +1,16 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:task_app/screens/faculty/faculty_page.dart';
 import 'package:task_app/screens/student/student_page.dart';
-import 'package:task_app/screens/student/personal_calendar_page.dart';
-import '../screens/student/score_performance_page.dart';
-import '../screens/student/student_profile_page.dart'; // Ensure these files exist
+import 'package:task_app/screens/common/personal_calendar_page.dart';
+import '../screens/common/score_performance_page.dart';
+import '../screens/common/profile_page.dart';
 
 class MainWrapper extends StatefulWidget {
-  const MainWrapper({super.key});
+  final String userRole;
+
+  const MainWrapper({super.key, required this.userRole});
 
   @override
   State<MainWrapper> createState() => _MainWrapperState();
@@ -16,7 +19,7 @@ class MainWrapper extends StatefulWidget {
 class _MainWrapperState extends State<MainWrapper> {
   int _selectedIndex = 0;
 
-  // 1. Centralized State
+  // Shared state for accepted tasks
   List<Map<String, dynamic>> acceptedTasks = [
     {
       "title": "Project Kickoff",
@@ -27,7 +30,6 @@ class _MainWrapperState extends State<MainWrapper> {
     },
   ];
 
-  // 2. The Logic: This function updates the state and refreshes the UI
   void _handleAcceptTask(Map<String, dynamic> task) {
     setState(() {
       acceptedTasks.add(task);
@@ -36,49 +38,81 @@ class _MainWrapperState extends State<MainWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    // 3. Pass the function to StudentPage and the list to CalendarPage
-    final List<Widget> _pages = [
-      StudentPage(onAcceptTask: _handleAcceptTask),
-      PersonalCalendarPage(tasks: acceptedTasks),
-      const ScorePerformancePage(),
-      const StudentProfilePage(),
-    ];
+    final bool isFaculty = widget.userRole == 'faculty';
+
+    final List<Widget> _pages = isFaculty
+        ? [
+            const FacultyPage(),
+            PersonalCalendarPage(tasks: acceptedTasks),
+            const ScorePerformancePage(),
+            const ProfilePage(role: 'faculty'),
+          ]
+        : [
+            StudentPage(onAcceptTask: _handleAcceptTask),
+            PersonalCalendarPage(tasks: acceptedTasks),
+            const ScorePerformancePage(),
+            const ProfilePage(role: 'student'),
+          ];
 
     return Scaffold(
-      extendBody: true,
-      body: IndexedStack(index: _selectedIndex, children: _pages),
-      bottomNavigationBar: _buildBottomNav(),
-    );
-  }
+      backgroundColor: Colors.white,
+      body: Stack(
+        children: [
+          // 1. Content Area
+          IndexedStack(index: _selectedIndex, children: _pages),
 
-  Widget _buildBottomNav() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(24, 0, 24, 30),
-      height: 72,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.85),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.5), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 30,
-            offset: const Offset(0, 10),
+          // 2. Floating Navigation Bar
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _buildBottomNav(isFaculty),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _navItem(0, Icons.dashboard_rounded, "Home"),
-              _navItem(1, Icons.calendar_today_rounded, "Schedule"),
-              _navItem(2, Icons.insights_rounded, "Score"),
-              _navItem(3, Icons.person_rounded, "Profile"),
-            ],
+    );
+  }
+
+  Widget _buildBottomNav(bool isFaculty) {
+    return SafeArea(
+      // Ensures it doesn't hit the bottom of the screen on modern phones
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(
+          24,
+          0,
+          24,
+          12,
+        ), // Restored floating margin
+        height: 72,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.85),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withOpacity(0.5), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 30,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _navItem(0, Icons.dashboard_rounded, "Home"),
+                _navItem(1, Icons.calendar_today_rounded, "Schedule"),
+                _navItem(
+                  2,
+                  isFaculty ? Icons.analytics_rounded : Icons.insights_rounded,
+                  isFaculty ? "Stats" : "Score",
+                ),
+                _navItem(3, Icons.person_rounded, "Profile"),
+              ],
+            ),
           ),
         ),
       ),
@@ -92,7 +126,7 @@ class _MainWrapperState extends State<MainWrapper> {
 
   Widget _navItem(int index, IconData icon, String label) {
     bool isSelected = _selectedIndex == index;
-    const Color primaryBlue = Color(0xFF6366F1); // Indigo theme
+    const Color primaryBlue = Color(0xFF6366F1);
     const Color inactiveGrey = Color(0xFF94A3B8);
 
     return GestureDetector(

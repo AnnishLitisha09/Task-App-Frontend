@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'all_new_task_page.dart';
 import 'all_tasks_page.dart';
-import 'task_detail_page.dart';
+import '../common/task_detail_page.dart';
 
 class StudentPage extends StatelessWidget {
   final Function(Map<String, dynamic>) onAcceptTask;
