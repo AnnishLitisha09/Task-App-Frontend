@@ -41,6 +41,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'score': 100,
       'penaltyRule': {'penaltyValue': 5},
       'completionMethods': <String>[],
+      'subTasks': <Map<String, dynamic>>[],
       'requiresApproval': true,
       'approvalAuthority': 'Department Head',
       'isPackageTask': false,
@@ -228,39 +229,72 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
   // --- SECTION 3: RESPONSIBILITY & APPROVAL ---
   List<Widget> _buildSection3() {
+    if (!_taskData['isPackageTask']) {
+      // Standard Single Task view
+      return [
+        _userPicker(
+          label: "TASK OWNER",
+          subtitle: _taskData['ownerId'],
+          icon: Icons.admin_panel_settings,
+        ),
+        const SizedBox(height: 16),
+        _userPicker(
+          label: "ASSIGNEES",
+          subtitle: "Select manually",
+          icon: Icons.people,
+        ),
+        const SizedBox(height: 12),
+        _excelUploadTile(),
+        const SizedBox(height: 24),
+        _modernDropdown("TARGET ENTITY", [
+          "Individual",
+          "Role",
+          "Infrastructure",
+          "Group",
+        ], (v) => _taskData['targetType'] = v),
+        const SizedBox(height: 24),
+        _modernToggle(
+          "REQUIRES APPROVAL",
+          _taskData['requiresApproval'],
+          (v) => setState(() => _taskData['requiresApproval'] = v),
+        ),
+        if (_taskData['requiresApproval'])
+          _userPicker(
+            label: "APPROVAL AUTHORITY",
+            subtitle: _taskData['approvalAuthority'],
+            icon: Icons.verified_user,
+          ),
+      ];
+    }
+
+    // PACKAGE TASK VIEW: Sequential List
     return [
-      _userPicker(
-        label: "TASK OWNER",
-        subtitle: _taskData['ownerId'],
-        icon: Icons.admin_panel_settings,
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text(
+            "WORKFLOW SEQUENCE",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+              color: Colors.blueGrey,
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _addSubTask,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text("Add Step"),
+          ),
+        ],
       ),
       const SizedBox(height: 16),
-      _userPicker(
-        label: "ASSIGNEES",
-        subtitle: "Select manually",
-        icon: Icons.people,
-      ),
-      const SizedBox(height: 12),
-      _excelUploadTile(),
-      const SizedBox(height: 24),
-      _modernDropdown("TARGET ENTITY", [
-        "Individual",
-        "Role",
-        "Infrastructure",
-        "Group",
-      ], (v) => _taskData['targetType'] = v),
-      const SizedBox(height: 24),
-      _modernToggle(
-        "REQUIRES APPROVAL",
-        _taskData['requiresApproval'],
-        (v) => setState(() => _taskData['requiresApproval'] = v),
-      ),
-      if (_taskData['requiresApproval'])
-        _userPicker(
-          label: "APPROVAL AUTHORITY",
-          subtitle: _taskData['approvalAuthority'],
-          icon: Icons.verified_user,
-        ),
+      ...(_taskData['subTasks'] as List).asMap().entries.map((entry) {
+        int idx = entry.key;
+        var sub = entry.value;
+        return _buildSubTaskCard(idx, sub);
+      }),
+      if ((_taskData['subTasks'] as List).isEmpty)
+        _emptyState("No steps added. Click 'Add Step' to begin the sequence."),
     ];
   }
 
@@ -421,17 +455,6 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     );
   }
 
-  // Widget _stepLabel(String text, int step) {
-  //   return Text(
-  //     text,
-  //     style: TextStyle(
-  //       fontSize: 10,
-  //       fontWeight: _currentStep == step ? FontWeight.bold : FontWeight.normal,
-  //       color: _currentStep >= step ? Colors.black87 : Colors.grey[400],
-  //     ),
-  //   );
-  // }
-
   Widget _dateTile(String label, String dataKey) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
@@ -548,7 +571,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: items.first,
+          initialValue: items.first,
           items: items
               .map(
                 (e) => DropdownMenuItem(
@@ -750,4 +773,83 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   void _finishTaskCreation() {
     // Success Logic Here
   }
+
+  void _addSubTask() {
+    setState(() {
+      (_taskData['subTasks'] as List).add({
+        'title': '',
+        'assigneeId': 'Select Assignee',
+        'order': (_taskData['subTasks'] as List).length + 1,
+      });
+    });
+  }
+
+  Widget _buildSubTaskCard(int index, Map<String, dynamic> subTask) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 12,
+                backgroundColor: accent,
+                child: Text(
+                  "${index + 1}",
+                  style: const TextStyle(color: Colors.white, fontSize: 10),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  decoration: const InputDecoration(
+                    hintText: "Step Title",
+                    border: InputBorder.none,
+                  ),
+                  onChanged: (v) => subTask['title'] = v,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(
+                  Icons.delete_outline,
+                  color: Colors.red,
+                  size: 20,
+                ),
+                onPressed: () => setState(
+                  () => (_taskData['subTasks'] as List).removeAt(index),
+                ),
+              ),
+            ],
+          ),
+          const Divider(),
+          _userPicker(
+            label: "ASSIGNEE FOR STEP ${index + 1}",
+            subtitle: subTask['assigneeId'],
+            icon: Icons.person_add_alt_1,
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 300.ms).slideX(begin: 0.1);
+  }
+
+  Widget _emptyState(String msg) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(32),
+    decoration: BoxDecoration(
+      color: Colors.grey[100],
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: Colors.grey[300]!, style: BorderStyle.none),
+    ),
+    child: Text(
+      msg,
+      textAlign: TextAlign.center,
+      style: const TextStyle(color: Colors.grey, fontSize: 12),
+    ),
+  );
 }

@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -44,24 +43,68 @@ class _LoginPageState extends State<LoginPage> {
 
     final prefs = await SharedPreferences.getInstance();
 
-    // --- Role Determination Logic ---
+    // --- Expanded Role & Authority Logic ---
     if (email == 'student@gmail.com') {
-      await prefs.setBool('isLoggedIn', true);
-      await prefs.setString('userEmail', email);
-      await prefs.setString('userRole', 'student'); // Store Role
-
-      widget.onLoginSuccess();
+      await _saveUserSession(prefs, email, 'student', 'Student');
     } else if (email == 'faculty@gmail.com') {
-      await prefs.setBool('isLoggedIn', true);
-      await prefs.setString('userEmail', email);
-      await prefs.setString('userRole', 'faculty'); // Store Role
-
-      widget.onLoginSuccess();
-    } else {
-      _showError(
-        'Invalid credentials. Use student@gmail.com or faculty@gmail.com',
+      await _saveUserSession(prefs, email, 'faculty', 'Faculty');
+    }
+    // Authority: Department Level
+    else if (email == 'hod@gmail.com') {
+      await _saveUserSession(
+        prefs,
+        email,
+        'role-user',
+        'HOD',
+        scope: 'department',
+      );
+    } else if (email == 'staff@gmail.com') {
+      await _saveUserSession(prefs, email, 'staff', 'Staff');
+    }
+    // Authority: Infrastructure Level
+    else if (email == 'incharge@gmail.com') {
+      await _saveUserSession(
+        prefs,
+        email,
+        'role-user',
+        'Incharge',
+        scope: 'infrastructure',
       );
     }
+    // Authority: Institution Level
+    else if (email == 'principal@gmail.com') {
+      await _saveUserSession(
+        prefs,
+        email,
+        'role-user',
+        'Principal',
+        scope: 'institution',
+      );
+    } else {
+      _showError(
+        'Invalid credentials. Use student, faculty, hod, incharge, or principal emails.',
+      );
+    }
+  }
+
+  // Helper to keep code clean
+  Future<void> _saveUserSession(
+    SharedPreferences prefs,
+    String email,
+    String role,
+    String category, {
+    String scope = 'none',
+  }) async {
+    await prefs.setBool('isLoggedIn', true);
+    await prefs.setString('userEmail', email);
+    await prefs.setString('userRole', role); // Primary role for MainWrapper
+    await prefs.setString(
+      'userTitle',
+      category,
+    ); // Visual title (HOD/Principal)
+    await prefs.setString('userScope', scope); // Filtering logic (Dept/Inst)
+
+    widget.onLoginSuccess();
   }
 
   void _showError(String message) {

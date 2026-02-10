@@ -2,14 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:task_app/screens/student/leave_application_page.dart';
+import '../faculty/student_aproval_page.dart';
+import '../faculty/students_page.dart';
+import '../role_user/all_department_page.dart';
+import '../role_user/all_faculty_page.dart';
+import '../role_user/dept_directory_page.dart';
+import '../role_user/view_dept_tasks.dart';
 import '../student/on_duty_wallet_page.dart';
 
 class ProfilePage extends StatelessWidget {
-  final String role; // Pass 'student', 'faculty', etc.
+  final String role;
+  final String? title; // New: Pass 'HOD', 'Principal', etc.
+  final String? scope; // Add this line
 
-  const ProfilePage({super.key, required this.role});
+  const ProfilePage({super.key, required this.role, this.title, this.scope});
 
-  // Theme Colors
   final Color brandAccent = const Color(0xFF6366F1);
   final Color slate900 = const Color(0xFF0F172A);
   final Color slate500 = const Color(0xFF64748B);
@@ -19,9 +26,10 @@ class ProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Helper to keep logic clean
     final bool isFaculty = role == 'faculty';
     final bool isStudent = role == 'student';
+    final bool isAuthority = role == 'role-user';
+    final bool isStaff = role == 'staff'; // Added Staff check
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -31,7 +39,7 @@ class ProfilePage extends StatelessWidget {
         centerTitle: true,
         automaticallyImplyLeading: false,
         title: Text(
-          isFaculty ? "Faculty Profile" : "Student Identity",
+          _getPageTitle(isFaculty, isAuthority, isStaff),
           style: TextStyle(
             color: slate900,
             fontWeight: FontWeight.w800,
@@ -44,15 +52,124 @@ class ProfilePage extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 10),
-            _buildIdentityHeader(isFaculty),
+            _buildIdentityHeader(isFaculty, isAuthority, isStaff),
             const SizedBox(height: 24),
 
-            // Performance Bar (Passes the role to change metrics)
+            // Performance Bar: Authority gets specialized metrics
             _buildPerformanceBar(role),
 
             const SizedBox(height: 32),
 
-            // SECTION: ROLE-SPECIFIC ACTIONS
+            // SECTION: AUTHORITY MANAGEMENT (New)
+            if (isAuthority)
+              if (scope == 'institution')
+                _buildSettingsGroup("Institutional Management", [
+                  _settingsTile(
+                    Icons.people_outline,
+                    "Department Directory",
+                    "View all departments and their heads",
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const AllDepartmentPage(),
+                        ),
+                      );
+                    },
+                  ),
+                  _settingsTile(
+                    Icons.analytics_outlined,
+                    "Faculty Analytics",
+                    "View overall performance metrics",
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const AllFacultyPage(),
+                        ),
+                      );
+                    },
+                  ),
+                ]),
+
+            // --- SECTION: DEPARTMENT SCOPE (Student Directory) ---
+            if (scope == 'department')
+              _buildSettingsGroup("Departmental Control", [
+                _settingsTile(
+                  Icons.groups_outlined,
+                  "Student Roster",
+                  "Manage students in your department",
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const DeptDirectoryPage(),
+                      ),
+                    );
+                  },
+                ),
+                _settingsTile(
+                  Icons.assignment_turned_in_outlined,
+                  "Departmental Tasks",
+                  "View all tasks assigned to this dept",
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ViewDeptTasks(),
+                      ),
+                    );
+                  },
+                ),
+              ]),
+
+            // --- SECTION: INFRASTRUCTURE SCOPE (Venue/Facility Control) ---
+            if (scope == 'infrastructure')
+              _buildSettingsGroup("Asset Management", [
+                _settingsTile(
+                  Icons.meeting_room_outlined,
+                  "Venue Availability",
+                  "Update room and hall statuses",
+                  onTap: () {},
+                ),
+                _settingsTile(
+                  Icons.build_circle_outlined,
+                  "Maintenance Logs",
+                  "Track facility repair requests",
+                ),
+              ]),
+            // SECTION: FACULTY ACTIONS
+            if (isFaculty)
+              _buildSettingsGroup("View Students", [
+                _settingsTile(
+                  Icons.assignment_ind_outlined,
+                  "My Students",
+                  "View assigned studnets",
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const StudentsPage(),
+                      ),
+                    );
+                  },
+                ),
+                _settingsTile(
+                  Icons.rate_review_outlined,
+                  "Approve Requests",
+                  "Review student OD forms",
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const StudentAprovalPage(),
+                      ),
+                    );
+                  },
+                ),
+              ]),
+
+            // SECTION: STUDENT ACTIONS
             if (isStudent)
               _buildSettingsGroup("Resources & Requests", [
                 _settingsTile(
@@ -79,57 +196,81 @@ class ProfilePage extends StatelessWidget {
                 ),
               ]),
 
-            if (isFaculty)
-              _buildSettingsGroup("Management", [
-                _settingsTile(
-                  Icons.assignment_ind_outlined,
-                  "Duty Roster",
-                  "View assigned invigilation or duties",
-                  onTap: () {},
-                ),
-                _settingsTile(
-                  Icons.rate_review_outlined,
-                  "Approve Requests",
-                  "Review student OD and Leave forms",
-                  onTap: () {},
-                ),
-              ]),
-
             // SECTION: COMMON SECURITY
             _buildSettingsGroup("Security", [
               _settingsTile(
                 Icons.logout_rounded,
                 "Sign Out",
-                "Log out of the $role portal",
+                "Log out of the ${title ?? role} portal",
                 color: penaltyRed,
                 onTap: () => _showLogoutConfirmation(context),
               ),
             ]),
 
-            const SizedBox(height: 110), // Space for floating nav
+            const SizedBox(height: 110),
           ],
         ),
       ),
     );
   }
 
-  // --- Identity Header (Uses Role to change labels) ---
-  Widget _buildIdentityHeader(bool isFaculty) {
+  // --- Helper: Dynamic App Bar Title ---
+  String _getPageTitle(bool isFaculty, bool isAuthority, bool isStaff) {
+    if (isAuthority) return "$title Profile";
+    if (isStaff) return "Staff Profile";
+    return isFaculty ? "Faculty Profile" : "Student Identity";
+  }
+
+  // --- Identity Header: Authority Branding ---
+  Widget _buildIdentityHeader(bool isFaculty, bool isAuthority, bool isStaff) {
+    String name = isStaff
+        ? "Robert Jenkins"
+        : (isFaculty ? "Dr. Alan Turing" : "Annish Litisha");
+
+    // Updated Logic for ID Display
+    String idLabel;
+    if (isAuthority) {
+      idLabel = title ?? "Administrator";
+    } else if (isFaculty) {
+      idLabel = "Faculty ID: 232CS1021";
+    } else if (isStaff) {
+      idLabel = "Staff ID: STF-9920"; // Staff specific ID
+    } else {
+      idLabel = "Student ID: 7376232IT110";
+    }
+
+    String avatar = isStaff
+        ? 'https://cdn-icons-png.flaticon.com/512/11516/11516641.png'
+        : (isAuthority
+              ? 'https://cdn-icons-png.flaticon.com/512/6024/6024190.png'
+              : 'https://img.freepik.com/premium-vector/purple-circle-with-white-person-icon_876006-6.jpg?w=360');
+
+    if (isAuthority) {
+      if (scope == 'institution') {
+        name = "Dr. Sarah Smith";
+      } else if (scope == 'department')
+        name = "Prof. John Doe";
+      else
+        name = "Mr. Mike Ross";
+    }
+
     return Column(
       children: [
         Hero(
           tag: 'profile-image',
           child: CircleAvatar(
             radius: 55,
-            backgroundColor: brandAccent.withOpacity(0.1),
-            backgroundImage: const NetworkImage(
-              'https://img.freepik.com/premium-vector/purple-circle-with-white-person-icon_876006-6.jpg?w=360',
-            ),
+            backgroundColor:
+                (isStaff
+                        ? Colors.teal
+                        : (isAuthority ? Colors.amber : brandAccent))
+                    .withOpacity(0.1),
+            backgroundImage: NetworkImage(avatar),
           ),
         ),
         const SizedBox(height: 16),
         Text(
-          isFaculty ? "Dr. Alan Turing" : "Annish Litisha",
+          name,
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w900,
@@ -137,7 +278,7 @@ class ProfilePage extends StatelessWidget {
           ),
         ),
         Text(
-          isFaculty ? "Faculty ID: 232CS1021" : " Student ID: 7376232IT110",
+          idLabel,
           style: TextStyle(
             fontSize: 14,
             color: slate500,
@@ -146,13 +287,31 @@ class ProfilePage extends StatelessWidget {
         ),
       ],
     );
-  }
+  } // --- Performance Stats: Authority gets "Approval" & "Lapse" stats ---
 
-  // --- Performance Stats (Switches metrics based on role string) ---
   Widget _buildPerformanceBar(String userRole) {
     List<Widget> stats = [];
 
-    if (userRole == 'faculty') {
+    if (userRole == 'role-user') {
+      if (scope == 'infrastructure') {
+        stats = [
+          _performanceStat("45", "Total Venues", brandAccent),
+          _vDivider(),
+          _performanceStat("12", "Bookings Today", successGreen),
+          _vDivider(),
+          _performanceStat("02", "Under Repair", penaltyRed),
+        ];
+      } else {
+        // Default Authority Stats (Institutional/Departmental)
+        stats = [
+          _performanceStat("98%", "Approval Rate", successGreen),
+          _vDivider(),
+          _performanceStat("04", "Escalations", penaltyRed),
+          _vDivider(),
+          _performanceStat("12", "Active Tasks", brandAccent),
+        ];
+      }
+    } else if (userRole == 'faculty') {
       stats = [
         _performanceStat("2,450", "Total Score", brandAccent),
         _vDivider(),
@@ -292,8 +451,6 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  // --- Logout Functionality ---
-  // --- Logout Functionality ---
   void _showLogoutConfirmation(BuildContext context) {
     showDialog(
       context: context,

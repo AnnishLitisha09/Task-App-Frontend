@@ -90,7 +90,7 @@ class _NewLeaveRequestSheetState extends State<NewLeaveRequestSheet> {
                   _fieldLabel("LEAVE TYPE"),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
-                    value: _selectedCategory,
+                    initialValue: _selectedCategory,
                     icon: Icon(Icons.expand_more, color: brandAccent),
                     decoration: _inputDecoration(
                       icon: Icons.bookmark_border_rounded,
@@ -277,10 +277,11 @@ class _NewLeaveRequestSheetState extends State<NewLeaveRequestSheet> {
         time.hour,
         time.minute,
       );
-      if (isFrom)
+      if (isFrom) {
         _fromDate = dt;
-      else
+      } else {
         _toDate = dt;
+      }
     });
   }
 }

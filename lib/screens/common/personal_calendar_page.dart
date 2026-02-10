@@ -50,7 +50,7 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
                         child: Stack(
                           children: [
                             _buildRefinedGrid(),
-                            ...widget.tasks.map((task) => _buildLightEventCard(task)).toList(),
+                            ...widget.tasks.map((task) => _buildLightEventCard(task)),
                             _buildModernTimeIndicator(),
                           ],
                         ),
