@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/auth_service.dart';
 
 class LoginPage extends StatefulWidget {
   // Matches the parameter name used in your RootWrapper
@@ -15,6 +15,8 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
+  bool _isGoogleSignInLoading = false;
+  final _authService = AuthService();
 
   // --- Professional Minimalist Palette ---
   final Color primaryColor = const Color(0xFF2D62ED);
@@ -33,57 +35,60 @@ class _LoginPageState extends State<LoginPage> {
   // Inside _LoginPageState class
 
   Future<void> _handleLogin() async {
+    debugPrint('--- Login Started ---');
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
+
+    if (email.isEmpty) {
+      _showError('Please enter your email');
+      return;
+    }
 
     if (password.isEmpty) {
       _showError('Please enter your password');
       return;
     }
 
-    final prefs = await SharedPreferences.getInstance();
+    setState(() => _isGoogleSignInLoading = true);
 
-    // --- Expanded Role & Authority Logic ---
-    if (email == 'student@gmail.com') {
-      await _saveUserSession(prefs, email, 'student', 'Student');
-    } else if (email == 'faculty@gmail.com') {
-      await _saveUserSession(prefs, email, 'faculty', 'Faculty');
-    }
-    // Authority: Department Level
-    else if (email == 'hod@gmail.com') {
+    try {
+      debugPrint('Attempting login with: $email');
+      final result = await _authService.login(email, password);
+      debugPrint('Login API response received: $result');
+
+      final prefs = await SharedPreferences.getInstance();
+
+      // Robust parsing
+      final user = result['user'] is Map ? result['user'] : result;
+      final userEmail = user['email'] ?? email;
+      final role = (user['role'] ?? 'student').toString();
+      final name = (user['name'] ?? '').toString();
+
+      String category = role.toUpperCase();
+      String scope = 'none';
+
+      if (role == 'role-user') {
+        category = (user['category'] ?? 'User').toString();
+        scope = (user['scope'] ?? 'none').toString();
+      }
+
       await _saveUserSession(
         prefs,
-        email,
-        'role-user',
-        'HOD',
-        scope: 'department',
+        userEmail,
+        role,
+        category,
+        scope: scope,
+        name: name,
+        token: result['token']?.toString(),
       );
-    } else if (email == 'staff@gmail.com') {
-      await _saveUserSession(prefs, email, 'staff', 'Staff');
-    }
-    // Authority: Infrastructure Level
-    else if (email == 'incharge@gmail.com') {
-      await _saveUserSession(
-        prefs,
-        email,
-        'role-user',
-        'Incharge',
-        scope: 'infrastructure',
-      );
-    }
-    // Authority: Institution Level
-    else if (email == 'principal@gmail.com') {
-      await _saveUserSession(
-        prefs,
-        email,
-        'role-user',
-        'Principal',
-        scope: 'institution',
-      );
-    } else {
-      _showError(
-        'Invalid credentials. Use student, faculty, hod, incharge, or principal emails.',
-      );
+      debugPrint('Login success and session saved');
+    } catch (e) {
+      debugPrint('Login Error: $e');
+      _showError(e.toString().replaceAll('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _isGoogleSignInLoading = false);
+      }
     }
   }
 
@@ -94,6 +99,8 @@ class _LoginPageState extends State<LoginPage> {
     String role,
     String category, {
     String scope = 'none',
+    String name = '',
+    String? token,
   }) async {
     await prefs.setBool('isLoggedIn', true);
     await prefs.setString('userEmail', email);
@@ -103,8 +110,64 @@ class _LoginPageState extends State<LoginPage> {
       category,
     ); // Visual title (HOD/Principal)
     await prefs.setString('userScope', scope); // Filtering logic (Dept/Inst)
+    if (name.isNotEmpty) {
+      await prefs.setString('userName', name);
+    }
+    if (token != null) {
+      await prefs.setString('authToken', token);
+    }
 
     widget.onLoginSuccess();
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    debugPrint('--- Google Sign-In Started ---');
+    setState(() => _isGoogleSignInLoading = true);
+
+    try {
+      final result = await _authService.signInWithGoogle();
+      debugPrint('Google Sign-In result: $result');
+
+      if (result == null) {
+        debugPrint('Google Sign-In canceled by user');
+        if (mounted) setState(() => _isGoogleSignInLoading = false);
+        return;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+
+      // Robust parsing
+      final user = result['user'] is Map ? result['user'] : result;
+      final email = (user['email'] ?? '').toString();
+      final role = (user['role'] ?? 'student').toString();
+      final name = (user['name'] ?? '').toString();
+
+      String category = role.toUpperCase();
+      String scope = 'none';
+
+      if (role == 'role-user') {
+        category = (user['category'] ?? 'User').toString();
+        scope = (user['scope'] ?? 'none').toString();
+      }
+
+      await _saveUserSession(
+        prefs,
+        email,
+        role,
+        category,
+        scope: scope,
+        name: name,
+        token: result['token']?.toString(),
+      );
+      debugPrint('Google Sign-In success and session saved');
+    } catch (e) {
+      debugPrint('Google Sign-In Error: $e');
+      _showError('Google Sign-In failed: ${e.toString()}');
+    } finally {
+      if (mounted) {
+        setState(() => _isGoogleSignInLoading = false);
+      }
+    }
   }
 
   void _showError(String message) {
@@ -123,110 +186,74 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          // Subtle background glow
-          Positioned(
-            top: -100,
-            left: -100,
-            child: Container(
-              width: 300,
-              height: 300,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: primaryColor.withOpacity(0.03),
-              ),
-            ),
-          ),
-
-          SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 28.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildLogo()
-                        .animate()
-                        .fadeIn(duration: 600.ms)
-                        .scale(curve: Curves.easeOutBack),
-                    const SizedBox(height: 32),
-
-                    Text(
-                      'Welcome Back',
-                      style: TextStyle(
-                        color: textHeading,
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -1,
-                      ),
-                    ).animate().fadeIn(delay: 200.ms).moveY(begin: 10, end: 0),
-
-                    const SizedBox(height: 8),
-                    Text(
-                      'Enter your credentials to access your account',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: textBody,
-                        fontSize: 16,
-                        height: 1.5,
-                      ),
-                    ).animate().fadeIn(delay: 300.ms),
-
-                    const SizedBox(height: 48),
-
-                    _buildInputLabel('EMAIL ADDRESS'),
-                    const SizedBox(height: 10),
-                    _buildTextField(
-                          controller: _emailController,
-                          hint: 'student@gmail.com',
-                          icon: Icons.alternate_email_rounded,
-                        )
-                        .animate()
-                        .fadeIn(delay: 400.ms)
-                        .slideX(begin: 0.1, end: 0),
-
-                    const SizedBox(height: 24),
-
-                    _buildInputLabel('PASSWORD'),
-                    const SizedBox(height: 10),
-                    _buildTextField(
-                          controller: _passwordController,
-                          hint: 'Enter your password',
-                          icon: Icons.lock_outline_rounded,
-                          isPassword: true,
-                          suffix: IconButton(
-                            icon: Icon(
-                              _isPasswordVisible
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                              color: textBody.withOpacity(0.6),
-                              size: 20,
-                            ),
-                            onPressed: () => setState(
-                              () => _isPasswordVisible = !_isPasswordVisible,
-                            ),
-                          ),
-                        )
-                        .animate()
-                        .fadeIn(delay: 500.ms)
-                        .slideX(begin: 0.1, end: 0),
-
-                    const SizedBox(height: 32),
-                    _buildLoginButton()
-                        .animate()
-                        .fadeIn(delay: 600.ms)
-                        .moveY(begin: 20, end: 0),
-
-                    const SizedBox(height: 40),
-                    _buildFooter(),
-                  ],
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 28.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: 20),
+                _buildLogo(),
+                const SizedBox(height: 32),
+                Text(
+                  'Welcome Back',
+                  style: TextStyle(
+                    color: textHeading,
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 8),
+                Text(
+                  'Enter your credentials to access your account',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: textBody, fontSize: 16, height: 1.5),
+                ),
+                const SizedBox(height: 48),
+                _buildInputLabel('EMAIL ADDRESS'),
+                const SizedBox(height: 10),
+                _buildTextField(
+                  controller: _emailController,
+                  hint: 'student@gmail.com',
+                  icon: Icons.alternate_email_rounded,
+                ),
+                const SizedBox(height: 24),
+                _buildInputLabel('PASSWORD'),
+                const SizedBox(height: 10),
+                _buildTextField(
+                  controller: _passwordController,
+                  hint: 'Enter your password',
+                  icon: Icons.lock_outline_rounded,
+                  isPassword: true,
+                  suffix: IconButton(
+                    icon: Icon(
+                      _isPasswordVisible
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      color: textBody.withOpacity(0.6),
+                      size: 20,
+                    ),
+                    onPressed: () => setState(
+                      () => _isPasswordVisible = !_isPasswordVisible,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                _buildLoginButton(),
+                const SizedBox(height: 24),
+                _buildDivider(),
+                const SizedBox(height: 24),
+                _buildGoogleSignInButton(),
+                const SizedBox(height: 40),
+                _buildFooter(),
+                const SizedBox(height: 20),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -315,19 +342,29 @@ class _LoginPageState extends State<LoginPage> {
         ],
       ),
       child: ElevatedButton(
-        onPressed: _handleLogin,
+        onPressed: _isGoogleSignInLoading ? null : _handleLogin,
         style: ElevatedButton.styleFrom(
           backgroundColor: primaryColor,
           foregroundColor: Colors.white,
           elevation: 0,
+          disabledBackgroundColor: primaryColor.withOpacity(0.6),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
         ),
-        child: const Text(
-          'Sign In',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
+        child: _isGoogleSignInLoading
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : const Text(
+                'Sign In',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
       ),
     );
   }
@@ -367,6 +404,91 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ),
       ],
-    ).animate().fadeIn(delay: 800.ms);
+    );
+  }
+
+  Widget _buildDivider() {
+    return Row(
+      children: [
+        Expanded(child: Container(height: 1, color: inputBorder)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'OR',
+            style: TextStyle(
+              color: textBody.withOpacity(0.5),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        Expanded(child: Container(height: 1, color: inputBorder)),
+      ],
+    );
+  }
+
+  Widget _buildGoogleSignInButton() {
+    return Container(
+      width: double.infinity,
+      height: 60,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ElevatedButton(
+        onPressed: _isGoogleSignInLoading ? null : _handleGoogleSignIn,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: textHeading,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: inputBorder, width: 1.5),
+          ),
+        ),
+        child: _isGoogleSignInLoading
+            ? SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.network(
+                    'https://cdn1.iconfinder.com/data/icons/google_jfk_icons_by_veresane/128/google.png',
+                    height: 24,
+                    width: 24,
+                    errorBuilder: (context, error, stackTrace) => const Icon(
+                      Icons.g_mobiledata,
+                      size: 24,
+                      color: Colors.blue,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Flexible(
+                    child: Text(
+                      'Sign in with Google',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
   }
 }

@@ -66,7 +66,10 @@ class _FacultyPageState extends State<FacultyPage> {
       directives.removeAt(index);
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Task rejected"), backgroundColor: AppTheme.danger),
+      const SnackBar(
+        content: Text("Task rejected"),
+        backgroundColor: AppTheme.danger,
+      ),
     );
   }
 
@@ -74,7 +77,12 @@ class _FacultyPageState extends State<FacultyPage> {
     RejectDialog.show(
       context,
       taskTitle: directives[index]['task'],
-      reasons: ["Scheduling Conflict", "Resource Unavailability", "Outside Expertise", "Other"],
+      reasons: [
+        "Scheduling Conflict",
+        "Resource Unavailability",
+        "Outside Expertise",
+        "Other",
+      ],
       onConfirm: (reason, details) => _rejectTask(index),
     );
   }
@@ -127,8 +135,18 @@ class _FacultyPageState extends State<FacultyPage> {
                             icon: Icons.school_rounded,
                             color: AppTheme.success,
                           ),
-                          StatCard(label: "Students", value: "140", icon: Icons.people_alt_rounded, color: AppTheme.warning),
-                          StatCard(label: "Hours", value: "32h", icon: Icons.timer_rounded, color: Colors.teal),
+                          StatCard(
+                            label: "Students",
+                            value: "140",
+                            icon: Icons.people_alt_rounded,
+                            color: AppTheme.warning,
+                          ),
+                          StatCard(
+                            label: "Hours",
+                            value: "32h",
+                            icon: Icons.timer_rounded,
+                            color: Colors.teal,
+                          ),
                         ],
                       ),
                       const SizedBox(height: 32),
@@ -146,7 +164,10 @@ class _FacultyPageState extends State<FacultyPage> {
                             padding: EdgeInsets.symmetric(vertical: 20),
                             child: Text(
                               "No pending directives",
-                              style: TextStyle(color: AppTheme.textSub, fontStyle: FontStyle.italic),
+                              style: TextStyle(
+                                color: AppTheme.textSub,
+                                fontStyle: FontStyle.italic,
+                              ),
                             ),
                           ),
                         )
@@ -154,7 +175,8 @@ class _FacultyPageState extends State<FacultyPage> {
                         ...directives.asMap().entries.map((entry) {
                           int idx = entry.key;
                           var data = entry.value;
-                          final String heroTag = "directive_${data['task']}_${data['sub'].hashCode}";
+                          final String heroTag =
+                              "directive_${data['task']}_${data['sub'].hashCode}";
                           return TaskCard(
                             title: data['task'],
                             sub: data['sub'],
@@ -188,9 +210,13 @@ class _FacultyPageState extends State<FacultyPage> {
 
                       const SizedBox(height: 32),
 
-                      SectionHeader(title: "Today's Schedule", onViewAll: () {}),
+                      SectionHeader(
+                        title: "Today's Schedule",
+                        onViewAll: () {},
+                      ),
                       ...schedule.map((item) {
-                        final String heroTag = "task_${item['title']}_${item['sub'].hashCode}";
+                        final String heroTag =
+                            "task_${item['title']}_${item['sub'].hashCode}";
                         return TaskCard(
                           title: item['title'],
                           sub: item['sub'],
@@ -220,9 +246,20 @@ class _FacultyPageState extends State<FacultyPage> {
 
                       const SizedBox(height: 32),
 
-                      SectionHeader(title: "Pending Paperwork", onViewAll: () {}),
-                      _docItem("Monthly Attendance Report", "Required", Icons.description_outlined),
-                      _docItem("Lab Equipment Requisition", "Awaiting Sign", Icons.border_color_rounded),
+                      SectionHeader(
+                        title: "Pending Paperwork",
+                        onViewAll: () {},
+                      ),
+                      _docItem(
+                        "Monthly Attendance Report",
+                        "Required",
+                        Icons.description_outlined,
+                      ),
+                      _docItem(
+                        "Lab Equipment Requisition",
+                        "Awaiting Sign",
+                        Icons.border_color_rounded,
+                      ),
                     ]),
                   ),
                 ),
@@ -247,10 +284,7 @@ class _FacultyPageState extends State<FacultyPage> {
           Icon(icon, color: AppTheme.textSub, size: 20),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              title,
-              style: AppTheme.bodyMain.copyWith(fontSize: 14),
-            ),
+            child: Text(title, style: AppTheme.bodyMain.copyWith(fontSize: 14)),
           ),
           Text(
             status,
@@ -265,4 +299,3 @@ class _FacultyPageState extends State<FacultyPage> {
     );
   }
 }
-
