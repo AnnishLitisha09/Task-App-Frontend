@@ -8,7 +8,13 @@ import '../../components/reject_dialog.dart';
 import '../common/task_detail_page.dart';
 
 class FacultyPage extends StatefulWidget {
-  const FacultyPage({super.key});
+  final bool isBlocked;
+  final VoidCallback onAcknowledge;
+  const FacultyPage({
+    super.key,
+    this.isBlocked = false,
+    required this.onAcknowledge,
+  });
 
   @override
   State<FacultyPage> createState() => _FacultyPageState();
@@ -111,6 +117,61 @@ class _FacultyPageState extends State<FacultyPage> {
                   notificationCount: directives.length,
                   profileImageUrl: 'https://i.pravatar.cc/150?u=faculty1',
                 ),
+                if (widget.isBlocked)
+                  SliverToBoxAdapter(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 8,
+                      ),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppTheme.danger.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: AppTheme.danger.withOpacity(0.3),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.warning_amber_rounded,
+                                color: AppTheme.danger,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  "Action Required: Please acknowledge today's schedule to proceed.",
+                                  style: AppTheme.bodyMain.copyWith(
+                                    color: AppTheme.danger,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: widget.onAcknowledge,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.danger,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text("Acknowledge Now"),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
                   sliver: SliverList(
@@ -184,8 +245,12 @@ class _FacultyPageState extends State<FacultyPage> {
                             icon: Icons.assignment_turned_in_rounded,
                             heroTag: heroTag,
                             isRequest: true,
-                            onAccept: () => _acceptTask(idx),
-                            onReject: () => _showRejectDialog(idx),
+                            onAccept: widget.isBlocked
+                                ? null
+                                : () => _acceptTask(idx),
+                            onReject: widget.isBlocked
+                                ? null
+                                : () => _showRejectDialog(idx),
                             onTap: () => Navigator.push(
                               context,
                               MaterialPageRoute(

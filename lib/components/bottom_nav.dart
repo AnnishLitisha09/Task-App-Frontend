@@ -13,6 +13,8 @@ import '../screens/common/score_performance_page.dart';
 import '../screens/common/profile_page.dart';
 import '../screens/common/task_management_page.dart';
 import '../screens/role_user/venue_details_page.dart';
+import '../screens/admin/admin_page.dart';
+import 'package:intl/intl.dart';
 
 class MainWrapper extends StatefulWidget {
   final String userRole;
@@ -25,7 +27,8 @@ class MainWrapper extends StatefulWidget {
 
 class _MainWrapperState extends State<MainWrapper> {
   int _selectedIndex = 0;
-  bool _isLoading = true; // Added loading state
+  bool _isLoading = true;
+  bool _hasAcknowledged = true; // Added to track blocked state
 
   // Data coming from SharedPreferences
   String _userTitle = '';
@@ -39,11 +42,26 @@ class _MainWrapperState extends State<MainWrapper> {
 
   Future<void> _loadUserPreferences() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // Check acknowledgment status for today
+    String todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    bool ack = prefs.getBool('ack_$todayKey') ?? false;
+
     setState(() {
-      // Fetching the keys we saved in the LoginPage
       _userTitle = prefs.getString('userTitle') ?? 'User';
       _scopeType = prefs.getString('userScope') ?? 'none';
+      _hasAcknowledged = ack;
       _isLoading = false;
+    });
+  }
+
+  void _handleAcknowledgement() async {
+    final prefs = await SharedPreferences.getInstance();
+    String todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    await prefs.setBool('ack_$todayKey', true);
+
+    setState(() {
+      _hasAcknowledged = true;
     });
   }
 
@@ -60,8 +78,17 @@ class _MainWrapperState extends State<MainWrapper> {
     final String role = widget.userRole;
     List<Widget> pages;
 
+    // --- ADMIN LOGIC ---
+    if (role == 'admin') {
+      pages = [
+        const AdminPage(),
+        const PersonalCalendarPage(tasks: []),
+        const TaskManagementPage(),
+        const ProfilePage(role: 'admin'),
+      ];
+    }
     // --- ROLE-USER (AUTHORITY) LOGIC ---
-    if (role == 'role-user') {
+    else if (role == 'role-user') {
       pages = [
         RoleUserPage(title: _userTitle, scope: _scopeType), // Index 0: Hub
         const PersonalCalendarPage(tasks: []), // Index 2: Calendar
@@ -90,8 +117,15 @@ class _MainWrapperState extends State<MainWrapper> {
       ];
     } // --- FACULTY LOGIC ---
     else if (role == 'faculty') {
+      final now = DateTime.now();
+      final deadline = DateTime(now.year, now.month, now.day, 8, 45);
+      bool isBlocked = now.isAfter(deadline) && !_hasAcknowledged;
+
       pages = [
-        const FacultyPage(),
+        FacultyPage(
+          isBlocked: isBlocked,
+          onAcknowledge: _handleAcknowledgement,
+        ),
         const PersonalCalendarPage(tasks: []),
         const TaskManagementPage(),
         const ProfilePage(role: 'faculty'),
@@ -106,8 +140,16 @@ class _MainWrapperState extends State<MainWrapper> {
     }
     // --- STUDENT LOGIC ---
     else {
+      final now = DateTime.now();
+      final deadline = DateTime(now.year, now.month, now.day, 8, 45);
+      bool isBlocked = now.isAfter(deadline) && !_hasAcknowledged;
+
       pages = [
-        StudentPage(onAcceptTask: (t) {}),
+        StudentPage(
+          onAcceptTask: (t) {},
+          isBlocked: isBlocked,
+          onAcknowledge: _handleAcknowledgement,
+        ),
         const PersonalCalendarPage(tasks: []),
         const ScorePerformancePage(),
         const ProfilePage(role: 'student'),

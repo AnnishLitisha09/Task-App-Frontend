@@ -52,17 +52,33 @@ class _RootWrapperState extends State<RootWrapper> {
     setState(() => _hasAcknowledged = true);
   }
 
+  bool _isAcknowledgementMandatory() {
+    final now = DateTime.now();
+    // Mandatory window: 6:00 AM to 8:45 AM
+    final startTime = DateTime(now.year, now.month, now.day, 6, 0);
+    final endTime = DateTime(now.year, now.month, now.day, 8, 45);
+    return now.isAfter(startTime) && now.isBefore(endTime);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_isLoggedIn) {
       return LoginPage(onLoginSuccess: _syncStateAfterLogin);
     }
 
+    // Admin goes directly to dashboard
+    if (_userRole == 'admin') {
+      return MainWrapper(userRole: _userRole);
+    }
+
+    // Faculty/Student Mandatory Acknowledgment Window (6:00 AM - 8:45 AM)
     if ((_userRole == 'faculty' || _userRole == 'student') &&
-        !_hasAcknowledged) {
+        !_hasAcknowledged &&
+        _isAcknowledgementMandatory()) {
       return MorningAcknowledgementPage(onAcknowledged: _handleAcknowledge);
     }
 
+    // Otherwise show main wrapper (which will handle the "blocked" state if late)
     return MainWrapper(userRole: _userRole);
   }
 }
