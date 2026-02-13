@@ -52,6 +52,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'mandatoryDocumentation': true,
       'requiredDocuments': <String>[],
       'endDate': DateTime.now().add(const Duration(days: 7)),
+      'selectedDate': DateTime.now(), // NEW: Initialize for Fixed Time Task
+      'startDate': DateTime.now(), // NEW: Initialize for other task types
       'isFaculty': false,
       'facultyInCharge': null, // NEW
       'selectedAssignees': <Map<String, dynamic>>[],
@@ -163,12 +165,6 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         _taskData['isPackageTask'],
         (v) => setState(() => _taskData['isPackageTask'] = v),
       ),
-      const SizedBox(height: 12),
-      _modernToggle(
-        "IS FACULTY NEEDED?",
-        _taskData['isFaculty'],
-        (v) => setState(() => _taskData['isFaculty'] = v),
-      ),
     ];
   }
 
@@ -241,6 +237,12 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       // Standard Single Task view
       return [
         _assigneeSection(),
+        const SizedBox(height: 16),
+        _modernToggle(
+          "IS FACULTY NEEDED?",
+          _taskData['isFaculty'],
+          (v) => setState(() => _taskData['isFaculty'] = v),
+        ),
         if (_taskData['isFaculty']) ...[
           const SizedBox(height: 16),
           _facultyInChargePicker(),
@@ -462,7 +464,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           side: BorderSide(color: Colors.grey[200]!),
         ),
         leading: Icon(Icons.calendar_month, color: accent),
-        title: Text(DateFormat('yyyy-MM-dd').format(_taskData[dataKey])),
+        title: Text(
+          _taskData[dataKey] != null
+              ? DateFormat('yyyy-MM-dd').format(_taskData[dataKey])
+              : "Select Date",
+        ),
         trailing: const Icon(Icons.edit, size: 18),
         onTap: () => _pickDate(dataKey),
       ),
