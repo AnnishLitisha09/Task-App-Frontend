@@ -1,38 +1,146 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../../models/performance_stats.dart';
 
-class ScorePerformancePage extends StatelessWidget {
+class ScorePerformancePage extends StatefulWidget {
   const ScorePerformancePage({super.key});
 
+  @override
+  State<ScorePerformancePage> createState() => _ScorePerformancePageState();
+}
+
+class _ScorePerformancePageState extends State<ScorePerformancePage> {
   final Color brandAccent = const Color(0xFF6366F1);
   final Color penaltyRed = const Color(0xFFF87171);
   final Color slate500 = const Color(0xFF64748B);
   final Color surfaceColor = const Color(0xFFF8FAFC);
 
+  PerformanceStats? _stats;
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchStats();
+  }
+
+  Future<void> _fetchStats() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken');
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}tasks/stats/me'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            _stats = PerformanceStats.fromJson(data);
+            _isLoading = false;
+          });
+        }
+      } else {
+        throw Exception(
+          'Failed to load performance stats: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(child: CircularProgressIndicator(color: brandAccent)),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                "Error loading data",
+                style: TextStyle(
+                  color: penaltyRed,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: slate500),
+              ),
+              TextButton(
+                onPressed: _fetchStats,
+                child: Text("Retry", style: TextStyle(color: brandAccent)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text("Performance", 
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 22, color: brandAccent)),
+        title: Text(
+          "Performance",
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 22,
+            color: brandAccent,
+          ),
+        ),
+        leading: const BackButton(color: Colors.black),
       ),
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildScoreOverview(),
-            const SizedBox(height: 32),
-            _buildPerformanceGraphSection(),
-            const SizedBox(height: 32),
-            _buildTaskBreakdownHeader(),
-            _buildTaskBreakdownList(),
-            const SizedBox(height: 40),
-          ],
+      body: RefreshIndicator(
+        onRefresh: _fetchStats,
+        color: brandAccent,
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildScoreOverview(),
+              const SizedBox(height: 32),
+              _buildPerformanceGraphSection(),
+              const SizedBox(height: 32),
+              _buildTaskBreakdownHeader(),
+              _buildTaskBreakdownList(),
+              const SizedBox(height: 40),
+            ],
+          ),
         ),
       ),
     );
@@ -41,58 +149,92 @@ class ScorePerformancePage extends StatelessWidget {
   Widget _buildScoreOverview() {
     return Row(
       children: [
-        // Total Score Card
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: brandAccent.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: brandAccent.withOpacity(0.1)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("Total Score", style: TextStyle(color: brandAccent, fontWeight: FontWeight.w600, fontSize: 14)),
-                const SizedBox(height: 8),
-                Text("2,450", style: TextStyle(color: brandAccent, fontWeight: FontWeight.w900, fontSize: 32)),
-              ],
-            ),
-          ),
+        _buildStatCard(
+          label: "TOTAL SCORE",
+          value: "${_stats?.totalScore ?? 0}",
+          color: brandAccent,
         ),
-        const SizedBox(width: 16),
-        // Penalty Card
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: penaltyRed.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: penaltyRed.withOpacity(0.1)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("Penalties", style: TextStyle(color: penaltyRed, fontWeight: FontWeight.w600, fontSize: 14)),
-                const SizedBox(height: 8),
-                Text("12", style: TextStyle(color: penaltyRed, fontWeight: FontWeight.w900, fontSize: 32)),
-              ],
-            ),
-          ),
+        const SizedBox(width: 12),
+        _buildStatCard(
+          label: "PENALTIES",
+          value: "${_stats?.totalPenalty ?? 0}",
+          color: penaltyRed,
+        ),
+        const SizedBox(width: 12),
+        _buildStatCard(
+          label: "EARNED",
+          value: "${_stats?.totalEarnedScore ?? 0}",
+          color: Colors.green,
         ),
       ],
     ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.1, end: 0);
   }
 
+  Widget _buildStatCard({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withOpacity(0.1)),
+        ),
+        child: Column(
+          children: [
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w800,
+                fontSize: 9,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w900,
+                fontSize: 22,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildPerformanceGraphSection() {
+    final dailyScores =
+        _stats?.last7Days.map((e) => e.score.toDouble()).toList() ?? [];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text("Score Trend", style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: slate500.withOpacity(0.8))),
-            Text("Last 7 Days", style: TextStyle(color: brandAccent, fontWeight: FontWeight.w600, fontSize: 12)),
+            Text(
+              "Score Trend",
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+                color: slate500.withOpacity(0.8),
+              ),
+            ),
+            Text(
+              "Last 7 Days",
+              style: TextStyle(
+                color: brandAccent,
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 20),
@@ -101,7 +243,7 @@ class ScorePerformancePage extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.all(8),
           child: CustomPaint(
-            painter: PerformanceChartPainter(brandAccent),
+            painter: PerformanceChartPainter(brandAccent, dailyScores),
           ),
         ),
       ],
@@ -111,17 +253,44 @@ class ScorePerformancePage extends StatelessWidget {
   Widget _buildTaskBreakdownHeader() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: Text("Task Breakdown", 
-        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: slate500.withOpacity(0.8))),
+      child: Text(
+        "Task Breakdown",
+        style: TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: 18,
+          color: slate500.withOpacity(0.8),
+        ),
+      ),
     );
   }
 
   Widget _buildTaskBreakdownList() {
-    final tasks = [
-      {'title': 'Morning Sprint', 'score': '+450', 'penalty': '0', 'icon': Icons.bolt},
-      {'title': 'UI Review', 'score': '+120', 'penalty': '-1', 'icon': Icons.palette},
-      {'title': 'Client Call', 'score': '+800', 'penalty': '0', 'icon': Icons.phone},
-    ];
+    final tasks = _stats?.taskDetails ?? [];
+
+    if (tasks.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(32),
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: surfaceColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.assignment_outlined,
+              color: slate500.withOpacity(0.3),
+              size: 48,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              "No completed tasks yet",
+              style: TextStyle(color: slate500, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      );
+    }
 
     return ListView.separated(
       shrinkWrap: true,
@@ -140,26 +309,58 @@ class ScorePerformancePage extends StatelessWidget {
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                child: Icon(task['icon'] as IconData, color: brandAccent, size: 20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.assignment_turned_in_rounded,
+                  color: brandAccent,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(task['title']! as String, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                    Text(task['penalty'] == '0' ? "Perfect Completion" : "Late Submission", 
-                      style: TextStyle(color: slate500.withOpacity(0.6), fontSize: 12)),
+                    Text(
+                      task.title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                    Text(
+                      task.submissionType,
+                      style: TextStyle(
+                        color: slate500.withOpacity(0.6),
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
                 ),
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(task['score']! as String, style: TextStyle(color: brandAccent, fontWeight: FontWeight.w800, fontSize: 15)),
-                  if (task['penalty'] != '0')
-                    Text("${task['penalty']} Penalty", style: TextStyle(color: penaltyRed, fontWeight: FontWeight.w600, fontSize: 11)),
+                  Text(
+                    "+${task.earnedScore}",
+                    style: TextStyle(
+                      color: brandAccent,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                  if (task.penaltyApplied > 0)
+                    Text(
+                      "-${task.penaltyApplied} Penalty",
+                      style: TextStyle(
+                        color: penaltyRed,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11,
+                      ),
+                    ),
                 ],
               ),
             ],
@@ -170,13 +371,15 @@ class ScorePerformancePage extends StatelessWidget {
   }
 }
 
-// Simple Painter for a Clean Performance Curve
 class PerformanceChartPainter extends CustomPainter {
   final Color accent;
-  PerformanceChartPainter(this.accent);
+  final List<double> scores;
+  PerformanceChartPainter(this.accent, this.scores);
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (scores.isEmpty) return;
+
     final paint = Paint()
       ..color = accent
       ..style = PaintingStyle.stroke
@@ -191,10 +394,34 @@ class PerformanceChartPainter extends CustomPainter {
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
 
     final path = Path();
-    path.moveTo(0, size.height * 0.8);
-    path.quadraticBezierTo(size.width * 0.2, size.height * 0.9, size.width * 0.4, size.height * 0.4);
-    path.quadraticBezierTo(size.width * 0.6, size.height * 0.1, size.width * 0.8, size.height * 0.5);
-    path.lineTo(size.width, size.height * 0.2);
+    final double stepX = size.width / (scores.length - 1);
+
+    // Find min and max for scaling
+    double maxScore = scores.reduce((a, b) => a > b ? a : b);
+    double minScore = scores.reduce((a, b) => a < b ? a : b);
+
+    // Ensure we have some range even if all scores are same
+    if (maxScore == minScore) {
+      maxScore += 10;
+      minScore -= 10;
+    }
+
+    final double range = maxScore - minScore;
+
+    for (int i = 0; i < scores.length; i++) {
+      double x = i * stepX;
+      // Flip y because (0,0) is top left
+      double y =
+          size.height -
+          ((scores[i] - minScore) / range * size.height * 0.8 +
+              (size.height * 0.1));
+
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
 
     final fillPath = Path.from(path);
     fillPath.lineTo(size.width, size.height);
@@ -206,5 +433,5 @@ class PerformanceChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
