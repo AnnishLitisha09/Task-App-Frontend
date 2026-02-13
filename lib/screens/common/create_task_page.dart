@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'user_selection_page.dart';
 import 'package:intl/intl.dart';
 
 class CreateTaskPage extends StatefulWidget {
@@ -43,16 +44,17 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'completionMethods': <String>[],
       'subTasks': <Map<String, dynamic>>[],
       'requiresApproval': true,
-      'approvalAuthority': 'Department Head',
+      'approvalAuthority': null, // Changed from String to Map or null
       'isPackageTask': false,
       'allowPause': false,
       'delegationAllowed': false,
       'autoEscalation': true,
       'mandatoryDocumentation': true,
       'requiredDocuments': <String>[],
-      'selectedDate': DateTime.now(),
-      'startDate': DateTime.now(),
       'endDate': DateTime.now().add(const Duration(days: 7)),
+      'isFaculty': false,
+      'facultyInCharge': null, // NEW
+      'selectedAssignees': <Map<String, dynamic>>[],
     };
 
     // 2. Merge incoming data into the template
@@ -161,6 +163,12 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         _taskData['isPackageTask'],
         (v) => setState(() => _taskData['isPackageTask'] = v),
       ),
+      const SizedBox(height: 12),
+      _modernToggle(
+        "IS FACULTY NEEDED?",
+        _taskData['isFaculty'],
+        (v) => setState(() => _taskData['isFaculty'] = v),
+      ),
     ];
   }
 
@@ -232,38 +240,18 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     if (!_taskData['isPackageTask']) {
       // Standard Single Task view
       return [
-        _userPicker(
-          label: "TASK OWNER",
-          subtitle: _taskData['ownerId'],
-          icon: Icons.admin_panel_settings,
-        ),
+        _assigneeSection(),
+        if (_taskData['isFaculty']) ...[
+          const SizedBox(height: 16),
+          _facultyInChargePicker(),
+        ],
         const SizedBox(height: 16),
-        _userPicker(
-          label: "ASSIGNEES",
-          subtitle: "Select manually",
-          icon: Icons.people,
-        ),
-        const SizedBox(height: 12),
-        _excelUploadTile(),
-        const SizedBox(height: 24),
-        _modernDropdown("TARGET ENTITY", [
-          "Individual",
-          "Role",
-          "Infrastructure",
-          "Group",
-        ], (v) => _taskData['targetType'] = v),
-        const SizedBox(height: 24),
         _modernToggle(
           "REQUIRES APPROVAL",
           _taskData['requiresApproval'],
           (v) => setState(() => _taskData['requiresApproval'] = v),
         ),
-        if (_taskData['requiresApproval'])
-          _userPicker(
-            label: "APPROVAL AUTHORITY",
-            subtitle: _taskData['approvalAuthority'],
-            icon: Icons.verified_user,
-          ),
+        if (_taskData['requiresApproval']) _authorityPicker(),
       ];
     }
 
@@ -481,31 +469,164 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     ],
   );
 
-  Widget _excelUploadTile() => InkWell(
-    onTap: () {}, // File picker logic here
-    child: Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.green.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green.withOpacity(0.2)),
-      ),
-      child: const Row(
-        children: [
-          Icon(Icons.table_chart, color: Colors.green, size: 20),
-          SizedBox(width: 12),
-          Text(
-            "Assign via Excel (.xlsx)",
-            style: TextStyle(
-              color: Colors.green,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
+  Widget _assigneeSection() {
+    final List assignees = _taskData['selectedAssignees'];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "ASSIGNEES",
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            color: Colors.black54,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(height: 12),
+        InkWell(
+          onTap: () async {
+            final List<Map<String, dynamic>>? result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => UserSelectionPage(
+                  initialSelection: List<Map<String, dynamic>>.from(
+                    _taskData['selectedAssignees'],
+                  ),
+                ),
+              ),
+            );
+
+            if (result != null) {
+              setState(() {
+                _taskData['selectedAssignees'] = result;
+              });
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.person_add_alt_1_rounded, color: accent),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    assignees.isEmpty
+                        ? "Select Users, Roles or Depts"
+                        : "${assignees.length} assigned",
+                    style: TextStyle(
+                      color: assignees.isEmpty ? Colors.grey : Colors.black87,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 14,
+                  color: Colors.grey,
+                ),
+              ],
             ),
           ),
+        ),
+        if (assignees.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: assignees.map<Widget>((item) {
+              Color chipColor = accent;
+              if (item['type'] == 'role') chipColor = Colors.orange;
+              if (item['type'] == 'dept') chipColor = Colors.teal;
+
+              return Chip(
+                label: Text(
+                  item['name'] ?? 'Unknown',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                onDeleted: () {
+                  setState(() {
+                    _taskData['selectedAssignees'].remove(item);
+                  });
+                },
+                backgroundColor: chipColor.withOpacity(0.1),
+                deleteIconColor: chipColor,
+                side: BorderSide.none,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              );
+            }).toList(),
+          ),
         ],
-      ),
-    ),
-  );
+      ],
+    );
+  }
+
+  Widget _authorityPicker() {
+    final Map<String, dynamic>? authority = _taskData['approvalAuthority'];
+    return _userPickerTile(
+      label: "APPROVAL AUTHORITY",
+      subtitle: authority != null
+          ? authority['name']
+          : "Select Higher Authority",
+      icon: Icons.verified_user,
+      onTap: () async {
+        final List<Map<String, dynamic>>? result = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => UserSelectionPage(
+              initialSelection: authority != null ? [authority] : [],
+              multiSelect: false,
+            ),
+          ),
+        );
+
+        if (result != null && result.isNotEmpty) {
+          setState(() {
+            _taskData['approvalAuthority'] = result.first;
+          });
+        }
+      },
+    );
+  }
+
+  Widget _facultyInChargePicker() {
+    final Map<String, dynamic>? faculty = _taskData['facultyInCharge'];
+    return _userPickerTile(
+      label: "FACULTY IN-CHARGE",
+      subtitle: faculty != null
+          ? faculty['name']
+          : "Select Responsible Faculty",
+      icon: Icons.person_search_rounded,
+      onTap: () async {
+        final List<Map<String, dynamic>>? result = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => UserSelectionPage(
+              initialSelection: faculty != null ? [faculty] : [],
+              multiSelect: false,
+              fixedRole: "Faculty",
+            ),
+          ),
+        );
+
+        if (result != null && result.isNotEmpty) {
+          setState(() {
+            _taskData['facultyInCharge'] = result.first;
+          });
+        }
+      },
+    );
+  }
 
   Widget _modernField({
     required String label,
@@ -632,46 +753,53 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     }).toList(),
   );
 
-  Widget _userPicker({
+  Widget _userPickerTile({
     required String label,
     required String subtitle,
     required IconData icon,
-  }) => Container(
-    margin: const EdgeInsets.only(top: 12),
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: Colors.grey[100]!),
-    ),
-    child: Row(
-      children: [
-        CircleAvatar(
-          backgroundColor: accent.withOpacity(0.1),
-          radius: 18,
-          child: Icon(icon, color: accent, size: 18),
-        ),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 10,
-                color: Colors.black54,
+    required VoidCallback onTap,
+  }) => InkWell(
+    onTap: onTap,
+    child: Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey[100]!),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: accent.withOpacity(0.1),
+            radius: 18,
+            child: Icon(icon, color: accent, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 10,
+                  color: Colors.black54,
+                ),
               ),
-            ),
-            Text(
-              subtitle,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-          ],
-        ),
-        const Spacer(),
-        const Icon(Icons.add_circle_outline, color: Colors.grey, size: 20),
-      ],
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          const Icon(Icons.add_circle_outline, color: Colors.grey, size: 20),
+        ],
+      ),
     ),
   );
 
@@ -828,10 +956,25 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             ],
           ),
           const Divider(),
-          _userPicker(
+          _userPickerTile(
             label: "ASSIGNEE FOR STEP ${index + 1}",
-            subtitle: subTask['assigneeId'],
+            subtitle: subTask['assigneeId'] ?? "Select Assignee",
             icon: Icons.person_add_alt_1,
+            onTap: () async {
+              final List<Map<String, dynamic>>? result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      const UserSelectionPage(multiSelect: false),
+                ),
+              );
+
+              if (result != null && result.isNotEmpty) {
+                setState(() {
+                  subTask['assigneeId'] = result.first['name'];
+                });
+              }
+            },
           ),
         ],
       ),
