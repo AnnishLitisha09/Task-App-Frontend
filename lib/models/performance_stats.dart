@@ -15,9 +15,9 @@ class PerformanceStats {
 
   factory PerformanceStats.fromJson(Map<String, dynamic> json) {
     return PerformanceStats(
-      totalScore: json['total_score'] ?? 0,
-      totalPenalty: json['total_penalty'] ?? 0,
-      totalEarnedScore: json['total_earned_score'] ?? 0,
+      totalScore: (json['total_score'] as num?)?.toInt() ?? 0,
+      totalPenalty: (json['total_penalty'] as num?)?.toInt() ?? 0,
+      totalEarnedScore: (json['total_earned_score'] as num?)?.toInt() ?? 0,
       last7Days:
           (json['last_7_days'] as List?)
               ?.map((e) => DayTrend.fromJson(e))
@@ -39,7 +39,10 @@ class DayTrend {
   DayTrend({required this.date, required this.score});
 
   factory DayTrend.fromJson(Map<String, dynamic> json) {
-    return DayTrend(date: json['date'] ?? '', score: json['score'] ?? 0);
+    return DayTrend(
+      date: json['date'] ?? '',
+      score: (json['score'] as num?)?.toInt() ?? 0,
+    );
   }
 }
 
@@ -66,12 +69,12 @@ class TaskDetail {
 
   factory TaskDetail.fromJson(Map<String, dynamic> json) {
     return TaskDetail(
-      taskId: json['task_id'] ?? 0,
+      taskId: (json['task_id'] as num?)?.toInt() ?? 0,
       title: json['title'] ?? '',
       status: json['status'] ?? '',
-      baseScore: json['base_score'] ?? 0,
-      earnedScore: json['earned_score'] ?? 0,
-      penaltyApplied: json['penalty_applied'] ?? 0,
+      baseScore: (json['base_score'] as num?)?.toInt() ?? 0,
+      earnedScore: (json['earned_score'] as num?)?.toInt() ?? 0,
+      penaltyApplied: (json['penalty_applied'] as num?)?.toInt() ?? 0,
       submittedTime: json['submitted_time'] ?? '',
       submissionType: json['submission_type'] ?? '',
     );
