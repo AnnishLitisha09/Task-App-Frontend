@@ -90,9 +90,19 @@ class _RoleUserPageState extends State<RoleUserPage> {
             const SizedBox(height: 12),
             Row(
               children: [
-                _bentoMetricTile("840", "Students", Icons.school_rounded, AppTheme.success),
+                _bentoMetricTile(
+                  "840",
+                  "Students",
+                  Icons.school_rounded,
+                  AppTheme.success,
+                ),
                 const SizedBox(width: 12),
-                _bentoMetricTile("92%", "Avg. Attendance", Icons.analytics_rounded, AppTheme.brandAccent),
+                _bentoMetricTile(
+                  "92%",
+                  "Avg. Attendance",
+                  Icons.analytics_rounded,
+                  AppTheme.brandAccent,
+                ),
               ],
             ),
           ],
@@ -126,80 +136,122 @@ class _RoleUserPageState extends State<RoleUserPage> {
 
     if (scope == 'institution') {
       sections.add(SectionHeader(title: "Today's Schedule", onViewAll: () {}));
-      sections.add(const TaskCard(
-        title: "Board of Governors",
-        sub: "Conference Hall • 11:00 AM",
-        accent: AppTheme.brandAccent,
-        icon: Icons.groups_rounded,
-      ));
+      sections.add(
+        const TaskCard(
+          title: "Board of Governors",
+          sub: "Conference Hall • 11:00 AM",
+          accent: AppTheme.brandAccent,
+          icon: Icons.groups_rounded,
+        ),
+      );
 
       sections.add(const SizedBox(height: 24));
       sections.add(SectionHeader(title: "Pending Approvals", onViewAll: () {}));
-      sections.add(const TaskCard(
-        title: "FY26 Budget Draft",
-        sub: "Dept: Mechanical • \$45,000",
-        accent: AppTheme.warning,
-        icon: Icons.account_balance_wallet_outlined,
-        isApproval: true,
-      ));
-      sections.add(const TaskCard(
-        title: "New Faculty Hire",
-        sub: "Dr. Sarah Smith • Computer Science",
-        accent: AppTheme.success,
-        icon: Icons.person_add_rounded,
-        isApproval: true,
-      ));
+      sections.add(
+        const TaskCard(
+          title: "FY26 Budget Draft",
+          sub: "Dept: Mechanical • \$45,000",
+          accent: AppTheme.warning,
+          icon: Icons.account_balance_wallet_outlined,
+          isApproval: true,
+        ),
+      );
+      sections.add(
+        const TaskCard(
+          title: "New Faculty Hire",
+          sub: "Dr. Sarah Smith • Computer Science",
+          accent: AppTheme.success,
+          icon: Icons.person_add_rounded,
+          isApproval: true,
+        ),
+      );
+
+      sections.add(const SizedBox(height: 24));
+      sections.add(SectionHeader(title: "Escalated Tasks", onViewAll: () {}));
+      sections.add(
+        const TaskCard(
+          title: "Campus Infrastructure Delay",
+          sub: "Escalated from Dept. Maintenance • Critical",
+          accent: AppTheme.danger,
+          icon: Icons.priority_high_rounded,
+          onTap: null,
+        ),
+      );
     } else if (scope == 'department') {
       sections.add(SectionHeader(title: "Dept. Priorities", onViewAll: () {}));
-      sections.add(const TaskCard(
-        title: "Mid-Term Grading",
-        sub: "Pending for 3 courses",
-        accent: AppTheme.warning,
-        icon: Icons.grade_rounded,
-      ));
+      sections.add(
+        const TaskCard(
+          title: "Mid-Term Grading",
+          sub: "Pending for 3 courses",
+          accent: AppTheme.warning,
+          icon: Icons.grade_rounded,
+        ),
+      );
 
       sections.add(SectionHeader(title: "Today's Schedule", onViewAll: () {}));
-      sections.add(const TaskCard(
-        title: "Board of Governors",
-        sub: "Conference Hall • 11:00 AM",
-        accent: AppTheme.brandAccent,
-        icon: Icons.groups_rounded,
-      ));
+      sections.add(
+        const TaskCard(
+          title: "Board of Governors",
+          sub: "Conference Hall • 11:00 AM",
+          accent: AppTheme.brandAccent,
+          icon: Icons.groups_rounded,
+        ),
+      );
 
       sections.add(const SizedBox(height: 24));
       sections.add(SectionHeader(title: "Quick Approvals", onViewAll: () {}));
-      sections.add(const TaskCard(
-        title: "Student Leave: Mark V.",
-        sub: "Sick Leave • 2 Days",
-        accent: AppTheme.brandAccent,
-        icon: Icons.event_available_rounded,
-        isApproval: true,
-      ));
+      sections.add(
+        const TaskCard(
+          title: "Student Leave: Mark V.",
+          sub: "Sick Leave • 2 Days",
+          accent: AppTheme.brandAccent,
+          icon: Icons.event_available_rounded,
+          isApproval: true,
+        ),
+      );
+
+      sections.add(const SizedBox(height: 24));
+      sections.add(SectionHeader(title: "Escalated Tasks", onViewAll: () {}));
+      sections.add(
+        const TaskCard(
+          title: "Lab Equipment Procurement",
+          sub: "Escalated from Lab Assistant • Urgent",
+          accent: AppTheme.danger,
+          icon: Icons.priority_high_rounded,
+          onTap: null,
+        ),
+      );
     } else if (scope == 'infrastructure') {
       sections.add(SectionHeader(title: "Today's Bookings", onViewAll: () {}));
-      sections.add(const TaskCard(
-        title: "Seminar Hall A",
-        sub: "Workshop • 02:00 PM",
-        accent: AppTheme.brandAccent,
-        icon: Icons.meeting_room_rounded,
-      ));
+      sections.add(
+        const TaskCard(
+          title: "Seminar Hall A",
+          sub: "Workshop • 02:00 PM",
+          accent: AppTheme.brandAccent,
+          icon: Icons.meeting_room_rounded,
+        ),
+      );
 
       sections.add(const SizedBox(height: 24));
       sections.add(SectionHeader(title: "Venue Requests", onViewAll: () {}));
-      sections.add(const TaskCard(
-        title: "Auditorium Request",
-        sub: "Annual Cultural Fest",
-        accent: AppTheme.success,
-        icon: Icons.stadium_rounded,
-        isApproval: true,
-      ));
+      sections.add(
+        const TaskCard(
+          title: "Auditorium Request",
+          sub: "Annual Cultural Fest",
+          accent: AppTheme.success,
+          icon: Icons.stadium_rounded,
+          isApproval: true,
+        ),
+      );
       sections.add(SectionHeader(title: "Booking History", onViewAll: () {}));
-      sections.add(const TaskCard(
-        title: "Seminar Hall A",
-        sub: "Workshop • 02:00 PM",
-        accent: AppTheme.brandAccent,
-        icon: Icons.meeting_room_rounded,
-      ));
+      sections.add(
+        const TaskCard(
+          title: "Seminar Hall A",
+          sub: "Workshop • 02:00 PM",
+          accent: AppTheme.brandAccent,
+          icon: Icons.meeting_room_rounded,
+        ),
+      );
     }
 
     return sections;
@@ -212,7 +264,10 @@ class _RoleUserPageState extends State<RoleUserPage> {
       decoration: BoxDecoration(
         color: AppTheme.brandAccent.withOpacity(0.04),
         borderRadius: BorderRadius.circular(32),
-        border: Border.all(color: AppTheme.brandAccent.withOpacity(0.1), width: 2),
+        border: Border.all(
+          color: AppTheme.brandAccent.withOpacity(0.1),
+          width: 2,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -221,7 +276,10 @@ class _RoleUserPageState extends State<RoleUserPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: AppTheme.brandAccent.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
@@ -235,7 +293,11 @@ class _RoleUserPageState extends State<RoleUserPage> {
                   ),
                 ),
               ),
-              const Icon(Icons.auto_awesome, color: AppTheme.brandAccent, size: 20),
+              const Icon(
+                Icons.auto_awesome,
+                color: AppTheme.brandAccent,
+                size: 20,
+              ),
             ],
           ),
           const SizedBox(height: 20),
@@ -248,10 +310,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
             children: [
               const Icon(Icons.circle, color: AppTheme.success, size: 8),
               const SizedBox(width: 6),
-              Text(
-                status,
-                style: AppTheme.bodySub,
-              ),
+              Text(status, style: AppTheme.bodySub),
             ],
           ),
         ],
@@ -273,11 +332,17 @@ class _RoleUserPageState extends State<RoleUserPage> {
               children: [
                 Text(
                   val,
-                  style: AppTheme.bodyMain.copyWith(fontSize: 18, fontWeight: FontWeight.w900),
+                  style: AppTheme.bodyMain.copyWith(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
                 Text(
                   label,
-                  style: AppTheme.caption.copyWith(fontSize: 10, fontWeight: FontWeight.bold),
+                  style: AppTheme.caption.copyWith(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -287,4 +352,3 @@ class _RoleUserPageState extends State<RoleUserPage> {
     ).animate().fadeIn().slideX(begin: 0.2);
   }
 }
-

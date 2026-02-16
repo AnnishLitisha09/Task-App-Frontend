@@ -9,9 +9,10 @@ import '../../components/custom_app_bar.dart';
 import '../../components/stat_card.dart';
 import '../../components/task_card.dart';
 import '../../components/section_header.dart';
-import '../../components/reject_dialog.dart';
+import '../../components/unified_reject_dialog.dart';
 import '../common/task_detail_page.dart';
 import '../../models/faculty_dashboard_stats.dart';
+import '../common/user_selection_page.dart';
 
 class FacultyPage extends StatefulWidget {
   final bool isBlocked;
@@ -36,8 +37,7 @@ class _FacultyPageState extends State<FacultyPage> {
   }
 
   Future<void> _fetchStats() async {
-    setState(() {
-    });
+    setState(() {});
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken');
@@ -66,8 +66,7 @@ class _FacultyPageState extends State<FacultyPage> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-        });
+        setState(() {});
       }
     }
   }
@@ -83,26 +82,262 @@ class _FacultyPageState extends State<FacultyPage> {
     );
   }
 
+  Future<void> _handleTransfer(String title) async {
+    final List<Map<String, dynamic>>? result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const UserSelectionPage(
+          multiSelect: false,
+          allowedRoles: ["Faculty"], // Only transfer to Faculty
+        ),
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      final selectedUser = result.first;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "Task '$title' transferred to ${selectedUser['name']}",
+            ),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+        _fetchStats(); // Refresh to reflect changes
+      }
+    }
+  }
+
   void _showRejectDialog(int index) {
     if (_stats == null) return;
-    RejectDialog.show(
+    final taskTitle = _stats!.pendingTasks[index]['title'] ?? 'Task';
+
+    UnifiedRejectDialog.show(
       context,
-      taskTitle: _stats!.pendingTasks[index]['title'] ?? 'Task',
-      reasons: [
-        "Scheduling Conflict",
-        "Resource Unavailability",
-        "Outside Expertise",
-        "Other",
-      ],
-      onConfirm: (reason, details) {
-        // API call would happen here
+      taskTitle: taskTitle,
+      onTransfer: () => _handleTransfer(taskTitle), // Trigger transfer
+      onReject: (reason, details) {
+        // Handle rejection logic here
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Task rejected"),
+          SnackBar(
+            content: Text("Task rejected: $reason"),
             backgroundColor: AppTheme.danger,
           ),
         );
+        _fetchStats(); // Refresh
       },
+    );
+  }
+
+  void _showDirectiveActionSheet(BuildContext context, int index) {
+    if (_stats == null) return;
+    final task = _stats!.pendingTasks[index];
+    final title = task['title'] ?? 'Task';
+    final description = task['description'] ?? 'No description available';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 32, 24, 48),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0F172A),
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              description,
+              style: const TextStyle(color: AppTheme.textSub, height: 1.5),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 32),
+            Row(
+              children: [
+                Expanded(
+                  child: _actionButton(
+                    "Reject",
+                    AppTheme.danger,
+                    Icons.close_rounded,
+                    () {
+                      Navigator.pop(context);
+                      _showRejectDialog(index);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _actionButton(
+                    "Accept",
+                    AppTheme.success,
+                    Icons.check_rounded,
+                    () {
+                      Navigator.pop(context);
+                      _acceptTask(index);
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _actionTile(
+              context,
+              "Transfer Task",
+              "Assign this directive to another faculty member",
+              Icons.trending_up_rounded,
+              AppTheme.brandAccent,
+              () {
+                Navigator.pop(context);
+                _handleTransfer(title);
+              },
+            ),
+            const SizedBox(height: 12),
+            _actionTile(
+              context,
+              "View Full Details",
+              "Open detailed view of this task",
+              Icons.visibility_outlined,
+              Colors.blueGrey,
+              () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => TaskDetailsPage(
+                      taskData: {
+                        'title': title,
+                        'sub': description,
+                        'accent': AppTheme.brandAccent,
+                        'icon': Icons.assignment_turned_in_rounded,
+                        'heroTag': "directive_${task['task_id']}_$index",
+                        'startDate': task['start_date'] ?? "N/A",
+                        'deadline': task['end_date'] ?? "N/A",
+                        'completionType': task['type'] ?? "APPROVAL",
+                        'isRequest': true,
+                        'authority': "Administration",
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _actionButton(
+    String label,
+    Color color,
+    IconData icon,
+    VoidCallback onTap,
+  ) {
+    return ElevatedButton(
+      onPressed: onTap,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color.withOpacity(0.1),
+        foregroundColor: color,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(width: 8),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _actionTile(
+    BuildContext context,
+    String title,
+    String sub,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withOpacity(0.1)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.brandPrimary,
+                      fontSize: 16,
+                    ),
+                  ),
+                  Text(
+                    sub,
+                    style: const TextStyle(
+                      color: AppTheme.textSub,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 14,
+              color: AppTheme.textSub.withOpacity(0.3),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -275,12 +510,34 @@ class _FacultyPageState extends State<FacultyPage> {
                               icon: Icons.assignment_turned_in_rounded,
                               heroTag: heroTag,
                               isRequest: true,
-                              onAccept: widget.isBlocked
-                                  ? null
-                                  : () => _acceptTask(idx),
-                              onReject: widget.isBlocked
-                                  ? null
-                                  : () => _showRejectDialog(idx),
+                              onAccept: () {
+                                if (widget.isBlocked) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        "Please acknowledge your schedule first.",
+                                      ),
+                                      backgroundColor: AppTheme.warning,
+                                    ),
+                                  );
+                                  return;
+                                }
+                                _acceptTask(idx);
+                              },
+                              onReject: () {
+                                if (widget.isBlocked) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        "Please acknowledge your schedule first.",
+                                      ),
+                                      backgroundColor: AppTheme.warning,
+                                    ),
+                                  );
+                                  return;
+                                }
+                                _showRejectDialog(idx);
+                              },
                               onTap: () => Navigator.push(
                                 context,
                                 MaterialPageRoute(
@@ -298,12 +555,30 @@ class _FacultyPageState extends State<FacultyPage> {
                                           data['type'] ?? "APPROVAL",
                                       'isRequest': true,
                                       'authority': "Administration",
+                                      'userRole':
+                                          'Faculty', // Ensure transfer option shows
                                     },
                                   ),
                                 ),
                               ),
                             );
                           }),
+
+                        const SizedBox(height: 32),
+
+                        SectionHeader(
+                          title: "Escalated Tasks",
+                          isStatus: true,
+                          count: 1, // Mock count
+                          onViewAll: () {},
+                        ),
+                        TaskCard(
+                          title: "Venue Security Audit",
+                          sub: "Escalated by Prof. Aristhoth • High Priority",
+                          accent: AppTheme.danger,
+                          icon: Icons.priority_high_rounded,
+                          onTap: () {},
+                        ),
 
                         const SizedBox(height: 32),
 
@@ -348,6 +623,8 @@ class _FacultyPageState extends State<FacultyPage> {
                                       'deadline': item['end_date'] ?? "N/A",
                                       'completionType': "INFO",
                                       "isRequest": false,
+                                      'userRole':
+                                          'Faculty', // Ensure transfer option shows if needed
                                     },
                                   ),
                                 ),

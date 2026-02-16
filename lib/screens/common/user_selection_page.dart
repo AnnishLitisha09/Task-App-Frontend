@@ -4,13 +4,13 @@ import '../../theme/app_theme.dart';
 class UserSelectionPage extends StatefulWidget {
   final List<Map<String, dynamic>> initialSelection;
   final bool multiSelect;
-  final String? fixedRole; // NEW: To filter roles (e.g., "Faculty")
+  final List<String>? allowedRoles; // NEW: To filter roles (e.g., ["Faculty", "HOD"])
 
   const UserSelectionPage({
     super.key,
     this.initialSelection = const [],
     this.multiSelect = true,
-    this.fixedRole,
+    this.allowedRoles,
   });
 
   @override
@@ -22,6 +22,8 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
   int _currentLevel = 0; // 0: Role, 1: Dept, 2: Users
   String? _selectedRole;
   String? _selectedDept;
+  String _searchQuery = "";
+  final TextEditingController _searchController = TextEditingController();
 
   // Selection State
   late List<Map<String, dynamic>> _selectedItems;
@@ -55,14 +57,14 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
   void initState() {
     super.initState();
     _selectedItems = List.from(widget.initialSelection);
-    if (widget.fixedRole != null) {
-      _selectedRole = widget.fixedRole;
+    if (widget.allowedRoles != null && widget.allowedRoles!.length == 1) {
+      _selectedRole = widget.allowedRoles!.first;
       _currentLevel = 1;
     }
   }
 
   void _goBack() {
-    if (_currentLevel > (widget.fixedRole != null ? 1 : 0)) {
+    if (_currentLevel > (widget.allowedRoles != null && widget.allowedRoles!.length == 1 ? 1 : 0)) {
       setState(() {
         _currentLevel--;
         if (_currentLevel == 0) _selectedRole = null;
@@ -109,19 +111,19 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
           ),
           onPressed: _goBack,
         ),
-        title: Text(
-          _currentLevel == 0
-              ? "Select Role"
-              : (_currentLevel == 1 ? "Select Department" : "Select Users"),
-          style: const TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-          ),
-        ),
+        title: _currentLevel == 0 && _searchQuery.isEmpty 
+          ? const Text(
+              "Select Role",
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ) 
+          : _buildSearchField(), 
         actions: [
           if (_selectedItems.isNotEmpty && widget.multiSelect)
-            Padding(
+             Padding(
               padding: const EdgeInsets.only(right: 16),
               child: Center(
                 child: Container(
@@ -180,6 +182,24 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
     );
   }
 
+  Widget _buildSearchField() {
+    return TextField(
+      controller: _searchController,
+      autofocus: false,
+      decoration: InputDecoration(
+        hintText: _currentLevel == 0 ? "Search Roles..." : (_currentLevel == 1 ? "Search Departments..." : "Search Users..."),
+        border: InputBorder.none,
+        hintStyle: TextStyle(color: Colors.grey[400]),
+      ),
+      style: const TextStyle(color: Colors.black, fontSize: 16),
+      onChanged: (val) {
+        setState(() {
+          _searchQuery = val;
+        });
+      },
+    );
+  }
+
   Widget _buildCurrentLevelView() {
     if (_currentLevel == 0) return _buildRoleList();
     if (_currentLevel == 1) return _buildDeptList();
@@ -187,53 +207,76 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
   }
 
   Widget _buildRoleList() {
-    return ListView(
+    final List<Map<String, dynamic>> roles = [
+      {
+        'title': "All Students",
+        'subtitle': "Target entire Student community",
+        'icon': Icons.groups_rounded,
+        'type': 'role',
+        'id': 'role_students',
+        'roleName': 'Students',
+      },
+      {
+        'title': "All Faculty",
+        'subtitle': "Target entire Faculty community",
+        'icon': Icons.person_search_rounded,
+        'type': 'role',
+        'id': 'role_faculty',
+        'roleName': 'Faculty',
+      },
+      {
+        'title': "All Staff",
+        'subtitle': "Target entire Staff community",
+        'icon': Icons.badge_rounded,
+        'type': 'role',
+        'id': 'role_staff',
+        'roleName': 'Staff',
+      },
+    ];
+
+    // Filter by allowedRoles
+    final filteredRoles = widget.allowedRoles == null 
+        ? roles 
+        : roles.where((r) => widget.allowedRoles!.contains(r['roleName'])).toList();
+
+    // Filter by search query
+    final displayRoles = _searchQuery.isEmpty 
+        ? filteredRoles 
+        : filteredRoles.where((r) => r['title'].toString().toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+
+    return ListView.builder(
       padding: const EdgeInsets.all(24),
-      children: [
-        _selectionTile(
-          title: "All Students",
-          subtitle: "Target entire Student community",
-          icon: Icons.groups_rounded,
-          type: 'role',
-          id: 'role_students',
+      itemCount: displayRoles.length,
+      itemBuilder: (context, index) {
+        final role = displayRoles[index];
+        return _selectionTile(
+          title: role['title'],
+          subtitle: role['subtitle'],
+          icon: role['icon'],
+          type: role['type'],
+          id: role['id'],
           onTap: () => setState(() {
-            _selectedRole = "Students";
+            _selectedRole = role['roleName'];
             _currentLevel = 1;
+            _searchQuery = ""; // Reset search on drill down
+            _searchController.clear();
           }),
-        ),
-        _selectionTile(
-          title: "All Faculty",
-          subtitle: "Target entire Faculty community",
-          icon: Icons.person_search_rounded,
-          type: 'role',
-          id: 'role_faculty',
-          onTap: () => setState(() {
-            _selectedRole = "Faculty";
-            _currentLevel = 1;
-          }),
-        ),
-        _selectionTile(
-          title: "All Staff",
-          subtitle: "Target entire Staff community",
-          icon: Icons.badge_rounded,
-          type: 'role',
-          id: 'role_staff',
-          onTap: () => setState(() {
-            _selectedRole = "Staff";
-            _currentLevel = 1;
-          }),
-        ),
-      ],
+        );
+      },
     );
   }
 
   Widget _buildDeptList() {
     final depts = _roleToDepts[_selectedRole] ?? [];
+    final displayDepts = _searchQuery.isEmpty 
+        ? depts 
+        : depts.where((d) => d.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+
     return ListView.builder(
       padding: const EdgeInsets.all(24),
-      itemCount: depts.length,
+      itemCount: displayDepts.length,
       itemBuilder: (context, index) {
-        final deptName = depts[index];
+        final deptName = displayDepts[index];
         final id = "dept_${_selectedRole}_$deptName";
         return _selectionTile(
           title: deptName,
@@ -244,6 +287,8 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
           onTap: () => setState(() {
             _selectedDept = deptName;
             _currentLevel = 2;
+            _searchQuery = ""; // Reset search
+            _searchController.clear();
           }),
         );
       },
@@ -252,7 +297,11 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
 
   Widget _buildUserList() {
     final users = _deptToUsers[_selectedDept] ?? [];
-    if (users.isEmpty) {
+    final displayUsers = _searchQuery.isEmpty 
+        ? users 
+        : users.where((u) => u['name'].toString().toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+
+    if (displayUsers.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -269,9 +318,9 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
     }
     return ListView.builder(
       padding: const EdgeInsets.all(24),
-      itemCount: users.length,
+      itemCount: displayUsers.length,
       itemBuilder: (context, index) {
-        final user = users[index];
+        final user = displayUsers[index];
         final isSelected = _isSelected(user['id']);
         return Container(
           margin: const EdgeInsets.only(bottom: 12),

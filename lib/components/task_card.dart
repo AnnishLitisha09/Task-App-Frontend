@@ -13,6 +13,7 @@ class TaskCard extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onAccept;
   final VoidCallback? onReject;
+  final VoidCallback? onTransfer;
 
   const TaskCard({
     super.key,
@@ -26,6 +27,7 @@ class TaskCard extends StatelessWidget {
     this.onTap,
     this.onAccept,
     this.onReject,
+    this.onTransfer,
   });
 
   @override
@@ -64,14 +66,8 @@ class TaskCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: AppTheme.bodyMain,
-                    ),
-                    Text(
-                      sub,
-                      style: AppTheme.bodySub,
-                    ),
+                    Text(title, style: AppTheme.bodyMain),
+                    Text(sub, style: AppTheme.bodySub),
                   ],
                 ),
               ),
@@ -84,21 +80,47 @@ class TaskCard extends StatelessWidget {
             ],
           ),
           if (isRequest || isApproval) ...[
+            if (onAccept != null || onReject != null) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  if (onReject != null)
+                    Expanded(
+                      child: _miniActionBtn(
+                        "Reject",
+                        AppTheme.danger,
+                        onReject,
+                      ),
+                    ),
+                  if (onAccept != null && onReject != null)
+                    const SizedBox(width: 12),
+                  if (onAccept != null)
+                    Expanded(
+                      child: _miniActionBtn(
+                        isApproval ? "Approve" : "Accept",
+                        AppTheme.success,
+                        onAccept,
+                      ),
+                    ),
+                ],
+              ),
+            ],
+            if (onTransfer != null) ...[
+              const SizedBox(height: 12),
+              _miniActionBtn(
+                "Transfer Task",
+                AppTheme.brandAccent,
+                onTransfer,
+                isFullWidth: true,
+              ),
+            ],
+          ] else if (onTransfer != null) ...[
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _miniActionBtn("Reject", AppTheme.danger, onReject),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _miniActionBtn(
-                    isApproval ? "Approve" : "Accept",
-                    AppTheme.success,
-                    onAccept,
-                  ),
-                ),
-              ],
+            _miniActionBtn(
+              "Transfer Task",
+              AppTheme.brandAccent,
+              onTransfer,
+              isFullWidth: true,
             ),
           ],
         ],
@@ -108,10 +130,7 @@ class TaskCard extends StatelessWidget {
     if (heroTag != null) {
       content = Hero(
         tag: heroTag!,
-        child: Material(
-          color: Colors.transparent,
-          child: content,
-        ),
+        child: Material(color: Colors.transparent, child: content),
       );
     }
 
@@ -121,11 +140,17 @@ class TaskCard extends StatelessWidget {
     ).animate().fadeIn().slideX(begin: 0.1, end: 0);
   }
 
-  Widget _miniActionBtn(String label, Color color, VoidCallback? onTap) {
+  Widget _miniActionBtn(
+    String label,
+    Color color,
+    VoidCallback? onTap, {
+    bool isFullWidth = false,
+  }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
+        width: isFullWidth ? double.infinity : null,
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
           color: color.withOpacity(0.1),

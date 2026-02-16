@@ -979,7 +979,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             builder: (context) => UserSelectionPage(
               initialSelection: faculty != null ? [faculty] : [],
               multiSelect: false,
-              fixedRole: "Faculty",
+              allowedRoles: ["Faculty"],
             ),
           ),
         );
