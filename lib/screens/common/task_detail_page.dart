@@ -23,7 +23,6 @@ class _TaskDetailsPageState extends State<TaskDetailsPage>
   final Color successColor = const Color(0xFF10B981);
   final Color surfaceColor = const Color(0xFFF8FAFC);
 
-  late TabController _tabController;
   String _searchQuery = '';
 
   // Mock self-log data - replace with API call
@@ -51,13 +50,6 @@ class _TaskDetailsPageState extends State<TaskDetailsPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
   }
 
   List<Map<String, dynamic>> get _filteredLogs {
@@ -90,7 +82,6 @@ class _TaskDetailsPageState extends State<TaskDetailsPage>
               _buildTabBar(),
               Expanded(
                 child: TabBarView(
-                  controller: _tabController,
                   children: [
                     SingleChildScrollView(
                       physics: const BouncingScrollPhysics(),
@@ -391,57 +382,6 @@ class _TaskDetailsPageState extends State<TaskDetailsPage>
             color: brandPrimary.withOpacity(0.05),
             blurRadius: 20,
             offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: TabBar(
-        controller: _tabController,
-        indicator: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [brandAccent, brandAccent.withOpacity(0.8)],
-          ),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: brandAccent.withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        labelColor: Colors.white,
-        unselectedLabelColor: textSub,
-        labelStyle: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
-          letterSpacing: 0.5,
-        ),
-        unselectedLabelStyle: const TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 14,
-        ),
-        indicatorSize: TabBarIndicatorSize.tab,
-        dividerColor: Colors.transparent,
-        tabs: const [
-          Tab(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.assignment_outlined, size: 18),
-                SizedBox(width: 8),
-                Text('Task Details'),
-              ],
-            ),
-          ),
-          Tab(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.history, size: 18),
-                SizedBox(width: 8),
-                Text('Self-Logs'),
-              ],
-            ),
           ),
         ],
       ),
