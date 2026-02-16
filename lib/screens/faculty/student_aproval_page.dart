@@ -18,7 +18,6 @@ class _StudentAprovalPageState extends State<StudentAprovalPage> {
   final Color bgGray = const Color(0xFFF8FAFC);
   final Color accentIndigo = const Color(0xFF6366F1);
 
-  final TextEditingController _searchController = TextEditingController();
   String searchQuery = "";
 
   final List<Map<String, String>> allRequests = [

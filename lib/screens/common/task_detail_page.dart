@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'task_closure_page.dart' show TaskClosurePage;
+import 'self_log_detail_page.dart';
 
 class TaskDetailsPage extends StatefulWidget {
   final Map<String, dynamic> taskData;
@@ -11,7 +12,8 @@ class TaskDetailsPage extends StatefulWidget {
   State<TaskDetailsPage> createState() => _TaskDetailsPageState();
 }
 
-class _TaskDetailsPageState extends State<TaskDetailsPage> {
+class _TaskDetailsPageState extends State<TaskDetailsPage>
+    with SingleTickerProviderStateMixin {
   // Design Tokens
   final Color brandPrimary = const Color(0xFF0F172A);
   final Color brandAccent = const Color(0xFF6366F1);
@@ -20,6 +22,53 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   final Color destructive = const Color(0xFFF43F5E);
   final Color successColor = const Color(0xFF10B981);
   final Color surfaceColor = const Color(0xFFF8FAFC);
+
+  late TabController _tabController;
+  String _searchQuery = '';
+
+  // Mock self-log data - replace with API call
+  final List<Map<String, dynamic>> _selfLogs = [
+    {
+      'title': 'Research Paper Review',
+      'description': 'Reviewed 3 research papers on AI and machine learning',
+      'startTime': '09:00 AM',
+      'endTime': '11:30 AM',
+      'duration': 2.5,
+      'tags': ['Research', 'Study'],
+      'date': 'Feb 16, 2026',
+    },
+    {
+      'title': 'Project Development',
+      'description': 'Worked on Flutter app features and bug fixes',
+      'startTime': '02:00 PM',
+      'endTime': '05:00 PM',
+      'duration': 3.0,
+      'tags': ['Project Work', 'Skill Building'],
+      'date': 'Feb 16, 2026',
+    },
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> get _filteredLogs {
+    if (_searchQuery.isEmpty) return _selfLogs;
+    return _selfLogs.where((log) {
+      final title = log['title'].toString().toLowerCase();
+      final description = log['description'].toString().toLowerCase();
+      final query = _searchQuery.toLowerCase();
+      return title.contains(query) || description.contains(query);
+    }).toList();
+  }
 
   // OTP State
   // ... inside _TaskDetailsPageState class
@@ -36,31 +85,44 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       appBar: _buildCustomAppBar(context),
       body: Stack(
         children: [
-          SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 140),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildPriorityBadge(isApprovalWorkflow),
-                const SizedBox(height: 12),
-                _buildHeaderSection(),
-                const SizedBox(height: 24),
-                _buildVenueSection(), // NEW: Added Venue
-                const SizedBox(height: 16),
-                _buildTimeFrameSection(),
-                const SizedBox(height: 24),
-                _buildScoreCard(type),
-                const SizedBox(height: 32),
-                _buildSectionLabel("Assignment Description"),
-                const SizedBox(height: 12),
-                _buildDescriptionBox(
-                  isApprovalWorkflow,
-                ), // UPDATED: Adaptive text
-                const SizedBox(height: 32),
-                _buildHistoryLogs(),
-              ],
-            ),
+          Column(
+            children: [
+              _buildTabBar(),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 140),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildPriorityBadge(isApprovalWorkflow),
+                          const SizedBox(height: 12),
+                          _buildHeaderSection(),
+                          const SizedBox(height: 24),
+                          _buildVenueSection(), // NEW: Added Venue
+                          const SizedBox(height: 16),
+                          _buildTimeFrameSection(),
+                          const SizedBox(height: 24),
+                          _buildScoreCard(type),
+                          const SizedBox(height: 32),
+                          _buildSectionLabel("Assignment Description"),
+                          const SizedBox(height: 12),
+                          _buildDescriptionBox(
+                            isApprovalWorkflow,
+                          ), // UPDATED: Adaptive text
+                          const SizedBox(height: 32),
+                          _buildHistoryLogs(),
+                        ],
+                      ),
+                    ),
+                    _buildSelfLogHistoryTab(),
+                  ],
+                ),
+              ),
+            ],
           ),
           _buildFloatingBottomAction(
             isApprovalWorkflow,
@@ -113,7 +175,279 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     );
   }
 
+  Widget _buildSelfLogHistoryTab() {
+    return Column(
+      children: [
+        // Search Bar
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: brandPrimary.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: TextField(
+              onChanged: (value) => setState(() => _searchQuery = value),
+              decoration: InputDecoration(
+                hintText: 'Search self-logs...',
+                hintStyle: TextStyle(color: textSub.withOpacity(0.6)),
+                prefixIcon: Icon(Icons.search, color: brandAccent),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear, color: textSub),
+                        onPressed: () => setState(() => _searchQuery = ''),
+                      )
+                    : null,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Self-logs list
+        Expanded(
+          child: _filteredLogs.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.inbox_outlined,
+                        size: 64,
+                        color: textSub.withOpacity(0.5),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _searchQuery.isEmpty
+                            ? 'No self logs recorded yet'
+                            : 'No logs match your search',
+                        style: TextStyle(fontSize: 16, color: textSub),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: _filteredLogs.length,
+                  itemBuilder: (context, index) {
+                    final log = _filteredLogs[index];
+                    return _buildSelfLogCard(log, index);
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSelfLogCard(Map<String, dynamic> log, int index) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: Material(
+          color: Colors.white,
+          child: InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SelfLogDetailPage(log: log),
+                ),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 1. TOP ROW: Category & Duration
+                  Row(
+                    children: [
+                      _badge("Self Log", Colors.blueGrey),
+                      const Spacer(),
+                      _badge('${log['duration']}h', brandAccent),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 2. TITLE & DATE
+                  Text(
+                    log['title'],
+                    style: TextStyle(
+                      color: textMain,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today_outlined,
+                        size: 14,
+                        color: textSub,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        log['date'],
+                        style: TextStyle(
+                          color: textSub,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Icon(Icons.access_time, size: 14, color: textSub),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${log['startTime']} - ${log['endTime']}',
+                        style: TextStyle(
+                          color: textSub,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  if (log['tags'] != null &&
+                      (log['tags'] as List).isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: (log['tags'] as List).map<Widget>((tag) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: surfaceColor,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            tag.toString().toUpperCase(),
+                            style: TextStyle(
+                              color: textSub,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _badge(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          color: color,
+          fontSize: 9,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+
   // --- NEW: Venue Section ---
+  Widget _buildTabBar() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: brandPrimary.withOpacity(0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: TabBar(
+        controller: _tabController,
+        indicator: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [brandAccent, brandAccent.withOpacity(0.8)],
+          ),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: brandAccent.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        labelColor: Colors.white,
+        unselectedLabelColor: textSub,
+        labelStyle: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 14,
+          letterSpacing: 0.5,
+        ),
+        unselectedLabelStyle: const TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+        ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+        tabs: const [
+          Tab(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.assignment_outlined, size: 18),
+                SizedBox(width: 8),
+                Text('Task Details'),
+              ],
+            ),
+          ),
+          Tab(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.history, size: 18),
+                SizedBox(width: 8),
+                Text('Self-Logs'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildVenueSection() {
     return Container(
       padding: const EdgeInsets.all(16),

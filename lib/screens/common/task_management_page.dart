@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import 'create_task_page.dart';
 import 'task_creation_view_page.dart';
+import 'self_log_detail_page.dart';
 
 class TaskManagementPage extends StatefulWidget {
   const TaskManagementPage({super.key});
@@ -11,17 +12,114 @@ class TaskManagementPage extends StatefulWidget {
   State<TaskManagementPage> createState() => _TaskManagementPageState();
 }
 
-class _TaskManagementPageState extends State<TaskManagementPage> {
+class _TaskManagementPageState extends State<TaskManagementPage>
+    with SingleTickerProviderStateMixin {
   final Color brandPrimary = const Color(0xFF6366F1);
   final Color bgSlate = const Color(0xFFF8FAFC);
   final Color textDark = const Color(0xFF0F172A);
   final Color textLight = const Color(0xFF64748B);
+  late TabController _tabController;
+  String _directiveSearchQuery = '';
+  String _selfLogSearchQuery = '';
+
+  // Mock Directive Tasks - Now in a list for filtering
+  final List<Map<String, dynamic>> _directiveTasks = [
+    {
+      'title': 'System Architecture Exam',
+      'category': 'Assessment',
+      'taskType': 'Fixed Time Task',
+      'locationId': 'Room 402',
+      'priority': 'Critical',
+      'completionMethods': ['QR Scan', 'Photo'],
+      'selectedDate': DateTime(2026, 2, 12),
+      'description':
+          "Ensure all hardware is calibrated before the exam starts.",
+      'ownerId': "Prof. Aristhoth",
+      'approvalAuthority': "Dept. Head Sarah",
+      'status': "Pending",
+    },
+    {
+      'title': 'Monthly Audit Report',
+      'category': 'Assessment',
+      'taskType': 'Recurring Task',
+      'locationId': 'Main Hall',
+      'priority': 'Medium',
+      'completionMethods': ['Doc Upload'],
+      'selectedDate': DateTime(2026, 2, 15),
+      'description': "Submit the audit report for the current month.",
+      'ownerId': "Prof. Aristhoth",
+      'approvalAuthority': "Dept. Head Sarah",
+      'status': "Completed",
+    },
+    {
+      'title': 'Lab Maintenance',
+      'category': 'Maintenance',
+      'taskType': 'Fixed Time Task',
+      'locationId': 'CS Lab 1',
+      'priority': 'High',
+      'completionMethods': ['Photo'],
+      'selectedDate': DateTime(2026, 2, 18),
+      'description': "Check all systems for software updates.",
+      'ownerId': "Prof. Aristhoth",
+      'status': "Pending",
+    },
+  ];
+
+  // Mock self-log data
+  final List<Map<String, dynamic>> _selfLogs = [
+    {
+      'title': 'Research Paper Review',
+      'description': 'Reviewed 3 research papers on AI and machine learning',
+      'startTime': '09:00 AM',
+      'endTime': '11:30 AM',
+      'duration': 2.5,
+      'date': 'Feb 16, 2026',
+    },
+    {
+      'title': 'Project Development',
+      'description': 'Worked on Flutter app features and bug fixes',
+      'startTime': '02:00 PM',
+      'endTime': '05:00 PM',
+      'duration': 3.0,
+      'date': 'Feb 16, 2026',
+    },
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> get _filteredDirectives {
+    if (_directiveSearchQuery.isEmpty) return _directiveTasks;
+    return _directiveTasks.where((task) {
+      final title = task['title'].toString().toLowerCase();
+      final query = _directiveSearchQuery.toLowerCase();
+      return title.contains(query);
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> get _filteredLogs {
+    if (_selfLogSearchQuery.isEmpty) return _selfLogs;
+    return _selfLogs.where((log) {
+      final title = log['title'].toString().toLowerCase();
+      final description = log['description'].toString().toLowerCase();
+      final query = _selfLogSearchQuery.toLowerCase();
+      return title.contains(query) || description.contains(query);
+    }).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: bgSlate,
-      // We keep the body clean and use a custom header
       body: Stack(
         children: [
           // Decorative background blur for elegance
@@ -37,50 +135,30 @@ class _TaskManagementPageState extends State<TaskManagementPage> {
               ),
             ),
           ),
-
-          CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              // 1. GORGEOUS TOP HEADER
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 70, 24, 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _buildGreeting(),
-                          _buildCreateButton(), // Strategic placement at top-right
-                        ],
-                      ),
-                      const SizedBox(height: 32),
-                      _buildLightStatsRow(), // Replaces the heavy dark card
-                    ],
-                  ),
+          Column(
+            children: [
+              // Header section
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 70, 24, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [_buildGreeting(), _buildCreateButton()],
+                    ),
+                    const SizedBox(height: 32),
+                    _buildLightStatsRow(),
+                  ],
                 ),
               ),
-
-              // 2. SEARCH & FILTER BAR
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
-                  ),
-                  child: _buildSearchBar(),
-                ),
-              ),
-
-              // 3. TASK LIST
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) => _buildElegantTaskCard(index),
-                    childCount: 4,
-                  ),
+              // Tab Bar
+              _buildTabBar(),
+              // Tab Content
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [_buildDirectiveTasksTab(), _buildSelfLogsTab()],
                 ),
               ),
             ],
@@ -88,6 +166,281 @@ class _TaskManagementPageState extends State<TaskManagementPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildTabBar() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: textDark.withOpacity(0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: TabBar(
+        controller: _tabController,
+        indicator: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [brandPrimary, brandPrimary.withOpacity(0.8)],
+          ),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: brandPrimary.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        labelColor: Colors.white,
+        unselectedLabelColor: textLight,
+        labelStyle: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 14,
+          letterSpacing: 0.5,
+        ),
+        unselectedLabelStyle: const TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+        ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+        tabs: const [
+          Tab(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.assignment_outlined, size: 18),
+                SizedBox(width: 8),
+                Text('Directive Tasks'),
+              ],
+            ),
+          ),
+          Tab(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.history, size: 18),
+                SizedBox(width: 8),
+                Text('My Self-Logs'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDirectiveTasksTab() {
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        // SEARCH & FILTER BAR
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            child: _buildSearchBar(),
+          ),
+        ),
+        // TASK LIST
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
+          sliver: _filteredDirectives.isEmpty
+              ? SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off_rounded,
+                          size: 64,
+                          color: textLight.withOpacity(0.5),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No directives found',
+                          style: TextStyle(fontSize: 16, color: textLight),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => _buildElegantTaskCard(
+                      _filteredDirectives[index],
+                      index,
+                    ),
+                    childCount: _filteredDirectives.length,
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSelfLogsTab() {
+    return Column(
+      children: [
+        // Search Bar
+        Padding(
+          padding: const EdgeInsets.all(24),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: textDark.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: TextField(
+              onChanged: (value) => setState(() => _selfLogSearchQuery = value),
+              decoration: InputDecoration(
+                hintText: 'Search self-logs...',
+                hintStyle: TextStyle(color: textLight.withOpacity(0.6)),
+                prefixIcon: Icon(Icons.search, color: brandPrimary),
+                suffixIcon: _selfLogSearchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear, color: textLight),
+                        onPressed: () =>
+                            setState(() => _selfLogSearchQuery = ''),
+                      )
+                    : null,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Self-logs list
+        Expanded(
+          child: _filteredLogs.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.inbox_outlined,
+                        size: 64,
+                        color: textLight.withOpacity(0.5),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _selfLogSearchQuery.isEmpty
+                            ? 'No self logs recorded yet'
+                            : 'No logs match your search',
+                        style: TextStyle(fontSize: 16, color: textLight),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  itemCount: _filteredLogs.length,
+                  itemBuilder: (context, index) {
+                    final log = _filteredLogs[index];
+                    return _buildSelfLogCard(log, index);
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSelfLogCard(Map<String, dynamic> log, int index) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: Material(
+          color: Colors.white,
+          child: InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SelfLogDetailPage(log: log),
+                ),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 1. TOP ROW: Category & Duration
+                  Row(
+                    children: [
+                      _badge("Self Log", Colors.blueGrey),
+                      const Spacer(),
+                      _badge('${log['duration']}h', brandPrimary),
+                      const SizedBox(width: 8),
+                      _buildLogMenu(log),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 2. TITLE & DATE
+                  Text(
+                    log['title'],
+                    style: TextStyle(
+                      color: textDark,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today_outlined,
+                        size: 14,
+                        color: textLight,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        log['date'],
+                        style: TextStyle(
+                          color: textLight,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Icon(Icons.access_time, size: 14, color: textLight),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${log['startTime']} - ${log['endTime']}',
+                        style: TextStyle(
+                          color: textLight,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ).animate().fadeIn(delay: (index * 100).ms).slideY(begin: 0.1, end: 0);
   }
 
   Widget _buildGreeting() {
@@ -223,8 +576,9 @@ class _TaskManagementPageState extends State<TaskManagementPage> {
           const SizedBox(width: 12),
           Expanded(
             child: TextField(
+              onChanged: (v) => setState(() => _directiveSearchQuery = v),
               decoration: InputDecoration(
-                hintText: "Search tasks...",
+                hintText: "Search directives...",
                 hintStyle: TextStyle(
                   color: textLight.withOpacity(0.5),
                   fontSize: 15,
@@ -241,34 +595,15 @@ class _TaskManagementPageState extends State<TaskManagementPage> {
 
   // ... existing imports
 
-  Widget _buildElegantTaskCard(int index) {
-    // Mocking dynamic data that matches your Creation Page state
-    final String taskTitle = index == 0
-        ? "System Architecture Exam"
-        : "Monthly Audit Report";
-    final String taskType = index % 2 == 0
-        ? "Fixed Time Task"
-        : "Recurring Task";
-    final String priority = index == 0 ? "Critical" : "Medium";
-    final String venue = index == 0 ? "Room 402" : "Main Hall";
-    final List<String> methods = index == 0
-        ? ["QR Scan", "Photo"]
-        : ["Doc Upload"];
-
-    final Map<String, dynamic> taskData = {
-      'title': taskTitle,
-      'category': 'Assessment',
-      'taskType': taskType,
-      'locationId': venue,
-      'priority': priority,
-      'completionMethods': methods,
-      'selectedDate': DateTime(2026, 2, 12),
-      'description':
-          "Ensure all hardware is calibrated before the exam starts.",
-      'ownerId': "Prof. Aristhoth",
-      'approvalAuthority': "Dept. Head Sarah",
-      'status': index == 0 ? "Pending" : "Completed", // Mocking status
-    };
+  Widget _buildElegantTaskCard(Map<String, dynamic> taskData, int index) {
+    // Extracting dynamic data from the passed taskData
+    final String taskTitle = taskData['title'] ?? "Untitled Directive";
+    final String taskType = taskData['taskType'] ?? "Standard Task";
+    final String priority = taskData['priority'] ?? "Medium";
+    final String venue = taskData['locationId'] ?? "Unknown Venue";
+    final List<String> methods = List<String>.from(
+      taskData['completionMethods'] ?? [],
+    );
 
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
@@ -555,6 +890,103 @@ class _TaskManagementPageState extends State<TaskManagementPage> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Icon(icon, size: 16, color: brandPrimary),
+    );
+  }
+
+  Widget _buildLogMenu(Map<String, dynamic> log) {
+    return PopupMenuButton<String>(
+      padding: EdgeInsets.zero,
+      icon: Icon(Icons.more_vert_rounded, color: textLight, size: 20),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      onSelected: (value) {
+        if (value == 'edit') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => CreateTaskPage(
+                initialData: {...log, 'taskCategory': 'Self Log'},
+              ),
+            ),
+          );
+        } else if (value == 'delete') {
+          _showLogDeleteDialog(log);
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: 'edit',
+          child: Row(
+            children: [
+              Icon(Icons.edit_outlined, size: 18, color: textDark),
+              const SizedBox(width: 12),
+              const Text("Edit Log"),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              const Icon(
+                Icons.delete_outline_rounded,
+                size: 18,
+                color: Colors.red,
+              ),
+              const SizedBox(width: 12),
+              const Text("Delete", style: TextStyle(color: Colors.red)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showLogDeleteDialog(Map<String, dynamic> log) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text(
+          "Delete Activity?",
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+        content: const Text(
+          "This will permanently remove your activity log. Continue?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              "Cancel",
+              style: TextStyle(color: textLight, fontWeight: FontWeight.bold),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // Mock delete
+              setState(() {
+                _selfLogs.remove(log);
+              });
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Activity log deleted")),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              "Delete",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

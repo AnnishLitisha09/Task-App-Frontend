@@ -29,6 +29,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
     // 1. Define your full default template
     final Map<String, dynamic> defaultData = {
+      'taskCategory': 'Directive Task', // NEW: Directive Task or Self Log
       'title': '',
       'description': '',
       'category': 'Academic',
@@ -57,15 +58,114 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'isFaculty': false,
       'facultyInCharge': null, // NEW
       'selectedAssignees': <Map<String, dynamic>>[],
+      // Self Log specific fields
+      'activityDate': DateTime.now(),
+      'startTime': null,
+      'endTime': null,
+      'calculatedHours': 0.0,
+      'activityTags': <String>[],
+      'attachDocuments': false,
+      'selectedDocuments': <String>[],
     };
 
-    // 2. Merge incoming data into the template
+    // 1. Start with template defaults
+    final Map<String, dynamic> data = {...defaultData};
+
+    // 2. Merge incoming data
     if (widget.initialData != null) {
-      _taskData = {...defaultData, ...widget.initialData!};
-    } else {
-      _taskData = defaultData;
+      data.addAll(widget.initialData!);
+
+      // 3. Normalize Task Category (Heuristic)
+      if (data['taskCategory'] == null) {
+        if (data['duration'] != null || data['activityDate'] != null) {
+          data['taskCategory'] = 'Self Log';
+        } else {
+          data['taskCategory'] = 'Directive Task';
+        }
+      }
+
+      // 4. Transform Keys (e.g. 'date' -> 'activityDate')
+      if (data['taskCategory'] == 'Self Log') {
+        if (data['date'] != null && data['activityDate'] == null) {
+          data['activityDate'] = data['date'];
+        }
+        if (data['tags'] != null && data['activityTags'] == null) {
+          data['activityTags'] = List<String>.from(data['tags']);
+        }
+        if (data['duration'] != null && data['calculatedHours'] == null) {
+          final dur = data['duration'];
+          if (dur is num) {
+            data['calculatedHours'] = dur.toDouble();
+          } else if (dur is String) {
+            data['calculatedHours'] =
+                double.tryParse(dur.replaceAll('h', '')) ?? 0.0;
+          }
+        }
+      }
+
+      // 5. Robust Type Casting/Parsing
+      final List<String> keys = data.keys.toList();
+      for (var key in keys) {
+        final val = data[key];
+        if (val == null) continue;
+
+        // Date Parsing
+        if ([
+          'activityDate',
+          'selectedDate',
+          'startDate',
+          'endDate',
+        ].contains(key)) {
+          if (val is String) {
+            data[key] = _parseDateString(val);
+          }
+        }
+        // Time Parsing
+        else if (key.toLowerCase().contains('time')) {
+          if (val is String) {
+            data[key] = _parseTimeString(val);
+          }
+        }
+      }
     }
-  } // Helper for Date Picker
+    _taskData = data;
+  }
+
+  DateTime _parseDateString(String dateStr) {
+    try {
+      // Handle "Feb 16, 2026" or similar common formats
+      return DateFormat.yMMMd().parse(dateStr);
+    } catch (e) {
+      return DateTime.tryParse(dateStr) ?? DateTime.now();
+    }
+  }
+
+  TimeOfDay? _parseTimeString(String? timeStr) {
+    if (timeStr == null || timeStr.isEmpty) return null;
+    try {
+      // 1. Try AM/PM format (9:00 AM)
+      final format = DateFormat.jm();
+      final dt = format.parse(timeStr);
+      return TimeOfDay.fromDateTime(dt);
+    } catch (e) {
+      try {
+        // 2. Try HH:mm format (09:00)
+        final format = DateFormat("HH:mm");
+        final dt = format.parse(timeStr);
+        return TimeOfDay.fromDateTime(dt);
+      } catch (e2) {
+        try {
+          // 3. Try DateTime string (2026-02-16 09:00:00)
+          final dt = DateTime.tryParse(timeStr);
+          if (dt != null) return TimeOfDay.fromDateTime(dt);
+          return null;
+        } catch (e3) {
+          return null;
+        }
+      }
+    }
+  }
+  // Helper for Date Picker
 
   Future<void> _pickDate(String key) async {
     final DateTime? picked = await showDatePicker(
@@ -81,37 +181,42 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isSelfLog = _taskData['taskCategory'] == 'Self Log';
     return Scaffold(
       backgroundColor: bodyBg,
       appBar: _buildAppBar(),
       body: Column(
         children: [
-          _buildProgressBar(), // Now spans the full width
+          if (!isSelfLog) _buildProgressBar(), // Only show for directive tasks
           Expanded(
             child: PageView(
               controller: _pageController,
               physics: const NeverScrollableScrollPhysics(),
               children: [
                 _sectionWrapper(
-                  title: "Identity",
-                  subtitle: "Basic details & Classification",
+                  title: isSelfLog ? "Activity Log" : "Identity",
+                  subtitle: isSelfLog
+                      ? "Record your personal achievements"
+                      : "Basic details & Classification",
                   children: _buildSection1(),
                 ),
-                _sectionWrapper(
-                  title: "Time & Venue",
-                  subtitle: "Configuration & Location",
-                  children: _buildSection2(),
-                ),
-                _sectionWrapper(
-                  title: "Responsibility",
-                  subtitle: "Governance & Assignees",
-                  children: _buildSection3(),
-                ),
-                _sectionWrapper(
-                  title: "Closing Rules",
-                  subtitle: "Evaluation & Resources",
-                  children: _buildSection4(),
-                ),
+                if (!isSelfLog) ...[
+                  _sectionWrapper(
+                    title: "Time & Venue",
+                    subtitle: "Configuration & Location",
+                    children: _buildSection2(),
+                  ),
+                  _sectionWrapper(
+                    title: "Responsibility",
+                    subtitle: "Governance & Assignees",
+                    children: _buildSection3(),
+                  ),
+                  _sectionWrapper(
+                    title: "Closing Rules",
+                    subtitle: "Evaluation & Resources",
+                    children: _buildSection4(),
+                  ),
+                ],
               ],
             ),
           ),
@@ -123,11 +228,27 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
   // --- SECTION 1: IDENTITY & PACKAGE ---
   List<Widget> _buildSection1() {
+    final bool isSelfLog = _taskData['taskCategory'] == 'Self Log';
+
     return [
+      _modernDropdown(
+        "TASK CATEGORY",
+        ["Directive Task", "Self Log"],
+        _taskData['taskCategory'],
+        (v) => setState(() {
+          _taskData['taskCategory'] = v;
+          _currentStep = 0;
+          if (_pageController.hasClients) {
+            _pageController.jumpToPage(0);
+          }
+        }),
+      ),
+      const SizedBox(height: 24),
       _modernField(
-        label: "TASK TITLE",
-        hint: "Audit Report",
-        icon: Icons.title,
+        label: isSelfLog ? "ACTIVITY TITLE" : "TASK TITLE",
+        hint: isSelfLog ? "Research review" : "Audit Report",
+        icon: isSelfLog ? Icons.event_note : Icons.title,
+        initialValue: _taskData['title'],
         onChanged: (v) => _taskData['title'] = v,
       ),
       const SizedBox(height: 24),
@@ -135,55 +256,137 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         label: "DESCRIPTION",
         hint: "Details...",
         icon: Icons.notes,
-        maxLines: 2,
+        maxLines: isSelfLog ? 4 : 2,
+        initialValue: _taskData['description'],
         onChanged: (v) => _taskData['description'] = v,
       ),
       const SizedBox(height: 24),
-      Row(
-        children: [
-          Expanded(
-            child: _modernDropdown("CATEGORY", [
-              "Academic",
-              "Administrative",
-              "Compliance",
-            ], (v) => _taskData['category'] = v),
+      if (isSelfLog) ...[
+        _dateTile("ACTIVITY DATE", 'activityDate'),
+        const SizedBox(height: 24),
+        Text(
+          "TIME DURATION",
+          style: TextStyle(
+            color: accent,
+            fontWeight: FontWeight.bold,
+            fontSize: 11,
+            letterSpacing: 1.2,
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: _modernDropdown("PRIORITY", [
-              "Low",
-              "Medium",
-              "High",
-              "Critical",
-            ], (v) => setState(() => _taskData['priority'] = v)),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _timePicker(
+                label: "START TIME",
+                time: _taskData['startTime'],
+                onTimePicked: (time) {
+                  setState(() {
+                    _taskData['startTime'] = time;
+                    _calculateHours();
+                  });
+                },
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _timePicker(
+                label: "END TIME",
+                time: _taskData['endTime'],
+                onTimePicked: (time) {
+                  setState(() {
+                    _taskData['endTime'] = time;
+                    _calculateHours();
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _durationIndicator(),
+        const SizedBox(height: 24),
+        _modernToggle(
+          "ATTACH PROOF/DOCUMENTATION",
+          _taskData['attachDocuments'],
+          (v) => setState(() => _taskData['attachDocuments'] = v),
+        ),
+        if (_taskData['attachDocuments']) ...[
+          const SizedBox(height: 16),
+          _documentAttachmentSection(),
+        ],
+      ] else ...[
+        Row(
+          children: [
+            Expanded(
+              child: _modernDropdown(
+                "CATEGORY",
+                ["Academic", "Administrative", "Compliance", "Assessment"],
+                _taskData['category'],
+                (v) => _taskData['category'] = v,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _modernDropdown(
+                "PRIORITY",
+                ["Low", "Medium", "High", "Critical"],
+                _taskData['priority'],
+                (v) => setState(() => _taskData['priority'] = v),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _modernToggle(
+          "IS PACKAGE TASK",
+          _taskData['isPackageTask'],
+          (v) => setState(() => _taskData['isPackageTask'] = v),
+        ),
+      ],
+    ];
+  }
+
+  Widget _durationIndicator() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.timer_outlined, color: accent, size: 20),
+          const SizedBox(width: 12),
+          Text(
+            "Duration: ${_taskData['calculatedHours'].toStringAsFixed(1)} hours",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: accent,
+              fontSize: 14,
+            ),
           ),
         ],
       ),
-      const SizedBox(height: 16),
-      _modernToggle(
-        "IS PACKAGE TASK",
-        _taskData['isPackageTask'],
-        (v) => setState(() => _taskData['isPackageTask'] = v),
-      ),
-    ];
+    );
   }
 
   // --- SECTION 2: TIME, VENUE & PAUSE ---
   List<Widget> _buildSection2() {
     return [
-      _modernDropdown("TASK TYPE", [
-        "Fixed Time Task",
-        "Long Task",
-        "Recurring Task",
-        "Bidding Task",
-      ], (v) => setState(() => _taskData['taskType'] = v)),
+      _modernDropdown(
+        "TASK TYPE",
+        ["Fixed Time Task", "Long Task", "Recurring Task", "Bidding Task"],
+        _taskData['taskType'],
+        (v) => setState(() => _taskData['taskType'] = v),
+      ),
       const SizedBox(height: 24),
-      _modernDropdown("VENUE / LOCATION", [
-        "Main Hall",
-        "Lab 101",
-        "Conference Room",
-        "Remote",
-      ], (v) => _taskData['locationId'] = v),
+      _modernDropdown(
+        "VENUE / LOCATION",
+        ["Main Hall", "Lab 101", "Conference Room", "Remote"],
+        _taskData['locationId'],
+        (v) => _taskData['locationId'] = v,
+      ),
       const SizedBox(height: 32),
       Text(
         "TIME CONFIGURATION",
@@ -201,18 +404,18 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         Row(
           children: [
             Expanded(
-              child: _modernField(
+              child: _timePicker(
                 label: "START TIME",
-                hint: "09:00 AM",
-                icon: Icons.access_time,
+                time: _taskData['startTime'],
+                onTimePicked: (v) => setState(() => _taskData['startTime'] = v),
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: _modernField(
+              child: _timePicker(
                 label: "END TIME",
-                hint: "05:00 PM",
-                icon: Icons.access_time_filled,
+                time: _taskData['endTime'],
+                onTimePicked: (v) => setState(() => _taskData['endTime'] = v),
               ),
             ),
           ],
@@ -297,6 +500,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             child: _modernField(
               label: "SCORE",
               hint: "100",
+              initialValue: _taskData['score']?.toString(),
               icon: Icons.star,
               isNumber: true,
               onChanged: (v) => _taskData['score'] = int.tryParse(v) ?? 0,
@@ -307,6 +511,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             child: _modernField(
               label: "PENALTY",
               hint: "5",
+              initialValue: _taskData['penaltyRule']?['penaltyValue']
+                  ?.toString(),
               icon: Icons.money_off,
               isNumber: true,
               onChanged: (v) => _taskData['penaltyRule']['penaltyValue'] =
@@ -362,6 +568,159 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         (v) => setState(() => _taskData['delegationAllowed'] = v),
       ),
     ];
+  }
+
+  // --- SELF LOG FORM ---
+
+  // --- HELPER METHODS FOR SELF LOG ---
+
+  void _calculateHours() {
+    final TimeOfDay? start = _taskData['startTime'];
+    final TimeOfDay? end = _taskData['endTime'];
+
+    if (start != null && end != null) {
+      final startMinutes = start.hour * 60 + start.minute;
+      final endMinutes = end.hour * 60 + end.minute;
+      final diffMinutes = endMinutes - startMinutes;
+
+      setState(() {
+        _taskData['calculatedHours'] = diffMinutes / 60.0;
+      });
+    }
+  }
+
+  Widget _timePicker({
+    required String label,
+    required dynamic
+    time, // Use dynamic to prevent type crashes if parsing fails
+    required Function(TimeOfDay) onTimePicked,
+  }) {
+    // Safe conversion to TimeOfDay
+    final TimeOfDay? effectiveTime = time is TimeOfDay ? time : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            color: Colors.black54,
+          ),
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: () async {
+            final TimeOfDay? picked = await showTimePicker(
+              context: context,
+              initialTime: effectiveTime ?? TimeOfDay.now(),
+            );
+            if (picked != null) {
+              onTimePicked(picked);
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.access_time, color: accent, size: 20),
+                const SizedBox(width: 12),
+                Text(
+                  effectiveTime != null
+                      ? effectiveTime.format(context)
+                      : "Select Time",
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: effectiveTime != null ? Colors.black87 : Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _documentAttachmentSection() {
+    final List<String> documents = _taskData['selectedDocuments'];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () {
+            // TODO: Implement file picker
+            setState(() {
+              // Simulating file selection
+              _taskData['selectedDocuments'].add(
+                'Document_${documents.length + 1}.pdf',
+              );
+            });
+          },
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: accent.withOpacity(0.3),
+                width: 2,
+                style: BorderStyle.solid,
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.upload_file, color: accent),
+                const SizedBox(width: 12),
+                Text(
+                  "Tap to select files",
+                  style: TextStyle(color: accent, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (documents.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          ...documents.map(
+            (doc) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.insert_drive_file, color: accent, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(doc, style: const TextStyle(fontSize: 13)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () {
+                      setState(() {
+                        _taskData['selectedDocuments'].remove(doc);
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   // --- UI COMPONENTS ---
@@ -640,6 +999,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     IconData? icon,
     int maxLines = 1,
     bool isNumber = false,
+    String? initialValue,
     Function(String)? onChanged,
   }) {
     return Column(
@@ -655,12 +1015,15 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           ),
         ),
         const SizedBox(height: 8),
-        TextField(
+        TextFormField(
+          initialValue: initialValue,
           maxLines: maxLines,
           onChanged: onChanged,
           keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+          style: const TextStyle(fontSize: 14),
           decoration: InputDecoration(
             hintText: hint,
+            hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
             prefixIcon: icon != null
                 ? Icon(icon, color: accent, size: 18)
                 : null,
@@ -683,8 +1046,29 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   Widget _modernDropdown(
     String label,
     List<String> items,
+    String? value,
     Function(String?) onChanged,
   ) {
+    // 1. Sanitize and Deduplicate Items
+    final List<String> sanitizedItems = items.map((e) => e.trim()).toList();
+    final Set<String> itemSet = sanitizedItems.toSet();
+
+    // 2. Ensure current value is in the set
+    if (value != null && value.trim().isNotEmpty) {
+      itemSet.add(value.trim());
+    }
+
+    final List<String> effectiveItems = itemSet.toList();
+
+    // 3. Robust selection value
+    String? dropdownValue = value?.trim();
+    if (dropdownValue != null && !itemSet.contains(dropdownValue)) {
+      dropdownValue = null;
+    }
+    if (dropdownValue == null && effectiveItems.isNotEmpty) {
+      dropdownValue = effectiveItems.first;
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -698,8 +1082,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          initialValue: items.first,
-          items: items
+          value: dropdownValue,
+          items: effectiveItems
               .map(
                 (e) => DropdownMenuItem(
                   value: e,
@@ -850,48 +1234,81 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     ),
   );
 
-  Widget _buildBottomNavigation() => Container(
-    padding: const EdgeInsets.fromLTRB(32, 16, 32, 40),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      boxShadow: [
-        BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20),
-      ],
-    ),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        if (_currentStep > 0)
-          TextButton(
-            onPressed: () => _moveStep(-1),
-            child: const Text(
-              "Back",
-              style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+  Widget _buildBottomNavigation() {
+    final bool isSelfLog = _taskData['taskCategory'] == 'Self Log';
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(32, 16, 32, 40),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20),
+        ],
+      ),
+      child: isSelfLog
+          ? Center(
+              child: ElevatedButton(
+                onPressed: _submitSelfLog,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: accent,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 60,
+                    vertical: 18,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                child: const Text(
+                  "Submit Log",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (_currentStep > 0)
+                  TextButton(
+                    onPressed: () => _moveStep(-1),
+                    child: const Text(
+                      "Back",
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  )
+                else
+                  const SizedBox(),
+                ElevatedButton(
+                  onPressed: () =>
+                      _currentStep < 3 ? _moveStep(1) : _finishTaskCreation(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: accent,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 40,
+                      vertical: 18,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  child: Text(
+                    _currentStep == 3 ? "Complete" : "Continue",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          )
-        else
-          const SizedBox(),
-        ElevatedButton(
-          onPressed: () =>
-              _currentStep < 3 ? _moveStep(1) : _finishTaskCreation(),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: accent,
-            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 18),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-            ),
-          ),
-          child: Text(
-            _currentStep == 3 ? "Complete" : "Continue",
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
+    );
+  }
 
   void _moveStep(int delta) {
     setState(() {
@@ -906,6 +1323,36 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
   void _finishTaskCreation() {
     // Success Logic Here
+  }
+
+  void _submitSelfLog() {
+    // Validate required fields
+    if (_taskData['title'] == null || _taskData['title'].isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Please enter an activity title'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Activity log submitted successfully!'),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    // TODO: Send self-log data to backend API
+    // For now, just print the data
+    print('Self Log Data: ${_taskData}');
+
+    // Navigate back or clear form
+    Navigator.pop(context);
   }
 
   void _addSubTask() {

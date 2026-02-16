@@ -1,7 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:task_app/screens/student/leave_application_page.dart';
+import '../../models/faculty_profile.dart';
 import '../faculty/student_aproval_page.dart';
 import '../faculty/students_page.dart';
 import '../role_user/all_department_page.dart';
@@ -10,12 +14,19 @@ import '../role_user/dept_directory_page.dart';
 import '../role_user/view_dept_tasks.dart';
 import '../student/on_duty_wallet_page.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   final String role;
-  final String? title; // New: Pass 'HOD', 'Principal', etc.
-  final String? scope; // Add this line
+  final String? title;
+  final String? scope;
 
   const ProfilePage({super.key, required this.role, this.title, this.scope});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  FacultyProfile? _facultyProfile;
 
   final Color brandAccent = const Color(0xFF6366F1);
   final Color slate900 = const Color(0xFF0F172A);
@@ -25,11 +36,58 @@ class ProfilePage extends StatelessWidget {
   final Color successGreen = const Color(0xFF10B981);
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.role == 'faculty') {
+      _fetchFacultyProfile();
+    }
+  }
+
+  Future<void> _fetchFacultyProfile() async {
+    setState(() {
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken');
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}users/faculty/profile'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            _facultyProfile = data is List
+                ? FacultyProfile.fromJson(data[0])
+                : FacultyProfile.fromJson(data);
+          });
+        }
+      } else {
+        throw Exception('Failed to load profile: ${response.statusCode}');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+        });
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final bool isFaculty = role == 'faculty';
-    final bool isStudent = role == 'student';
-    final bool isAuthority = role == 'role-user';
-    final bool isStaff = role == 'staff'; // Added Staff check
+    // Removed full-page loading/error guards as requested
+    final bool isFaculty = widget.role == 'faculty';
+    final bool isStudent = widget.role == 'student';
+    final bool isAuthority = widget.role == 'role-user';
+    final bool isStaff = widget.role == 'staff';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -55,14 +113,12 @@ class ProfilePage extends StatelessWidget {
             _buildIdentityHeader(isFaculty, isAuthority, isStaff),
             const SizedBox(height: 24),
 
-            // Performance Bar: Authority gets specialized metrics
-            _buildPerformanceBar(role),
+            _buildPerformanceBar(widget.role),
 
             const SizedBox(height: 32),
 
-            // SECTION: AUTHORITY MANAGEMENT (New)
             if (isAuthority)
-              if (scope == 'institution')
+              if (widget.scope == 'institution')
                 _buildSettingsGroup("Institutional Management", [
                   _settingsTile(
                     Icons.people_outline,
@@ -92,8 +148,7 @@ class ProfilePage extends StatelessWidget {
                   ),
                 ]),
 
-            // --- SECTION: DEPARTMENT SCOPE (Student Directory) ---
-            if (scope == 'department')
+            if (widget.scope == 'department')
               _buildSettingsGroup("Departmental Control", [
                 _settingsTile(
                   Icons.groups_outlined,
@@ -123,8 +178,7 @@ class ProfilePage extends StatelessWidget {
                 ),
               ]),
 
-            // --- SECTION: INFRASTRUCTURE SCOPE (Venue/Facility Control) ---
-            if (scope == 'infrastructure')
+            if (widget.scope == 'infrastructure')
               _buildSettingsGroup("Asset Management", [
                 _settingsTile(
                   Icons.meeting_room_outlined,
@@ -138,13 +192,13 @@ class ProfilePage extends StatelessWidget {
                   "Track facility repair requests",
                 ),
               ]),
-            // SECTION: FACULTY ACTIONS
+
             if (isFaculty)
               _buildSettingsGroup("View Students", [
                 _settingsTile(
                   Icons.assignment_ind_outlined,
                   "My Students",
-                  "View assigned studnets",
+                  "View ${_facultyProfile?.assignedStudents.length ?? 0} assigned students",
                   onTap: () {
                     Navigator.push(
                       context,
@@ -169,7 +223,6 @@ class ProfilePage extends StatelessWidget {
                 ),
               ]),
 
-            // SECTION: STUDENT ACTIONS
             if (isStudent)
               _buildSettingsGroup("Resources & Requests", [
                 _settingsTile(
@@ -196,12 +249,11 @@ class ProfilePage extends StatelessWidget {
                 ),
               ]),
 
-            // SECTION: COMMON SECURITY
             _buildSettingsGroup("Security", [
               _settingsTile(
                 Icons.logout_rounded,
                 "Sign Out",
-                "Log out of the ${title ?? role} portal",
+                "Log out of the ${widget.title ?? widget.role} portal",
                 color: penaltyRed,
                 onTap: () => _showLogoutConfirmation(context),
               ),
@@ -214,41 +266,43 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  // --- Helper: Dynamic App Bar Title ---
   String _getPageTitle(bool isFaculty, bool isAuthority, bool isStaff) {
-    if (isAuthority) return "$title Profile";
+    if (isAuthority) return "${widget.title} Profile";
     if (isStaff) return "Staff Profile";
     return isFaculty ? "Faculty Profile" : "Student Identity";
   }
 
-  // --- Identity Header: Authority Branding ---
   Widget _buildIdentityHeader(bool isFaculty, bool isAuthority, bool isStaff) {
     String name = isStaff
         ? "Robert Jenkins"
-        : (isFaculty ? "Dr. Alan Turing" : "Annish Litisha");
+        : (isFaculty
+              ? (_facultyProfile?.facultyInfo.name ?? "Dr. Alan Turing")
+              : "Annish Litisha");
 
-    // Updated Logic for ID Display
     String idLabel;
     if (isAuthority) {
-      idLabel = title ?? "Administrator";
+      idLabel = widget.title ?? "Administrator";
     } else if (isFaculty) {
-      idLabel = "Faculty ID: 232CS1021";
+      idLabel =
+          "Faculty ID: ${_facultyProfile?.facultyInfo.regNo ?? '232CS1021'}";
     } else if (isStaff) {
-      idLabel = "Staff ID: STF-9920"; // Staff specific ID
+      idLabel = "Staff ID: STF-9920";
     } else {
       idLabel = "Student ID: 7376232IT110";
     }
 
-    String avatar = isStaff
-        ? 'https://cdn-icons-png.flaticon.com/512/11516/11516641.png'
-        : (isAuthority
-              ? 'https://cdn-icons-png.flaticon.com/512/6024/6024190.png'
-              : 'https://img.freepik.com/premium-vector/purple-circle-with-white-person-icon_876006-6.jpg?w=360');
+    String avatar = (isFaculty && _facultyProfile != null)
+        ? 'https://i.pravatar.cc/150?u=faculty${_facultyProfile!.facultyInfo.id}'
+        : (isStaff
+              ? 'https://cdn-icons-png.flaticon.com/512/11516/11516641.png'
+              : (isAuthority
+                    ? 'https://cdn-icons-png.flaticon.com/512/6024/6024190.png'
+                    : 'https://img.freepik.com/premium-vector/purple-circle-with-white-person-icon_876006-6.jpg?w=360'));
 
     if (isAuthority) {
-      if (scope == 'institution') {
+      if (widget.scope == 'institution') {
         name = "Dr. Sarah Smith";
-      } else if (scope == 'department')
+      } else if (widget.scope == 'department')
         name = "Prof. John Doe";
       else
         name = "Mr. Mike Ross";
@@ -287,13 +341,13 @@ class ProfilePage extends StatelessWidget {
         ),
       ],
     );
-  } // --- Performance Stats: Authority gets "Approval" & "Lapse" stats ---
+  }
 
   Widget _buildPerformanceBar(String userRole) {
     List<Widget> stats = [];
 
     if (userRole == 'role-user') {
-      if (scope == 'infrastructure') {
+      if (widget.scope == 'infrastructure') {
         stats = [
           _performanceStat("45", "Total Venues", brandAccent),
           _vDivider(),
@@ -302,7 +356,6 @@ class ProfilePage extends StatelessWidget {
           _performanceStat("02", "Under Repair", penaltyRed),
         ];
       } else {
-        // Default Authority Stats (Institutional/Departmental)
         stats = [
           _performanceStat("98%", "Approval Rate", successGreen),
           _vDivider(),
@@ -313,11 +366,19 @@ class ProfilePage extends StatelessWidget {
       }
     } else if (userRole == 'faculty') {
       stats = [
-        _performanceStat("2,450", "Total Score", brandAccent),
+        _performanceStat(
+          _facultyProfile?.facultyInfo.department.toString() ?? "0",
+          "Total Score",
+          brandAccent,
+        ),
         _vDivider(),
-        _performanceStat("12", "Pass Rate", successGreen),
+        _performanceStat("98%", "Pass Rate", successGreen),
         _vDivider(),
-        _performanceStat("12", "Publications", Colors.orange),
+        _performanceStat(
+          _facultyProfile?.studentCount.toString() ?? "0",
+          "Students",
+          Colors.orange,
+        ),
       ];
     } else {
       stats = [
@@ -369,7 +430,6 @@ class ProfilePage extends StatelessWidget {
   Widget _vDivider() =>
       Container(height: 30, width: 1, color: slate500.withOpacity(0.1));
 
-  // --- Settings Group UI ---
   Widget _buildSettingsGroup(String title, List<Widget> children) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -408,7 +468,6 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  // --- Custom List Tile ---
   Widget _settingsTile(
     IconData icon,
     String title,
@@ -478,16 +537,9 @@ class ProfilePage extends StatelessWidget {
             child: ElevatedButton(
               onPressed: () async {
                 final prefs = await SharedPreferences.getInstance();
-
-                // 1. Wipe the data
                 await prefs.clear();
-
-                // 2. Extra safety: Ensure these keys are null/false
                 await prefs.setBool('isLoggedIn', false);
-
                 if (context.mounted) {
-                  // 3. Clear the entire navigation stack and go to Root
-                  // The UniqueKey() we added in main.dart will now catch this and reset
                   Navigator.of(
                     context,
                   ).pushNamedAndRemoveUntil('/', (route) => false);

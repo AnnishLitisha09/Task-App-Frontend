@@ -1,4 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:intl/intl.dart';
 import '../../theme/app_theme.dart';
 import '../../components/custom_app_bar.dart';
 import '../../components/stat_card.dart';
@@ -6,6 +11,7 @@ import '../../components/task_card.dart';
 import '../../components/section_header.dart';
 import '../../components/reject_dialog.dart';
 import '../common/task_detail_page.dart';
+import '../../models/faculty_dashboard_stats.dart';
 
 class FacultyPage extends StatefulWidget {
   final bool isBlocked;
@@ -21,80 +27,95 @@ class FacultyPage extends StatefulWidget {
 }
 
 class _FacultyPageState extends State<FacultyPage> {
-  // --- Logic: Data Lists ---
-  List<Map<String, dynamic>> directives = [
-    {
-      "id": 1,
-      "authority": "Dean Academics",
-      "task": "Approve Internal Assessment Schema",
-      "sub": "High Priority • Due Today",
-      "color": AppTheme.brandAccent,
-    },
-    {
-      "id": 2,
-      "authority": "HOD - IT",
-      "task": "Technical Seminar Guest Invite",
-      "sub": "Review by Feb 12",
-      "color": AppTheme.warning,
-    },
-  ];
+  FacultyDashboardStats? _stats;
 
-  List<Map<String, dynamic>> schedule = [
-    {
-      "title": "Cloud Computing (Section A)",
-      "sub": "Room 402 • 10:30 AM",
-      "icon": Icons.cloud_queue_rounded,
-      "color": AppTheme.brandAccent,
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchStats();
+  }
+
+  Future<void> _fetchStats() async {
+    setState(() {
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken');
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}users/faculty/stats/daily'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            _stats = data is List
+                ? FacultyDashboardStats.fromJson(data[0])
+                : FacultyDashboardStats.fromJson(data);
+          });
+        }
+      } else {
+        throw Exception('Failed to load dashboard: ${response.statusCode}');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+        });
+      }
+    }
+  }
 
   // --- Logic: Handlers ---
   void _acceptTask(int index) {
-    setState(() {
-      var task = directives.removeAt(index);
-      schedule.add({
-        "title": task['task'],
-        "sub": "Added from Directives",
-        "icon": Icons.assignment_turned_in_rounded,
-        "color": AppTheme.success,
-      });
-    });
+    // Note: In a real app, this would call an API
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text("Task added to your schedule"),
+        content: Text("Task accepted"),
         backgroundColor: AppTheme.success,
       ),
     );
   }
 
-  void _rejectTask(int index) {
-    setState(() {
-      directives.removeAt(index);
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Task rejected"),
-        backgroundColor: AppTheme.danger,
-      ),
-    );
-  }
-
   void _showRejectDialog(int index) {
+    if (_stats == null) return;
     RejectDialog.show(
       context,
-      taskTitle: directives[index]['task'],
+      taskTitle: _stats!.pendingTasks[index]['title'] ?? 'Task',
       reasons: [
         "Scheduling Conflict",
         "Resource Unavailability",
         "Outside Expertise",
         "Other",
       ],
-      onConfirm: (reason, details) => _rejectTask(index),
+      onConfirm: (reason, details) {
+        // API call would happen here
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Task rejected"),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    // We removed full-page loading/error guards to improve UX as requested.
+    final info = _stats?.facultyInfo;
+    final daily = _stats?.dailyStats;
+    final pending = _stats?.pendingTasks ?? [];
+    final allTasks = _stats?.allTasksToday ?? [];
+
+    String formattedDate = DateFormat('EEEE, MMM dd').format(DateTime.now());
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
@@ -108,227 +129,248 @@ class _FacultyPageState extends State<FacultyPage> {
             ),
           ),
           SafeArea(
-            child: CustomScrollView(
-              physics: const BouncingScrollPhysics(),
-              slivers: [
-                CustomAppBar(
-                  title: "Dr. Alan Turing",
-                  date: "Sunday, Feb 08",
-                  notificationCount: directives.length,
-                  profileImageUrl: 'https://i.pravatar.cc/150?u=faculty1',
+            child: RefreshIndicator(
+              onRefresh: _fetchStats,
+              color: AppTheme.brandAccent,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
                 ),
-                if (widget.isBlocked)
-                  SliverToBoxAdapter(
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 8,
-                      ),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppTheme.danger.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: AppTheme.danger.withOpacity(0.3),
+                slivers: [
+                  CustomAppBar(
+                    title: info?.name ?? "Faculty",
+                    date: formattedDate,
+                    notificationCount: pending.length,
+                    profileImageUrl: info != null
+                        ? 'https://i.pravatar.cc/150?u=faculty${info.id}'
+                        : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+                  ),
+                  if (widget.isBlocked)
+                    SliverToBoxAdapter(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 8,
+                        ),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppTheme.danger.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: AppTheme.danger.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: AppTheme.danger,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    "Action Required: Please acknowledge today's schedule to proceed.",
+                                    style: AppTheme.bodyMain.copyWith(
+                                      color: AppTheme.danger,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: widget.onAcknowledge,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.danger,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text("Acknowledge Now"),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.warning_amber_rounded,
-                                color: AppTheme.danger,
+                    ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate([
+                        GridView.count(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 16,
+                          mainAxisSpacing: 16,
+                          childAspectRatio: 1.4,
+                          children: [
+                            StatCard(
+                              label: "Pending",
+                              value: (daily?.pendingTasksCount ?? 0).toString(),
+                              icon: Icons.move_to_inbox,
+                              color: AppTheme.brandAccent,
+                            ),
+                            StatCard(
+                              label: "Tasks Today",
+                              value: (daily?.totalTasksAssignedToday ?? 0)
+                                  .toString(),
+                              icon: Icons.assignment_rounded,
+                              color: AppTheme.success,
+                            ),
+                            StatCard(
+                              label: "Mentees",
+                              value: (daily?.menteeStudentsCount ?? 0)
+                                  .toString(),
+                              icon: Icons.people_alt_rounded,
+                              color: AppTheme.warning,
+                            ),
+                            StatCard(
+                              label: "Hours",
+                              value: "0",
+                              icon: Icons.access_time_filled_rounded,
+                              color: Colors.teal,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 32),
+
+                        SectionHeader(
+                          title: "Incoming Directives",
+                          isStatus: true,
+                          count: pending.length,
+                          onViewAll: () {},
+                        ),
+
+                        if (pending.isEmpty)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 20),
+                              child: Text(
+                                "No pending directives",
+                                style: TextStyle(
+                                  color: AppTheme.textSub,
+                                  fontStyle: FontStyle.italic,
+                                ),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  "Action Required: Please acknowledge today's schedule to proceed.",
-                                  style: AppTheme.bodyMain.copyWith(
-                                    color: AppTheme.danger,
-                                    fontWeight: FontWeight.bold,
+                            ),
+                          )
+                        else
+                          ...pending.asMap().entries.map((entry) {
+                            int idx = entry.key;
+                            var data = entry.value;
+                            final String heroTag =
+                                "directive_${data['task_id']}_$idx";
+                            return TaskCard(
+                              title: data['title'] ?? 'Task',
+                              sub: data['description'] ?? 'No description',
+                              accent: AppTheme.brandAccent,
+                              icon: Icons.assignment_turned_in_rounded,
+                              heroTag: heroTag,
+                              isRequest: true,
+                              onAccept: widget.isBlocked
+                                  ? null
+                                  : () => _acceptTask(idx),
+                              onReject: widget.isBlocked
+                                  ? null
+                                  : () => _showRejectDialog(idx),
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => TaskDetailsPage(
+                                    taskData: {
+                                      'title': data['title'],
+                                      'sub': data['description'],
+                                      'accent': AppTheme.brandAccent,
+                                      'icon':
+                                          Icons.assignment_turned_in_rounded,
+                                      'heroTag': heroTag,
+                                      'startDate': data['start_date'] ?? "N/A",
+                                      'deadline': data['end_date'] ?? "N/A",
+                                      'completionType':
+                                          data['type'] ?? "APPROVAL",
+                                      'isRequest': true,
+                                      'authority': "Administration",
+                                    },
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: widget.onAcknowledge,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.danger,
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                            );
+                          }),
+
+                        const SizedBox(height: 32),
+
+                        SectionHeader(
+                          title: "Today's Schedule",
+                          onViewAll: () {},
+                        ),
+                        if (allTasks.isEmpty)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 20),
+                              child: Text(
+                                "No tasks scheduled for today",
+                                style: TextStyle(
+                                  color: AppTheme.textSub,
+                                  fontStyle: FontStyle.italic,
                                 ),
                               ),
-                              child: const Text("Acknowledge Now"),
                             ),
-                          ),
-                        ],
-                      ),
+                          )
+                        else
+                          ...allTasks.map((item) {
+                            final String heroTag =
+                                "task_${item['task_id']}_today";
+                            return TaskCard(
+                              title: item['title'] ?? 'Task',
+                              sub: item['status'] ?? 'Scheduled',
+                              accent: AppTheme.success,
+                              icon: Icons.calendar_today_rounded,
+                              heroTag: heroTag,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => TaskDetailsPage(
+                                    taskData: {
+                                      'title': item['title'],
+                                      'sub': item['status'],
+                                      'accent': AppTheme.success,
+                                      'icon': Icons.calendar_today_rounded,
+                                      'heroTag': heroTag,
+                                      'startDate': item['start_date'] ?? "N/A",
+                                      'deadline': item['end_date'] ?? "N/A",
+                                      'completionType': "INFO",
+                                      "isRequest": false,
+                                    },
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+
+                        const SizedBox(height: 32),
+
+                        SectionHeader(
+                          title: "Pending Paperwork",
+                          onViewAll: () {},
+                        ),
+                        _docItem(
+                          "Monthly Attendance Report",
+                          "Required",
+                          Icons.description_outlined,
+                        ),
+                      ]),
                     ),
                   ),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-                  sliver: SliverList(
-                    delegate: SliverChildListDelegate([
-                      GridView.count(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                        childAspectRatio: 1.4,
-                        children: [
-                          StatCard(
-                            label: "Pending",
-                            value: "0${directives.length}",
-                            icon: Icons.move_to_inbox,
-                            color: AppTheme.brandAccent,
-                          ),
-                          StatCard(
-                            label: "Classes",
-                            value: "0${schedule.length}",
-                            icon: Icons.school_rounded,
-                            color: AppTheme.success,
-                          ),
-                          StatCard(
-                            label: "Students",
-                            value: "140",
-                            icon: Icons.people_alt_rounded,
-                            color: AppTheme.warning,
-                          ),
-                          StatCard(
-                            label: "Hours",
-                            value: "32h",
-                            icon: Icons.timer_rounded,
-                            color: Colors.teal,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 32),
-
-                      SectionHeader(
-                        title: "Incoming Directives",
-                        isStatus: true,
-                        count: directives.length,
-                        onViewAll: () {},
-                      ),
-
-                      if (directives.isEmpty)
-                        const Center(
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 20),
-                            child: Text(
-                              "No pending directives",
-                              style: TextStyle(
-                                color: AppTheme.textSub,
-                                fontStyle: FontStyle.italic,
-                              ),
-                            ),
-                          ),
-                        )
-                      else
-                        ...directives.asMap().entries.map((entry) {
-                          int idx = entry.key;
-                          var data = entry.value;
-                          final String heroTag =
-                              "directive_${data['task']}_${data['sub'].hashCode}";
-                          return TaskCard(
-                            title: data['task'],
-                            sub: data['sub'],
-                            accent: data['color'],
-                            icon: Icons.assignment_turned_in_rounded,
-                            heroTag: heroTag,
-                            isRequest: true,
-                            onAccept: widget.isBlocked
-                                ? null
-                                : () => _acceptTask(idx),
-                            onReject: widget.isBlocked
-                                ? null
-                                : () => _showRejectDialog(idx),
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => TaskDetailsPage(
-                                  taskData: {
-                                    'title': data['task'],
-                                    'sub': data['sub'],
-                                    'accent': data['color'],
-                                    'icon': Icons.assignment_turned_in_rounded,
-                                    'heroTag': heroTag,
-                                    'startDate': "Feb 08, 10:30 AM",
-                                    'deadline': "Feb 08, 12:30 PM",
-                                    'completionType': "APPROVAL",
-                                    'isRequest': true,
-                                    'authority': data['authority'],
-                                  },
-                                ),
-                              ),
-                            ),
-                          );
-                        }),
-
-                      const SizedBox(height: 32),
-
-                      SectionHeader(
-                        title: "Today's Schedule",
-                        onViewAll: () {},
-                      ),
-                      ...schedule.map((item) {
-                        final String heroTag =
-                            "task_${item['title']}_${item['sub'].hashCode}";
-                        return TaskCard(
-                          title: item['title'],
-                          sub: item['sub'],
-                          accent: item['color'],
-                          icon: item['icon'],
-                          heroTag: heroTag,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => TaskDetailsPage(
-                                taskData: {
-                                  'title': item['title'],
-                                  'sub': item['sub'],
-                                  'accent': item['color'],
-                                  'icon': item['icon'],
-                                  'heroTag': heroTag,
-                                  'startDate': "Feb 08, 10:30 AM",
-                                  'deadline': "Feb 08, 12:30 PM",
-                                  'completionType': "OTP",
-                                  "isRequest": false,
-                                },
-                              ),
-                            ),
-                          ),
-                        );
-                      }),
-
-                      const SizedBox(height: 32),
-
-                      SectionHeader(
-                        title: "Pending Paperwork",
-                        onViewAll: () {},
-                      ),
-                      _docItem(
-                        "Monthly Attendance Report",
-                        "Required",
-                        Icons.description_outlined,
-                      ),
-                      _docItem(
-                        "Lab Equipment Requisition",
-                        "Awaiting Sign",
-                        Icons.border_color_rounded,
-                      ),
-                    ]),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
