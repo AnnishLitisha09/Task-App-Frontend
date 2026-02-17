@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../components/new_leave_request_sheet.dart';
+import '../../models/leave_model.dart';
+import '../../services/leave_service.dart';
+import 'package:intl/intl.dart';
 
 class LeaveApplicationPage extends StatefulWidget {
   const LeaveApplicationPage({super.key});
@@ -10,6 +13,10 @@ class LeaveApplicationPage extends StatefulWidget {
 }
 
 class _LeaveApplicationPageState extends State<LeaveApplicationPage> {
+  final LeaveService _leaveService = LeaveService();
+  bool _isLoading = true;
+  List<LeaveRecord> _leaves = [];
+
   final Color brandAccent = const Color(0xFF6366F1);
   final Color slate900 = const Color(0xFF0F172A);
   final Color slate500 = const Color(0xFF64748B);
@@ -19,6 +26,23 @@ class _LeaveApplicationPageState extends State<LeaveApplicationPage> {
   final Color successGreen = const Color(0xFF10B981);
   final Color warningOrange = const Color(0xFFF59E0B);
   final Color errorRed = const Color(0xFFF43F5E);
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLeaves();
+  }
+
+  Future<void> _fetchLeaves() async {
+    setState(() => _isLoading = true);
+    final leaves = await _leaveService.getMyLeaves();
+    if (mounted) {
+      setState(() {
+        _leaves = leaves;
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,77 +69,94 @@ class _LeaveApplicationPageState extends State<LeaveApplicationPage> {
             letterSpacing: -0.5,
           ),
         ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        physics: const BouncingScrollPhysics(),
-        children: [
-          const SizedBox(height: 12),
-
-          // --- NEW ATTRACTIVE ATTENDANCE CARD ---
-          _buildAttendanceOverview(),
-
-          const SizedBox(height: 32),
-
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _sectionHeader("Activity History"),
-              Text(
-                "View All",
-                style: TextStyle(
-                  color: brandAccent,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh_rounded, color: brandAccent),
+            onPressed: _fetchLeaves,
           ),
-
-          const SizedBox(height: 16),
-
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: surfaceColor, width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: slate900.withOpacity(0.03),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                _buildActivityTile(
-                  "Sick Leave",
-                  "Feb 12 - 14",
-                  "Pending",
-                  warningOrange,
-                ),
-                _divider(),
-                _buildActivityTile(
-                  "On-Duty (Seminar)",
-                  "Feb 05",
-                  "Approved",
-                  successGreen,
-                ),
-                _divider(),
-                _buildActivityTile("Gate Pass", "Feb 01", "Rejected", errorRed),
-                _divider(),
-                _buildActivityTile(
-                  "Emergency",
-                  "Jan 15",
-                  "Completed",
-                  slate500,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 100),
         ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _fetchLeaves,
+        color: brandAccent,
+        child: _isLoading
+            ? Center(child: CircularProgressIndicator(color: brandAccent))
+            : ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                children: [
+                  const SizedBox(height: 12),
+                  _buildAttendanceOverview(),
+                  const SizedBox(height: 32),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [_sectionHeader("Activity History")],
+                  ),
+                  const SizedBox(height: 16),
+                  if (_leaves.isEmpty)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 40),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.history_rounded,
+                              size: 48,
+                              color: slate500.withOpacity(0.3),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              "No leave records found",
+                              style: TextStyle(color: slate500, fontSize: 14),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: surfaceColor, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: slate900.withOpacity(0.03),
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _leaves.length,
+                        separatorBuilder: (context, index) => _divider(),
+                        itemBuilder: (context, index) {
+                          final leave = _leaves[index];
+                          Color statusColor = slate500;
+                          if (leave.status == 'pending') {
+                            statusColor = warningOrange;
+                          } else if (leave.status == 'approved') {
+                            statusColor = successGreen;
+                          } else if (leave.status == 'rejected') {
+                            statusColor = errorRed;
+                          }
+
+                          return _buildActivityTile(
+                            leave.leaveType.toUpperCase().replaceAll("_", " "),
+                            "${DateFormat('MMM dd').format(DateTime.parse(leave.fromDate))} - ${DateFormat('MMM dd').format(DateTime.parse(leave.toDate))}",
+                            leave.status,
+                            statusColor,
+                          );
+                        },
+                      ),
+                    ),
+                  const SizedBox(height: 100),
+                ],
+              ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showApplyBottomSheet(context),

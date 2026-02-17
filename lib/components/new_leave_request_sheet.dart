@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../services/leave_service.dart';
 
 class NewLeaveRequestSheet extends StatefulWidget {
   const NewLeaveRequestSheet({super.key});
@@ -141,12 +142,62 @@ class _NewLeaveRequestSheetState extends State<NewLeaveRequestSheet> {
                   // This is the small gap you requested (reduced from 32+ to 20)
                   const SizedBox(height: 24),
 
-                  // 4. Submit Button (Now directly under the Reason field)
+                  // 4. Submit Button
                   SizedBox(
                     width: double.infinity,
                     height: 56,
                     child: ElevatedButton(
-                      onPressed: () {},
+                      onPressed: () async {
+                        if (_selectedCategory == null ||
+                            _fromDate == null ||
+                            _toDate == null ||
+                            _reasonController.text.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Please fill all fields"),
+                              backgroundColor: Colors.redAccent,
+                            ),
+                          );
+                          return;
+                        }
+
+                        // Map UI categories to API identifiers if needed
+                        final leaveType = _selectedCategory!
+                            .toLowerCase()
+                            .replaceAll(" ", "_")
+                            .replaceAll("(", "")
+                            .replaceAll(")", "");
+
+                        final bool success = await LeaveService().applyLeave(
+                          leaveType: leaveType,
+                          fromDate: DateFormat('yyyy-MM-dd').format(_fromDate!),
+                          toDate: DateFormat('yyyy-MM-dd').format(_toDate!),
+                          fromTime: DateFormat('HH:mm:ss').format(_fromDate!),
+                          toTime: DateFormat('HH:mm:ss').format(_toDate!),
+                          reason: _reasonController.text,
+                        );
+
+                        if (mounted) {
+                          if (success) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  "Application submitted successfully",
+                                ),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                            Navigator.pop(context);
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Failed to submit application"),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
+                        }
+                      },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: brandAccent,
                         foregroundColor: Colors.white,

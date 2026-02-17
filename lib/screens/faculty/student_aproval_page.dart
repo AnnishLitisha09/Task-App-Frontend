@@ -1,6 +1,9 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:intl/intl.dart';
+import '../../models/leave_model.dart';
+import '../../services/leave_service.dart';
 
 class StudentAprovalPage extends StatefulWidget {
   const StudentAprovalPage({super.key});
@@ -10,60 +13,64 @@ class StudentAprovalPage extends StatefulWidget {
 }
 
 class _StudentAprovalPageState extends State<StudentAprovalPage> {
-  // --- Modern Minimal Palette ---
-  final Color brandAccent = const Color(0xFF6366F1);
+  final LeaveService _leaveService = LeaveService();
+  bool _isLoading = true;
+  bool _isHistoryView = false;
+  List<LeaveRecord> _requests = [];
+  String searchQuery = "";
 
+  final Color brandAccent = const Color(0xFF6366F1);
   final Color slate900 = const Color(0xFF0F172A);
   final Color slate500 = const Color(0xFF64748B);
   final Color bgGray = const Color(0xFFF8FAFC);
   final Color accentIndigo = const Color(0xFF6366F1);
 
-  String searchQuery = "";
+  @override
+  void initState() {
+    super.initState();
+    _fetchRequests();
+  }
 
-  final List<Map<String, String>> allRequests = [
-    {
-      "name": "Annish Litisha",
-      "id": "7376232IT110",
-      "type": "Sick Leave",
-      "reason": "Severe migraine and doctor advised rest.",
-      "from": "10 Feb",
-      "to": "12 Feb",
-      "days": "3",
-    },
-    {
-      "name": "Sanjay Kumar",
-      "id": "7376232IT152",
-      "type": "On-Duty",
-      "reason": "Attending Smart India Hackathon finals.",
-      "from": "12 Feb",
-      "to": "15 Feb",
-      "days": "4",
-    },
-    {
-      "name": "Rahul V",
-      "id": "7376232IT144",
-      "type": "Emergency",
-      "reason": "Urgent travel to hometown for family ritual.",
-      "from": "09 Feb",
-      "to": "09 Feb",
-      "days": "1",
-    },
-    {
-      "name": "Priya Dharshini",
-      "id": "7376232IT130",
-      "type": "Permission",
-      "reason": "Research work at the University Library.",
-      "from": "Today",
-      "to": "Today",
-      "days": "1",
-    },
-  ];
+  Future<void> _fetchRequests() async {
+    setState(() => _isLoading = true);
+    List<LeaveRecord> result;
+    if (_isHistoryView) {
+      result = await _leaveService.getFacultyLeaves();
+    } else {
+      result = await _leaveService.getFacultyPendingLeaves();
+    }
+    if (mounted) {
+      setState(() {
+        _requests = result;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _handleStatusUpdate(int id, String status) async {
+    final success = await _leaveService.updateLeaveStatus(id, status);
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Request ${status == 'approved' ? 'Approved' : 'Rejected'}",
+          ),
+          backgroundColor: status == 'approved'
+              ? Colors.green
+              : Colors.redAccent,
+        ),
+      );
+      _fetchRequests();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final filtered = allRequests.where((req) {
-      return req['name']!.toLowerCase().contains(searchQuery.toLowerCase()) ||
-          req['id']!.toLowerCase().contains(searchQuery.toLowerCase());
+    final filtered = _requests.where((req) {
+      final name = req.user?.student?.name.toLowerCase() ?? "";
+      final regNo = req.user?.student?.regNo.toLowerCase() ?? "";
+      final search = searchQuery.toLowerCase();
+      return name.contains(search) || regNo.contains(search);
     }).toList();
 
     return Scaffold(
@@ -80,9 +87,33 @@ class _StudentAprovalPageState extends State<StudentAprovalPage> {
             fontSize: 24,
           ),
         ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh_rounded, color: brandAccent),
+            onPressed: _fetchRequests,
+          ),
+        ],
       ),
       body: Column(
         children: [
+          // Segmented Control
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  _buildTab("Pending", !_isHistoryView),
+                  _buildTab("History", _isHistoryView),
+                ],
+              ),
+            ),
+          ),
+
           // Minimal Search
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -107,19 +138,100 @@ class _StudentAprovalPageState extends State<StudentAprovalPage> {
           ),
 
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              itemCount: filtered.length,
-              itemBuilder: (context, index) =>
-                  _buildApprovalCard(filtered[index]),
-            ),
+            child: _isLoading
+                ? Center(child: CircularProgressIndicator(color: brandAccent))
+                : RefreshIndicator(
+                    onRefresh: _fetchRequests,
+                    color: brandAccent,
+                    child: filtered.isEmpty
+                        ? ListView(
+                            children: [
+                              SizedBox(
+                                height:
+                                    MediaQuery.of(context).size.height * 0.2,
+                              ),
+                              Center(
+                                child: Column(
+                                  children: [
+                                    Icon(
+                                      Icons.inbox_rounded,
+                                      size: 64,
+                                      color: slate500.withOpacity(0.2),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      "No requests found",
+                                      style: TextStyle(
+                                        color: slate500,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 10,
+                            ),
+                            itemCount: filtered.length,
+                            itemBuilder: (context, index) =>
+                                _buildApprovalCard(filtered[index]),
+                          ),
+                  ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildApprovalCard(Map<String, String> req) {
+  Widget _buildTab(String label, bool isActive) {
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          if (!isActive) {
+            setState(() {
+              _isHistoryView = label == "History";
+              _fetchRequests();
+            });
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isActive ? brandAccent : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isActive ? Colors.white : slate500,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildApprovalCard(LeaveRecord req) {
+    final student = req.user?.student;
+    final name = student?.name ?? "Unknown Student";
+    final regNo = student?.regNo ?? "No Reg No";
+    final type = req.leaveType.toUpperCase().replaceAll("_", " ");
+    final fromDate = DateFormat('dd MMM').format(DateTime.parse(req.fromDate));
+    final toDate = DateFormat('dd MMM').format(DateTime.parse(req.toDate));
+    final reason = req.reason;
+
+    // Calculate days (simple difference)
+    final from = DateTime.parse(req.fromDate);
+    final to = DateTime.parse(req.toDate);
+    final days = to.difference(from).inDays + 1;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(24),
@@ -139,7 +251,7 @@ class _StudentAprovalPageState extends State<StudentAprovalPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      req['name']!,
+                      name,
                       style: TextStyle(
                         color: slate900,
                         fontWeight: FontWeight.w800,
@@ -148,7 +260,7 @@ class _StudentAprovalPageState extends State<StudentAprovalPage> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      req['id']!,
+                      regNo,
                       style: TextStyle(color: slate500, fontSize: 13),
                     ),
                   ],
@@ -160,11 +272,13 @@ class _StudentAprovalPageState extends State<StudentAprovalPage> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: brandAccent.withOpacity(0.9),
+                  color: req.status == 'pending'
+                      ? brandAccent.withOpacity(0.9)
+                      : (req.status == 'approved' ? Colors.green : Colors.red),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  req['type']!.toUpperCase(),
+                  type,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 9,
@@ -180,7 +294,7 @@ class _StudentAprovalPageState extends State<StudentAprovalPage> {
           // Date Range
           Row(
             children: [
-              _dateTile("FROM", req['from']!),
+              _dateTile("FROM", fromDate),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Icon(
@@ -189,7 +303,7 @@ class _StudentAprovalPageState extends State<StudentAprovalPage> {
                   size: 18,
                 ),
               ),
-              _dateTile("TO", req['to']!),
+              _dateTile("TO", toDate),
               const Spacer(),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -198,7 +312,7 @@ class _StudentAprovalPageState extends State<StudentAprovalPage> {
                   shape: BoxShape.circle,
                 ),
                 child: Text(
-                  req['days']!,
+                  days.toString(),
                   style: TextStyle(
                     color: accentIndigo,
                     fontWeight: FontWeight.w900,
@@ -211,23 +325,32 @@ class _StudentAprovalPageState extends State<StudentAprovalPage> {
 
           const SizedBox(height: 20),
           Text(
-            req['reason']!,
+            reason,
             style: TextStyle(color: slate500, fontSize: 14, height: 1.6),
           ),
-          const SizedBox(height: 28),
 
-          // OUTLINE ONLY GLASS BUTTONS
-          Row(
-            children: [
-              Expanded(
-                child: _outlineGlassButton("Reject", const Color(0xFFF43F5E)),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _outlineGlassButton("Approve", const Color(0xFF10B981)),
-              ),
-            ],
-          ),
+          if (req.status == 'pending') ...[
+            const SizedBox(height: 28),
+            Row(
+              children: [
+                Expanded(
+                  child: _outlineGlassButton(
+                    "Reject",
+                    const Color(0xFFF43F5E),
+                    onTap: () => _handleStatusUpdate(req.id, 'rejected'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _outlineGlassButton(
+                    "Approve",
+                    const Color(0xFF10B981),
+                    onTap: () => _handleStatusUpdate(req.id, 'approved'),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     ).animate().fadeIn().moveY(begin: 10, end: 0);
@@ -259,27 +382,25 @@ class _StudentAprovalPageState extends State<StudentAprovalPage> {
     );
   }
 
-  // THE OUTLINE-ONLY GLASS BUTTON
-  Widget _outlineGlassButton(String label, Color themeColor) {
+  Widget _outlineGlassButton(
+    String label,
+    Color themeColor, {
+    required VoidCallback onTap,
+  }) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: BackdropFilter(
-        filter: ImageFilter.blur(
-          sigmaX: 5,
-          sigmaY: 5,
-        ), // Subtle blur for the "glass" look
+        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
         child: InkWell(
-          onTap: () {
-            // Handle Action
-          },
+          onTap: onTap,
           borderRadius: BorderRadius.circular(14),
           child: Container(
             height: 48,
             decoration: BoxDecoration(
-              color: Colors.transparent, // No fill color
+              color: Colors.transparent,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: themeColor.withOpacity(0.5), // Colored outline
+                color: themeColor.withOpacity(0.5),
                 width: 1.5,
               ),
             ),
