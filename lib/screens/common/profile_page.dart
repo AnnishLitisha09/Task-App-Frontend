@@ -1,11 +1,9 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:task_app/screens/student/leave_application_page.dart';
-import '../../models/faculty_profile.dart';
+import '../../models/user_profile_model.dart';
+import '../../services/user_service.dart';
 import '../faculty/student_aproval_page.dart';
 import '../faculty/students_page.dart';
 import '../role_user/all_department_page.dart';
@@ -26,7 +24,7 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  FacultyProfile? _facultyProfile;
+  UserProfile? _userProfile;
 
   final Color brandAccent = const Color(0xFF6366F1);
   final Color slate900 = const Color(0xFF0F172A);
@@ -38,56 +36,38 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
-    if (widget.role == 'faculty') {
-      _fetchFacultyProfile();
-    }
+    _fetchUserProfile();
   }
 
-  Future<void> _fetchFacultyProfile() async {
-    setState(() {
-    });
-
+  Future<void> _fetchUserProfile() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('authToken');
-      final backendUrl =
-          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
-
-      final response = await http.get(
-        Uri.parse('${backendUrl}users/faculty/profile'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (mounted) {
-          setState(() {
-            _facultyProfile = data is List
-                ? FacultyProfile.fromJson(data[0])
-                : FacultyProfile.fromJson(data);
-          });
-        }
-      } else {
-        throw Exception('Failed to load profile: ${response.statusCode}');
-      }
-    } catch (e) {
+      final service = UserService();
+      final profile = await service.getUserProfile();
       if (mounted) {
         setState(() {
+          _userProfile = profile;
         });
       }
+    } catch (e) {
+      // Handle error cleanly or show snackbar
+      debugPrint("Error fetching profile: $e");
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Removed full-page loading/error guards as requested
-    final bool isFaculty = widget.role == 'faculty';
-    final bool isStudent = widget.role == 'student';
-    final bool isAuthority = widget.role == 'role-user';
-    final bool isStaff = widget.role == 'staff';
+    // If profile is loaded, use its role, otherwise fallback to widget.role
+    final String currentRole = _userProfile?.displayRole ?? widget.role;
+
+    // Helper booleans based on API data or fallback
+    final bool isFaculty = currentRole == 'faculty';
+    final bool isStudent = currentRole == 'student';
+    final bool isAuthority =
+        currentRole.startsWith('role-user') ||
+        currentRole == 'HOD' ||
+        currentRole == 'Adviser' ||
+        currentRole == 'Principal';
+    final bool isStaff = currentRole == 'staff';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -198,7 +178,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 _settingsTile(
                   Icons.assignment_ind_outlined,
                   "My Students",
-                  "View ${_facultyProfile?.assignedStudents.length ?? 0} assigned students",
+                  "View assigned students",
                   onTap: () {
                     Navigator.push(
                       context,
@@ -225,6 +205,20 @@ class _ProfilePageState extends State<ProfilePage> {
 
             if (isStudent)
               _buildSettingsGroup("Resources & Requests", [
+                _settingsTile(
+                  Icons.edit_note_rounded,
+                  "Self Log",
+                  "Record personal learning activities",
+                  onTap: () {
+                    // Navigate to Self Log Page (or Directives)
+                    // Assuming similar structure or placeholder for now
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Self Log feature coming soon!"),
+                      ),
+                    );
+                  },
+                ),
                 _settingsTile(
                   Icons.account_balance_wallet_outlined,
                   "On-Duty Wallet",
@@ -273,39 +267,37 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildIdentityHeader(bool isFaculty, bool isAuthority, bool isStaff) {
-    String name = isStaff
-        ? "Robert Jenkins"
-        : (isFaculty
-              ? (_facultyProfile?.facultyInfo.name ?? "Dr. Alan Turing")
-              : "Annish Litisha");
+    String name = _userProfile?.profileData.name ?? "User";
+
+    // Fallback if API hasn't loaded yet
+    if (_userProfile == null) {
+      name = isStaff
+          ? "Robert Jenkins"
+          : (isFaculty ? "Dr. Alan Turing" : "Annish Litisha");
+    }
 
     String idLabel;
+    final details = _userProfile?.profileData;
+
     if (isAuthority) {
       idLabel = widget.title ?? "Administrator";
     } else if (isFaculty) {
       idLabel =
-          "Faculty ID: ${_facultyProfile?.facultyInfo.regNo ?? '232CS1021'}";
+          "Faculty ID: ${details?.regNo ?? '232CS1021'}\n${details?.department ?? 'CSE'}";
     } else if (isStaff) {
-      idLabel = "Staff ID: STF-9920";
+      idLabel = "Designation: ${details?.designation ?? 'Lab Assistant'}";
     } else {
-      idLabel = "Student ID: 7376232IT110";
+      idLabel =
+          "Register No: ${details?.regNo ?? '7376232IT110'}\n${details?.department ?? 'CSE'}";
     }
-
-    String avatar = (isFaculty && _facultyProfile != null)
-        ? 'https://i.pravatar.cc/150?u=faculty${_facultyProfile!.facultyInfo.id}'
-        : (isStaff
-              ? 'https://cdn-icons-png.flaticon.com/512/11516/11516641.png'
-              : (isAuthority
-                    ? 'https://cdn-icons-png.flaticon.com/512/6024/6024190.png'
-                    : 'https://img.freepik.com/premium-vector/purple-circle-with-white-person-icon_876006-6.jpg?w=360'));
 
     if (isAuthority) {
       if (widget.scope == 'institution') {
-        name = "Dr. Sarah Smith";
+        name = _userProfile?.profileData.name ?? "Administrator";
       } else if (widget.scope == 'department')
-        name = "Prof. John Doe";
+        name = _userProfile?.profileData.name ?? "Head of Department";
       else
-        name = "Mr. Mike Ross";
+        name = _userProfile?.profileData.name ?? "Role User";
     }
 
     return Column(
@@ -314,12 +306,15 @@ class _ProfilePageState extends State<ProfilePage> {
           tag: 'profile-image',
           child: CircleAvatar(
             radius: 55,
-            backgroundColor:
-                (isStaff
-                        ? Colors.teal
-                        : (isAuthority ? Colors.amber : brandAccent))
-                    .withOpacity(0.1),
-            backgroundImage: NetworkImage(avatar),
+            backgroundColor: const Color.fromARGB(255, 231, 223, 241),
+            child: Text(
+              name.isNotEmpty ? name[0].toUpperCase() : 'U',
+              style: TextStyle(
+                fontSize: 40,
+                fontWeight: FontWeight.bold,
+                color: brandAccent,
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -333,6 +328,7 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         Text(
           idLabel,
+          textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 14,
             color: slate500,
@@ -345,9 +341,21 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget _buildPerformanceBar(String userRole) {
     List<Widget> stats = [];
+    final details = _userProfile?.profileData;
 
-    if (userRole == 'role-user') {
+    // Normalize role checking
+    bool isRoleUser =
+        userRole == 'role-user' ||
+        (details != null && details.roleAssignments.isNotEmpty);
+    bool isFaculty = userRole == 'faculty';
+    bool isStaff = userRole == 'staff';
+
+    if (isRoleUser) {
+      // HOD / Principal Stats
+      Map<String, dynamic> statData = details?.stats ?? {};
+
       if (widget.scope == 'infrastructure') {
+        // ... existing infrastructure logic ...
         stats = [
           _performanceStat("45", "Total Venues", brandAccent),
           _vDivider(),
@@ -356,37 +364,66 @@ class _ProfilePageState extends State<ProfilePage> {
           _performanceStat("02", "Under Repair", penaltyRed),
         ];
       } else {
+        // Department / Institution Stats
+        // User asked for: Student, Faculty, "Department displayed also"
+        // And for Faculty: Score, Penalty, Student
         stats = [
-          _performanceStat("98%", "Approval Rate", successGreen),
+          _performanceStat(
+            "${statData['total_students'] ?? 0}",
+            "Students",
+            successGreen,
+          ),
           _vDivider(),
-          _performanceStat("04", "Escalations", penaltyRed),
+          _performanceStat(
+            "${statData['total_faculty'] ?? 0}",
+            "Faculty",
+            brandAccent,
+          ),
           _vDivider(),
-          _performanceStat("12", "Active Tasks", brandAccent),
         ];
       }
-    } else if (userRole == 'faculty') {
+    } else if (isFaculty) {
       stats = [
         _performanceStat(
-          _facultyProfile?.facultyInfo.department.toString() ?? "0",
-          "Total Score",
-          brandAccent,
+          "${details?.score ?? 850}", // Mock or real score
+          "Score",
+          successGreen,
         ),
         _vDivider(),
-        _performanceStat("98%", "Pass Rate", successGreen),
+        _performanceStat(
+          "${details?.penalty ?? 0}", // Mock or real penalty
+          "Penalty",
+          penaltyRed,
+        ),
         _vDivider(),
         _performanceStat(
-          _facultyProfile?.studentCount.toString() ?? "0",
+          "${details?.studentCount ?? 45}", // Mock or real student count
           "Students",
+          brandAccent,
+        ),
+      ];
+    } else if (isStaff) {
+      stats = [
+        _performanceStat(
+          "${details?.completedTasks ?? 142}",
+          "Completed",
+          successGreen,
+        ),
+        _vDivider(),
+        _performanceStat(
+          "${details?.pendingTasks ?? 5}",
+          "Pending",
           Colors.orange,
         ),
       ];
     } else {
+      // Student Stats
       stats = [
-        _performanceStat("2,450", "Total Score", brandAccent),
+        _performanceStat("${details?.score ?? 0}", "Total Score", brandAccent),
         _vDivider(),
-        _performanceStat("12", "Penalties", penaltyRed),
+        _performanceStat("0", "Penalties", penaltyRed),
         _vDivider(),
-        _performanceStat("3.9", "GPA", successGreen),
+        _performanceStat("${details?.cGpa ?? 0}", "CGPA", successGreen),
       ];
     }
 

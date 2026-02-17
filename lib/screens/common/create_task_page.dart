@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'user_selection_page.dart';
 import 'package:intl/intl.dart';
+import '../../services/task_service.dart';
+import '../../services/resource_service.dart';
+import '../../services/user_service.dart';
 
 class CreateTaskPage extends StatefulWidget {
-  final Map<String, dynamic>? initialData; // Add this line
+  final Map<String, dynamic>? initialData;
 
-  const CreateTaskPage({super.key, this.initialData}); // Update constructor
+  const CreateTaskPage({super.key, this.initialData});
 
   @override
   State<CreateTaskPage> createState() => _CreateTaskPageState();
@@ -20,25 +23,37 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   final Color accent = const Color(0xFF6366F1);
   final Color bodyBg = const Color(0xFFFBFBFE);
 
-  // --- FULLY COMPLIANT STATE (Matches JSON Schema) ---
+  // Services
+  final ResourceService _resourceService = ResourceService();
+  final UserService _userService = UserService();
+
+  // --- FULLY COMPLIANT STATE ---
   late Map<String, dynamic> _taskData;
+  List<Map<String, dynamic>> _venues = [];
+  bool _isLoadingVenues = false;
+  String? _userRole;
 
   @override
   void initState() {
     super.initState();
+    _fetchUserRole();
+    _fetchVenues();
 
     // 1. Define your full default template
     final Map<String, dynamic> defaultData = {
-      'taskCategory': 'Directive Task', // NEW: Directive Task or Self Log
+      'taskCategory': 'Directive Task',
       'title': '',
       'description': '',
       'category': 'Academic',
       'priority': 'Medium',
       'taskType': 'Fixed Time Task',
+      'scope': 'Departmental',
+      'institutionalApproval': false,
       'ownerId': 'Admin User',
       'assigneeIds': <String>[],
       'targetType': 'Individual',
-      'locationId': 'Main Hall',
+      'locationId': '',
+      'venue_id': null,
       'resources': <String>[],
       'score': 100,
       'penaltyRule': {'penaltyValue': 5},
@@ -129,6 +144,34 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       }
     }
     _taskData = data;
+  }
+
+  Future<void> _fetchVenues() async {
+    setState(() => _isLoadingVenues = true);
+    try {
+      final venues = await _resourceService.getVenues();
+      setState(() {
+        _venues = venues;
+        _isLoadingVenues = false;
+        if (_taskData['locationId'].isEmpty && _venues.isNotEmpty) {
+          _taskData['locationId'] = _venues.first['name'];
+          _taskData['venue_id'] = _venues.first['venue_id'];
+        }
+      });
+    } catch (e) {
+      setState(() => _isLoadingVenues = false);
+    }
+  }
+
+  Future<void> _fetchUserRole() async {
+    try {
+      final profile = await _userService.getUserProfile();
+      setState(() {
+        _userRole = profile.role;
+      });
+    } catch (e) {
+      // Fallback
+    }
   }
 
   DateTime _parseDateString(String dateStr) {
@@ -383,9 +426,18 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       const SizedBox(height: 24),
       _modernDropdown(
         "VENUE / LOCATION",
-        ["Main Hall", "Lab 101", "Conference Room", "Remote"],
+        _venues.map((v) => v['name'].toString()).toList(),
         _taskData['locationId'],
-        (v) => _taskData['locationId'] = v,
+        (v) {
+          final selectedVenue = _venues.firstWhere(
+            (venue) => venue['name'] == v,
+            orElse: () => {},
+          );
+          setState(() {
+            _taskData['locationId'] = v;
+            _taskData['venue_id'] = selectedVenue['venue_id'];
+          });
+        },
       ),
       const SizedBox(height: 32),
       Text(
@@ -545,27 +597,22 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           fontSize: 11,
         ),
       ),
-      _multiSelectChips([
-        "Laptop",
-        "Projector",
-        "Vehicle",
-        "Software",
-      ], 'resources'),
-      const SizedBox(height: 24),
       _modernToggle(
-        "AUTO ESCALATION",
-        _taskData['autoEscalation'],
-        (v) => setState(() => _taskData['autoEscalation'] = v),
-      ),
-      _modernToggle(
-        "MANDATORY DOCUMENTATION",
+        "REQUIRED DOCUMENTATION",
         _taskData['mandatoryDocumentation'],
         (v) => setState(() => _taskData['mandatoryDocumentation'] = v),
       ),
+      const SizedBox(height: 16),
       _modernToggle(
-        "ALLOW DELEGATION",
-        _taskData['delegationAllowed'],
-        (v) => setState(() => _taskData['delegationAllowed'] = v),
+        "IS MANDATORY TASK?",
+        _taskData['is_mandatory_flag'] ?? false,
+        (v) => setState(() => _taskData['is_mandatory_flag'] = v),
+      ),
+      const SizedBox(height: 16),
+      _modernToggle(
+        "IS PACKAGE TASK?",
+        _taskData['isPackageTask'],
+        (v) => setState(() => _taskData['isPackageTask'] = v),
       ),
     ];
   }
@@ -835,12 +882,14 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   );
 
   Widget _assigneeSection() {
-    final List assignees = _taskData['selectedAssignees'];
+    final List<Map<String, dynamic>> assignees =
+        List<Map<String, dynamic>>.from(_taskData['selectedAssignees']);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          "ASSIGNEES",
+          "ASSIGN TO",
           style: TextStyle(
             fontSize: 10,
             fontWeight: FontWeight.w800,
@@ -848,16 +897,15 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             letterSpacing: 1,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         InkWell(
           onTap: () async {
             final List<Map<String, dynamic>>? result = await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => UserSelectionPage(
-                  initialSelection: List<Map<String, dynamic>>.from(
-                    _taskData['selectedAssignees'],
-                  ),
+                  initialSelection: assignees,
+                  allowedRoles: _getAssigneeRoles(),
                 ),
               ),
             );
@@ -875,65 +923,82 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.grey[200]!),
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.person_add_alt_1_rounded, color: accent),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    assignees.isEmpty
-                        ? "Select Users, Roles or Depts"
-                        : "${assignees.length} assigned",
-                    style: TextStyle(
-                      color: assignees.isEmpty ? Colors.grey : Colors.black87,
-                      fontWeight: FontWeight.w600,
+                Row(
+                  children: [
+                    Icon(Icons.person_add_alt_1_rounded, color: accent),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        assignees.isEmpty
+                            ? "Select Users, Roles or Depts"
+                            : "${assignees.length} assigned",
+                        style: TextStyle(
+                          color: assignees.isEmpty
+                              ? Colors.grey
+                              : Colors.black87,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
+                    const Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 14,
+                      color: Colors.grey,
+                    ),
+                  ],
+                ),
+                if (assignees.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: _buildAssigneeChips(assignees),
                   ),
-                ),
-                const Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 14,
-                  color: Colors.grey,
-                ),
+                ],
               ],
             ),
           ),
         ),
-        if (assignees.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: assignees.map<Widget>((item) {
-              Color chipColor = accent;
-              if (item['type'] == 'role') chipColor = Colors.orange;
-              if (item['type'] == 'dept') chipColor = Colors.teal;
-
-              return Chip(
-                label: Text(
-                  item['name'] ?? 'Unknown',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                onDeleted: () {
-                  setState(() {
-                    _taskData['selectedAssignees'].remove(item);
-                  });
-                },
-                backgroundColor: chipColor.withOpacity(0.1),
-                deleteIconColor: chipColor,
-                side: BorderSide.none,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
       ],
     );
+  }
+
+  List<Widget> _buildAssigneeChips(List<Map<String, dynamic>> assignees) {
+    if (assignees.length > 5) {
+      return [
+        Chip(
+          label: Text(
+            "${assignees.length} Users Selected",
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: accent.withOpacity(0.1),
+          side: BorderSide.none,
+          avatar: Icon(Icons.group, size: 14, color: accent),
+        ),
+      ];
+    }
+
+    return assignees.map((a) {
+      Color chipColor = accent;
+      if (a['type'] == 'role') chipColor = Colors.orange;
+      if (a['type'] == 'dept') chipColor = Colors.teal;
+
+      return Chip(
+        label: Text(a['name'] ?? "User", style: const TextStyle(fontSize: 10)),
+        backgroundColor: chipColor.withOpacity(0.1),
+        onDeleted: () {
+          setState(() {
+            _taskData['selectedAssignees'].remove(a);
+          });
+        },
+        deleteIconColor: chipColor,
+        side: BorderSide.none,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      );
+    }).toList();
   }
 
   Widget _authorityPicker() {
@@ -951,6 +1016,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             builder: (context) => UserSelectionPage(
               initialSelection: authority != null ? [authority] : [],
               multiSelect: false,
+              allowedRoles: _getApproverRoles(),
             ),
           ),
         );
@@ -979,7 +1045,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             builder: (context) => UserSelectionPage(
               initialSelection: faculty != null ? [faculty] : [],
               multiSelect: false,
-              allowedRoles: ["Faculty"],
+              allowedRoles: _getFacultyInChargeRoles(),
             ),
           ),
         );
@@ -1081,27 +1147,30 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           ),
         ),
         const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          value: dropdownValue,
-          items: effectiveItems
-              .map(
-                (e) => DropdownMenuItem(
-                  value: e,
-                  child: Text(e, style: const TextStyle(fontSize: 13)),
+        _isLoadingVenues
+            ? const LinearProgressIndicator(minHeight: 2)
+            : DropdownButtonFormField<String>(
+                dropdownColor: Colors.white,
+                value: dropdownValue,
+                items: effectiveItems
+                    .map(
+                      (e) => DropdownMenuItem(
+                        value: e,
+                        child: Text(e, style: const TextStyle(fontSize: 13)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: onChanged,
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: Colors.grey[200]!),
+                  ),
                 ),
-              )
-              .toList(),
-          onChanged: onChanged,
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: Colors.white,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(color: Colors.grey[200]!),
-            ),
-          ),
-        ),
+              ),
       ],
     );
   }
@@ -1321,8 +1390,170 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     });
   }
 
-  void _finishTaskCreation() {
-    // Success Logic Here
+  List<String> _getAssigneeRoles() {
+    final role = _userRole?.toLowerCase() ?? '';
+    final List<String> hierarchy = [
+      'admin',
+      'principal',
+      'dean',
+      'hod',
+      'faculty',
+      'student',
+      'staff',
+    ];
+    int userIndex = hierarchy.indexOf(role);
+    if (userIndex == -1) return ['students', 'staff'];
+
+    final Map<String, String> keyMap = {
+      'hod': 'hods',
+      'student': 'students',
+      'faculty': 'faculty',
+      'staff': 'staff',
+      'admin': 'admin',
+      'principal': 'principal',
+      'dean': 'dean',
+    };
+
+    return hierarchy.sublist(userIndex).map((r) => keyMap[r] ?? r).toList();
+  }
+
+  List<String> _getApproverRoles() {
+    final role = _userRole?.toLowerCase() ?? '';
+    final List<String> hierarchy = [
+      'admin',
+      'principal',
+      'dean',
+      'hod',
+      'faculty',
+      'student',
+      'staff',
+    ];
+    int userIndex = hierarchy.indexOf(role);
+    if (userIndex == -1) return ['admin', 'principal', 'dean', 'hods'];
+
+    final Map<String, String> keyMap = {
+      'hod': 'hods',
+      'student': 'students',
+      'faculty': 'faculty',
+      'staff': 'staff',
+      'admin': 'admin',
+      'principal': 'principal',
+      'dean': 'dean',
+    };
+
+    return hierarchy.sublist(0, userIndex).map((r) => keyMap[r] ?? r).toList();
+  }
+
+  List<String> _getFacultyInChargeRoles() {
+    return ['faculty'];
+  }
+
+  void _finishTaskCreation() async {
+    // Map completion methods to closure IDs
+    List<int> closureIds = [];
+    final methods = _taskData['completionMethods'] as List;
+    for (var method in methods) {
+      if (method == 'OTP Verify') closureIds.add(1);
+      if (method == 'Photo Upload') closureIds.add(2);
+    }
+
+    // Build task_type_data
+    Map<String, dynamic> taskTypeData = {};
+    if (_taskData['taskType'] == 'Recurring Task') {
+      taskTypeData = {
+        'task_name': 'Recurring Task',
+        'recurrence': 'daily', // Default, could be made configurable
+        'start_date': DateFormat('yyyy-MM-dd').format(_taskData['startDate']),
+        'end_date': DateFormat('yyyy-MM-dd').format(_taskData['endDate']),
+        'start_time': _taskData['startTime'] != null
+            ? '${_taskData['startTime'].hour.toString().padLeft(2, '0')}:${_taskData['startTime'].minute.toString().padLeft(2, '0')}:00'
+            : '11:00:00',
+        'end_time': _taskData['endTime'] != null
+            ? '${_taskData['endTime'].hour.toString().padLeft(2, '0')}:${_taskData['endTime'].minute.toString().padLeft(2, '0')}:00'
+            : '12:00:00',
+      };
+    } else if (_taskData['taskType'] == 'Fixed Time Task') {
+      taskTypeData = {
+        'task_name': 'Fixed Time Task',
+        'start_date': DateFormat(
+          'yyyy-MM-dd',
+        ).format(_taskData['selectedDate']),
+        'end_date': DateFormat('yyyy-MM-dd').format(_taskData['selectedDate']),
+        'start_time': _taskData['startTime'] != null
+            ? '${_taskData['startTime'].hour.toString().padLeft(2, '0')}:${_taskData['startTime'].minute.toString().padLeft(2, '0')}:00'
+            : '09:00:00',
+        'end_time': _taskData['endTime'] != null
+            ? '${_taskData['endTime'].hour.toString().padLeft(2, '0')}:${_taskData['endTime'].minute.toString().padLeft(2, '0')}:00'
+            : '17:00:00',
+      };
+    } else {
+      // Default for other types like Long Task
+      taskTypeData = {
+        'task_name': _taskData['taskType'],
+        'start_date': DateFormat('yyyy-MM-dd').format(_taskData['startDate']),
+        'end_date': DateFormat('yyyy-MM-dd').format(_taskData['endDate']),
+      };
+    }
+
+    // Use venue_id from state
+    final venueId = _taskData['venue_id'] ?? 1;
+
+    // Extract assignee IDs
+    final List<Map<String, dynamic>> selected = List<Map<String, dynamic>>.from(
+      _taskData['selectedAssignees'] ?? [],
+    );
+
+    List<int> assigneeIds = selected
+        .map((a) {
+          final id = a['id'] ?? a['user_id'];
+          if (id is String) return int.tryParse(id) ?? 0;
+          return id as int? ?? 0;
+        })
+        .where((id) => id > 0)
+        .toList();
+
+    // Map logic: merge is_mandatory_flag into is_mandatory
+    final bool isMandatory = _taskData['is_mandatory_flag'] ?? false;
+
+    // Build the payload
+    final payload = {
+      'title': _taskData['title'],
+      'category': _taskData['category'],
+      'priority': _taskData['priority'].toLowerCase(),
+      'venue_id': venueId,
+      'score': _taskData['score'],
+      'is_mandatory': isMandatory,
+      'is_package': _taskData['isPackageTask'],
+      'closure_ids': closureIds,
+      'task_type_data': taskTypeData,
+      'assignee_ids': assigneeIds,
+    };
+
+    try {
+      final taskService = TaskService();
+      await taskService.createTaskUnified(payload);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Task created successfully!'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to create task: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   void _submitSelfLog() {

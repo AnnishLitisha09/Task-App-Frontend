@@ -142,10 +142,7 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
                   (Widget? currentChild, List<Widget> previousChildren) {
                     return Stack(
                       alignment: Alignment.topCenter,
-                      children: <Widget>[
-                        ...previousChildren,
-                        ?currentChild,
-                      ],
+                      children: <Widget>[...previousChildren, ?currentChild],
                     );
                   },
               child: _activeStep == 1 ? _buildEvidenceView() : _buildOtpView(),
@@ -389,6 +386,27 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
         ? _controllers.every((c) => c.text.isNotEmpty)
         : (_pickedFile != null || !requiresProof);
 
+    // Determine button label based on action type
+    String buttonLabel;
+    final actionType = widget.taskData['actionType']?.toString() ?? '';
+
+    if (actionType == 'start') {
+      // Starting activity
+      buttonLabel = _activeStep == 2 || !requiresOtp
+          ? "START TASK"
+          : "CONTINUE";
+    } else if (actionType == 'end') {
+      // Ending activity
+      buttonLabel = _activeStep == 2 || !requiresOtp
+          ? "FINALIZE CLOSURE"
+          : "CONTINUE";
+    } else {
+      // Default closure
+      buttonLabel = _activeStep == 2 || !requiresOtp
+          ? "FINALIZE CLOSURE"
+          : "CONTINUE";
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(28, 0, 28, 40),
       child: ElevatedButton(
@@ -397,7 +415,12 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
                 if (_activeStep == 1 && requiresOtp) {
                   setState(() => _activeStep = 2);
                 } else {
-                  _showSuccessDialog();
+                  if (actionType == 'start' || actionType == 'end') {
+                    // Return true to indicate success
+                    Navigator.pop(context, true);
+                  } else {
+                    _showSuccessDialog();
+                  }
                 }
               }
             : null,
@@ -411,7 +434,7 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
           elevation: 0,
         ),
         child: Text(
-          _activeStep == 2 || !requiresOtp ? "FINALIZE CLOSURE" : "CONTINUE",
+          buttonLabel,
           style: const TextStyle(
             fontWeight: FontWeight.bold,
             color: Colors.white,
@@ -423,6 +446,16 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
   }
 
   PreferredSizeWidget _buildAppBar() {
+    // Determine title based on action type
+    final actionType = widget.taskData['actionType']?.toString() ?? '';
+    String title = "TASK CLOSURE";
+
+    if (actionType == 'start') {
+      title = "START TASK";
+    } else if (actionType == 'end') {
+      title = "END TASK";
+    }
+
     return AppBar(
       backgroundColor: _kBg,
       elevation: 0,
@@ -431,9 +464,9 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
         icon: Icon(Icons.arrow_back_ios_new, color: _kSlate, size: 18),
         onPressed: _handleBack,
       ),
-      title: const Text(
-        "TASK CLOSURE",
-        style: TextStyle(
+      title: Text(
+        title,
+        style: const TextStyle(
           color: Colors.black,
           fontSize: 11,
           fontWeight: FontWeight.w900,

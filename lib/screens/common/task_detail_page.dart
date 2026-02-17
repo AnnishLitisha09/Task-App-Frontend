@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 
+import 'package:intl/intl.dart';
+import '../../models/task_detail_model.dart';
+import '../../services/task_service.dart';
 import 'task_closure_page.dart' show TaskClosurePage;
+
+// Activity Lifecycle Status
+enum ActivityStatus { NOT_STARTED, IN_PROGRESS, PAUSED, COMPLETED }
 
 class TaskDetailsPage extends StatefulWidget {
   final Map<String, dynamic> taskData;
@@ -21,15 +27,64 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   final Color successColor = const Color(0xFF10B981);
   final Color surfaceColor = const Color(0xFFF8FAFC);
 
-  // OTP State
-  // ... inside _TaskDetailsPageState class
+  // Activity Lifecycle State
+  ActivityStatus _activityStatus = ActivityStatus.NOT_STARTED;
+  DateTime? _activityStartTime;
+  Duration _pausedDuration = Duration.zero;
+
+  TaskDetailModel? _taskDetail;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchTaskDetail();
+  }
+
+  Future<void> _fetchTaskDetail() async {
+    try {
+      final taskId =
+          widget.taskData['task_id']?.toString() ??
+          widget.taskData['id']?.toString() ??
+          "0"; // Handle various key names
+      final service = TaskService();
+      final detail = await service.getTaskDetail(taskId);
+      if (mounted) {
+        setState(() {
+          _taskDetail = detail;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     // Determine the type once for efficiency
-    final String type = (widget.taskData['completionType'] ?? "OTP")
-        .toUpperCase();
-    final bool isApprovalWorkflow = type == "APPROVAL";
+    // Fallback to widget.taskData if _taskDetail is null (though loaded) or use _taskDetail directly
+    final String type =
+        (_taskDetail?.taskTypes.isNotEmpty == true
+                ? _taskDetail!.taskTypes.first.taskName
+                : (widget.taskData['completionType'] ?? "OTP"))
+            .toUpperCase();
+
+    // Simple logic for approval based on task type or specific flag if available
+    final bool isApprovalWorkflow =
+        type.contains("APPROVAL") ||
+        (_taskDetail?.isApproved == false && _taskDetail?.status == 'Pending');
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -52,12 +107,20 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                 const SizedBox(height: 24),
                 _buildScoreCard(type),
                 const SizedBox(height: 32),
+                if (_activityStatus != ActivityStatus.NOT_STARTED) ...[
+                  _buildSectionLabel("Activity Log"),
+                  const SizedBox(height: 12),
+                  _buildActivityLog(),
+                  const SizedBox(height: 32),
+                ],
                 _buildSectionLabel("Assignment Description"),
                 const SizedBox(height: 12),
                 _buildDescriptionBox(
                   isApprovalWorkflow,
                 ), // UPDATED: Adaptive text
                 const SizedBox(height: 32),
+                _buildCreatorSection(),
+                const SizedBox(height: 24),
                 _buildHistoryLogs(),
               ],
             ),
@@ -115,6 +178,10 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
 
   // --- NEW: Venue Section ---
   Widget _buildVenueSection() {
+    final venueName =
+        _taskDetail?.venue ??
+        widget.taskData['venue'] ??
+        "Main Engineering Block, Room 402";
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -150,7 +217,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
               ),
               const SizedBox(height: 2),
               Text(
-                widget.taskData['venue'] ?? "Main Engineering Block, Room 402",
+                venueName,
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -164,11 +231,107 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     );
   }
 
+  // --- NEW: Activity Log ---
+  Widget _buildActivityLog() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: surfaceColor.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: brandAccent.withOpacity(0.1)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: brandAccent.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.timer_outlined, color: brandAccent, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _activityStatus == ActivityStatus.COMPLETED
+                          ? "TASK COMPLETED"
+                          : "CURRENTLY ACTIVE",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: textSub,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _activityStartTime != null
+                          ? "Started at ${DateFormat('jm').format(_activityStartTime!)}"
+                          : "Awaiting start...",
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: textMain,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (_pausedDuration != Duration.zero) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Divider(height: 1),
+            ),
+            Row(
+              children: [
+                Icon(Icons.pause_circle_outline, color: textSub, size: 18),
+                const SizedBox(width: 12),
+                Text(
+                  "Total Pause: ${_pausedDuration.inMinutes} mins",
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: textSub,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   // --- UPDATED: Adaptive Description ---
   Widget _buildDescriptionBox(bool isApproval) {
-    String description = isApproval
-        ? "This task requires administrative review. Upon completion, submit your proof or report. Your instructor will then manually approve or reject the submission based on the quality of work."
-        : "This task requires a One-Time Password to close. Please enter the code provided by your instructor or sent to your academic dashboard to authorize submission.";
+    String description;
+
+    if (isApproval) {
+      description =
+          "This task requires administrative review. Upon completion, submit your proof or report. Your instructor will then manually approve or reject the submission based on the quality of work.";
+    } else {
+      List<String> rules = _taskDetail?.closureRules ?? [];
+      if (rules.isEmpty) rules = ["otp"]; // Default
+
+      if (rules.contains('photo_upload') && rules.contains('otp')) {
+        description =
+            "To complete this task, you must upload a proof photo AND enter the One-Time Password provided by your instructor.";
+      } else if (rules.contains('photo_upload')) {
+        description =
+            "To complete this task, you must upload a valid proof photo. Ensure the image is clear and relevant to the task.";
+      } else {
+        description =
+            "This task requires a One-Time Password to close. Please enter the code provided by your instructor or sent to your academic dashboard to authorize submission.";
+      }
+    }
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -267,29 +430,135 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     );
   }
 
-  // Original Layout for OTP/Standard Tasks
+  // Dynamic Layout Based on Activity Status
   Widget _buildStandardAction() {
-    return ElevatedButton(
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => TaskClosurePage(taskData: widget.taskData),
+    // Determine button layout based on activity status
+    switch (_activityStatus) {
+      case ActivityStatus.NOT_STARTED:
+        return _buildSingleButton(
+          label: "Start Activity",
+          icon: Icons.play_arrow_rounded,
+          color: brandAccent,
+          onPressed: _startActivity,
+        );
+
+      case ActivityStatus.IN_PROGRESS:
+        // Show both "End Activity" and optionally "Pause"
+        if (_taskDetail?.isPauseAllowed == true) {
+          return Row(
+            children: [
+              Expanded(
+                child: _buildSingleButton(
+                  label: "Pause",
+                  icon: Icons.pause_rounded,
+                  color: Colors.orange,
+                  onPressed: _pauseActivity,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: _buildSingleButton(
+                  label: "End Activity",
+                  icon: Icons.stop_rounded,
+                  color: destructive,
+                  onPressed: _endActivity,
+                ),
+              ),
+            ],
+          );
+        } else {
+          return _buildSingleButton(
+            label: "End Activity",
+            icon: Icons.stop_rounded,
+            color: destructive,
+            onPressed: _endActivity,
+          );
+        }
+
+      case ActivityStatus.PAUSED:
+        return Row(
+          children: [
+            Expanded(
+              child: _buildSingleButton(
+                label: "Resume",
+                icon: Icons.play_arrow_rounded,
+                color: brandAccent,
+                onPressed: _resumeActivity,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: _buildSingleButton(
+                label: "End Activity",
+                icon: Icons.stop_rounded,
+                color: destructive,
+                onPressed: _endActivity,
+              ),
+            ),
+          ],
+        );
+
+      case ActivityStatus.COMPLETED:
+        // Task is completed, show completion message
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: successColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: successColor.withOpacity(0.3)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.check_circle_rounded, color: successColor, size: 28),
+              const SizedBox(width: 12),
+              Text(
+                'Task Completed',
+                style: TextStyle(
+                  color: successColor,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
         );
-      },
+    }
+  }
+
+  // Helper to build a single button
+  Widget _buildSingleButton({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return ElevatedButton(
+      onPressed: onPressed,
       style: ElevatedButton.styleFrom(
-        backgroundColor: brandAccent,
+        backgroundColor: color,
         foregroundColor: Colors.white,
         minimumSize: const Size(double.infinity, 64),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        elevation: 2,
       ),
-      child: const Text(
-        "End Activity",
-        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 24),
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+          ),
+        ],
       ),
     );
-  } // --- UPDATED: Badge color based on type ---
+  }
+
+  // --- UPDATED: Badge color based on type ---
 
   Widget _buildPriorityBadge(bool isApproval) {
     return Container(
@@ -322,10 +591,15 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _scoreItem("CREDITS", "+50", successColor, Icons.bolt_rounded),
+          _scoreItem(
+            "CREDITS",
+            "+${_taskDetail?.score ?? 50}",
+            successColor,
+            Icons.bolt_rounded,
+          ),
           _scoreItem(
             "PENALTY",
-            "-1 / day",
+            "-${_taskDetail?.penaltyPerHour ?? 1} / hr",
             destructive,
             Icons.history_toggle_off_rounded,
           ),
@@ -341,6 +615,17 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   }
 
   Widget _buildTimeFrameSection() {
+    final firstTaskType = _taskDetail?.taskTypes.firstOrNull;
+    final String startVal =
+        _formatDate(firstTaskType?.startDate, firstTaskType?.startTime) ??
+        widget.taskData['startDate'] ??
+        "Feb 06, 08:00 AM";
+
+    final String endVal =
+        _formatDate(firstTaskType?.endDate, firstTaskType?.endTime) ??
+        widget.taskData['deadline'] ??
+        "Feb 10, 11:59 PM";
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -351,7 +636,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         children: [
           _timeTile(
             "START DATE",
-            widget.taskData['startDate'] ?? "Feb 06, 08:00 AM",
+            startVal,
             Icons.calendar_today_rounded,
             brandAccent,
           ),
@@ -361,12 +646,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
             color: surfaceColor,
             margin: const EdgeInsets.symmetric(horizontal: 20),
           ),
-          _timeTile(
-            "DEADLINE",
-            widget.taskData['deadline'] ?? "Feb 10, 11:59 PM",
-            Icons.alarm_on_rounded,
-            destructive,
-          ),
+          _timeTile("DEADLINE", endVal, Icons.alarm_on_rounded, destructive),
         ],
       ),
     );
@@ -416,7 +696,9 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              widget.taskData['title'] ?? "Peer Review Analysis",
+              _taskDetail?.title ??
+                  widget.taskData['title'] ??
+                  "Peer Review Analysis",
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w900,
@@ -427,12 +709,19 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
             const SizedBox(height: 16),
             Row(
               children: [
-                const CircleAvatar(
-                  radius: 14,
-                  backgroundImage: NetworkImage(
-                    'https://ui-avatars.com/api/?name=Dr+Aris&background=6366F1&color=fff',
-                  ),
-                ),
+                _taskDetail?.creator != null
+                    ? CircleAvatar(
+                        radius: 14,
+                        backgroundImage: NetworkImage(
+                          'https://ui-avatars.com/api/?name=${_taskDetail!.creator.name.replaceAll(' ', '+')}&background=6366F1&color=fff',
+                        ),
+                      )
+                    : const CircleAvatar(
+                        radius: 14,
+                        backgroundImage: NetworkImage(
+                          'https://ui-avatars.com/api/?name=Dr+Aris&background=6366F1&color=fff',
+                        ),
+                      ),
                 const SizedBox(width: 10),
                 RichText(
                   text: TextSpan(
@@ -440,7 +729,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                     children: [
                       const TextSpan(text: "Managed by "),
                       TextSpan(
-                        text: "Dr. Aris",
+                        text: _taskDetail?.creator.name ?? "Dr. Aris",
                         style: TextStyle(
                           color: textMain,
                           fontWeight: FontWeight.bold,
@@ -456,6 +745,78 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildCreatorSection() {
+    if (_taskDetail?.creator == null) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: brandAccent.withOpacity(0.1),
+            child: Icon(Icons.person, color: brandAccent),
+          ),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "CREATED BY",
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: textSub,
+                  letterSpacing: 1,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _taskDetail!.creator.name,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: textMain,
+                ),
+              ),
+              Text(
+                _taskDetail!.creator.email,
+                style: TextStyle(fontSize: 12, color: textSub),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String? _formatDate(String? isoDate, [String? timeStr]) {
+    if (isoDate == null) return null;
+    try {
+      final date = DateTime.parse(isoDate);
+
+      if (timeStr != null && timeStr.isNotEmpty) {
+        final timeParts = timeStr.split(':');
+        final hours = int.tryParse(timeParts[0]) ?? 0;
+        final minutes = int.tryParse(timeParts[1]) ?? 0;
+        final combined = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          hours,
+          minutes,
+        );
+        return DateFormat('MMM dd, hh:mm a').format(combined);
+      }
+
+      return DateFormat('MMM dd, hh:mm a').format(date);
+    } catch (e) {
+      return isoDate;
+    }
   }
 
   Widget _scoreItem(String label, String val, Color col, IconData icon) {
@@ -491,8 +852,18 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       children: [
         _buildSectionLabel("Activity Timeline"),
         const SizedBox(height: 16),
-        _logEntry("Task assigned to Annish", "Feb 06, 09:00 AM", isFirst: true),
-        _logEntry("Identity check initiated", "Feb 06, 11:00 AM", isLast: true),
+        _logEntry(
+          "Task created",
+          _formatDate(_taskDetail?.createdAt) ?? "Feb 06, 09:00 AM",
+          isFirst: true,
+        ),
+        if (_taskDetail?.assignees.isNotEmpty == true)
+          _logEntry(
+            "Assigned to ${_taskDetail!.assignees.first.name}",
+            _formatDate(_taskDetail!.assignees.first.acceptedAt) ??
+                "Feb 06, 11:00 AM",
+            isLast: true,
+          ),
       ],
     );
   }
@@ -555,5 +926,144 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         letterSpacing: 1.5,
       ),
     );
+  }
+
+  // Activity Lifecycle Methods
+  Future<void> _startActivity() async {
+    // Check if OTP is required for starting
+    List<String> rules = _taskDetail?.closureRules ?? [];
+
+    if (rules.contains('otp')) {
+      // Navigate to OTP page to verify before starting
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => TaskClosurePage(
+            taskData: {
+              ...widget.taskData,
+              'closureType': 'otp',
+              'actionType': 'start', // Indicate this is for starting
+            },
+          ),
+        ),
+      );
+
+      // Only start if OTP was verified successfully
+      if (result == true) {
+        setState(() {
+          _activityStatus = ActivityStatus.IN_PROGRESS;
+          _activityStartTime = DateTime.now();
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Activity started successfully!'),
+              backgroundColor: successColor,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } else {
+      // No OTP required, start directly
+      setState(() {
+        _activityStatus = ActivityStatus.IN_PROGRESS;
+        _activityStartTime = DateTime.now();
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Activity started!'),
+          backgroundColor: successColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+
+    // TODO: Call API to start activity
+    // await TaskService().startActivity(_taskDetail!.taskId);
+  }
+
+  Future<void> _pauseActivity() async {
+    setState(() {
+      _activityStatus = ActivityStatus.PAUSED;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Activity paused'),
+        backgroundColor: Colors.orange,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    // TODO: Call API to pause activity
+  }
+
+  Future<void> _resumeActivity() async {
+    setState(() {
+      _activityStatus = ActivityStatus.IN_PROGRESS;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Activity resumed'),
+        backgroundColor: successColor,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    // TODO: Call API to resume activity
+  }
+
+  Future<void> _endActivity() async {
+    // Navigate to closure page based on closure rules
+    List<String> rules = _taskDetail?.closureRules ?? [];
+    if (rules.isEmpty) rules = ["otp"];
+
+    // Determine which closure page to show
+    String closureType = 'otp'; // Default
+    if (rules.contains('photo_upload') && !rules.contains('otp')) {
+      closureType = 'photo_upload';
+    } else if (rules.contains('photo_upload') && rules.contains('otp')) {
+      closureType = 'both';
+    }
+
+    // Navigate to closure page
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskClosurePage(
+          taskData: {
+            ...widget.taskData,
+            'closureType': closureType,
+            'actionType': 'end', // Indicate this is for ending
+          },
+        ),
+      ),
+    );
+
+    // If closure was successful, mark as completed
+    if (result == true) {
+      setState(() {
+        _activityStatus = ActivityStatus.COMPLETED;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Task completed successfully!'),
+            backgroundColor: successColor,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        // Navigate back to dashboard
+        Navigator.pop(context);
+      }
+    }
+
+    // TODO: Call API to end activity
   }
 }

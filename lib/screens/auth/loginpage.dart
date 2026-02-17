@@ -68,8 +68,19 @@ class _LoginPageState extends State<LoginPage> {
       String scope = 'none';
 
       if (role == 'role-user') {
-        category = (user['category'] ?? 'User').toString();
-        scope = (user['scope'] ?? 'none').toString();
+        category = (user['specific_role'] ?? 'User').toString();
+        // Map scope_details to internal scope values
+        String rawScope = (user['scope_details'] ?? 'none')
+            .toString()
+            .toLowerCase();
+        if (rawScope.contains('department'))
+          scope = 'department';
+        else if (rawScope.contains('institution'))
+          scope = 'institution';
+        else if (rawScope.contains('infrastructure'))
+          scope = 'infrastructure';
+        else
+          scope = rawScope;
       }
 
       await _saveUserSession(
@@ -146,8 +157,19 @@ class _LoginPageState extends State<LoginPage> {
       String scope = 'none';
 
       if (role == 'role-user') {
-        category = (user['category'] ?? 'User').toString();
-        scope = (user['scope'] ?? 'none').toString();
+        category = (user['specific_role'] ?? 'User').toString();
+        // Map scope_details to internal scope values
+        String rawScope = (user['scope_details'] ?? 'none')
+            .toString()
+            .toLowerCase();
+        if (rawScope.contains('department'))
+          scope = 'department';
+        else if (rawScope.contains('institution'))
+          scope = 'institution';
+        else if (rawScope.contains('infrastructure'))
+          scope = 'infrastructure';
+        else
+          scope = rawScope;
       }
 
       await _saveUserSession(

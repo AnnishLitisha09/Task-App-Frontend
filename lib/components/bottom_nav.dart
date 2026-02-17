@@ -82,7 +82,7 @@ class _MainWrapperState extends State<MainWrapper> {
     if (role == 'admin') {
       pages = [
         const AdminPage(),
-        const PersonalCalendarPage(tasks: []),
+        const PersonalCalendarPage(),
         const TaskManagementPage(),
         const ProfilePage(role: 'admin'),
       ];
@@ -91,7 +91,7 @@ class _MainWrapperState extends State<MainWrapper> {
     else if (role == 'role-user') {
       pages = [
         RoleUserPage(title: _userTitle, scope: _scopeType), // Index 0: Hub
-        const PersonalCalendarPage(tasks: []), // Index 2: Calendar
+        const PersonalCalendarPage(), // Index 2: Calendar
         _scopeType == 'institution'
             ? const AllDepartmentPage()
             : (_scopeType == 'infrastructure'
@@ -126,14 +126,14 @@ class _MainWrapperState extends State<MainWrapper> {
           isBlocked: isBlocked,
           onAcknowledge: _handleAcknowledgement,
         ),
-        const PersonalCalendarPage(tasks: []),
+        const PersonalCalendarPage(),
         const TaskManagementPage(),
         const ProfilePage(role: 'faculty'),
       ];
     } else if (role == 'staff') {
       pages = [
         const StaffPage(),
-        const PersonalCalendarPage(tasks: []),
+        const PersonalCalendarPage(),
         const StaffHistoryPage(),
         const ProfilePage(role: 'staff'),
       ];
@@ -150,7 +150,7 @@ class _MainWrapperState extends State<MainWrapper> {
           isBlocked: isBlocked,
           onAcknowledge: _handleAcknowledgement,
         ),
-        const PersonalCalendarPage(tasks: []),
+        const PersonalCalendarPage(),
         const ScorePerformancePage(),
         const ProfilePage(role: 'student'),
       ];

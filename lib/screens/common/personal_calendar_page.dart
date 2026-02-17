@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../services/task_service.dart';
 
 class PersonalCalendarPage extends StatefulWidget {
-  final List<Map<String, dynamic>> tasks;
-
-  const PersonalCalendarPage({super.key, this.tasks = const []});
+  const PersonalCalendarPage({super.key});
 
   @override
   State<PersonalCalendarPage> createState() => _PersonalCalendarPageState();
@@ -18,63 +17,164 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
   final Color slate500 = const Color(0xFF64748B);
   final Color surfaceColor = const Color(0xFFF8FAFC);
 
+  // API data state
+  List<Map<String, dynamic>> _calendarEvents = [];
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchMonthlySchedule();
+  }
+
+  Future<void> _fetchMonthlySchedule() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final TaskService taskService = TaskService();
+      final response = await taskService.getMonthlySchedule(_selectedDate);
+
+      if (mounted) {
+        setState(() {
+          _calendarEvents = _mapTasksToEvents(response['tasks'] ?? []);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to load schedule';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  List<Map<String, dynamic>> _mapTasksToEvents(List<dynamic> tasks) {
+    List<Map<String, dynamic>> events = [];
+
+    for (var task in tasks) {
+      // Parse start and end times
+      final timing = task['timing'];
+      if (timing == null) continue;
+
+      final startTime = timing['start_time']?.toString() ?? '00:00:00';
+      final endTime = timing['end_time']?.toString() ?? '00:00:00';
+
+      // Convert HH:MM:SS to hour decimal
+      final startParts = startTime.split(':');
+      final endParts = endTime.split(':');
+
+      final double startHour =
+          double.parse(startParts[0]) + (double.parse(startParts[1]) / 60);
+      final double endHour =
+          double.parse(endParts[0]) + (double.parse(endParts[1]) / 60);
+      final double duration = (endHour - startHour) * 60; // in minutes
+
+      // Determine color based on status
+      Color taskColor;
+      final status = task['status']?.toString() ?? 'pending';
+      switch (status) {
+        case 'accepted':
+          taskColor = const Color(0xFF3B82F6); // Blue
+          break;
+        case 'completed':
+          taskColor = const Color(0xFF10B981); // Green
+          break;
+        case 'pending':
+        default:
+          taskColor = const Color(0xFFF59E0B); // Orange
+      }
+
+      events.add({
+        'title': task['title'] ?? 'Untitled Task',
+        'sub': task['description'] ?? task['category'] ?? '',
+        'start': startHour,
+        'dur': duration,
+        'color': taskColor,
+        'task_id': task['task_id'],
+        'assignment_id': task['assignment_id'],
+      });
+    }
+
+    return events;
+  }
+
   @override
   Widget build(BuildContext context) {
-    DateTime startOfWeek = _selectedDate.subtract(
-      Duration(days: _selectedDate.weekday - 1),
-    );
-    List<DateTime> weekDays = List.generate(
-      7,
-      (i) => startOfWeek.add(Duration(days: i)),
-    );
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: _buildAppBar(),
-      body: Column(
-        children: [
-          _buildLightDateHeader(weekDays),
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.only(top: 8),
-              decoration: BoxDecoration(
-                color: surfaceColor,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(32),
-                ),
-                border: Border.all(
-                  color: brandAccent.withOpacity(0.05),
-                  width: 1,
+      body: Container(
+        margin: const EdgeInsets.only(top: 8),
+        decoration: BoxDecoration(
+          color: surfaceColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          border: Border.all(color: brandAccent.withOpacity(0.05), width: 1),
+        ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          child: Stack(
+            children: [
+              SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildTimeColumn(),
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          _buildRefinedGrid(),
+                          ..._calendarEvents.map(
+                            (task) => _buildLightEventCard(task),
+                          ),
+                          _buildModernTimeIndicator(),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(32),
-                ),
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildTimeColumn(),
-                      Expanded(
-                        child: Stack(
-                          children: [
-                            _buildRefinedGrid(),
-                            ...widget.tasks.map(
-                              (task) => _buildLightEventCard(task),
-                            ),
-                            _buildModernTimeIndicator(),
-                          ],
-                        ),
-                      ),
-                    ],
+              if (_isLoading)
+                const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: LinearProgressIndicator(
+                    backgroundColor: Colors.transparent,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Color(0xFF6366F1),
+                    ),
                   ),
                 ),
-              ),
-            ),
+              if (_errorMessage != null)
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      _errorMessage!,
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -88,7 +188,7 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            DateFormat('MMMM yyyy').format(_selectedDate),
+            DateFormat('EEEE, MMMM d, yyyy').format(_selectedDate),
             style: TextStyle(
               fontWeight: FontWeight.w800,
               fontSize: 18,
@@ -96,7 +196,7 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
             ),
           ),
           Text(
-            "${widget.tasks.length} events scheduled",
+            "${_calendarEvents.length} events scheduled",
             style: TextStyle(
               fontSize: 12,
               color: slate500.withOpacity(0.7),
@@ -107,70 +207,42 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
       ),
       actions: [
         IconButton(
-          onPressed: () => setState(() => _selectedDate = DateTime.now()),
-          icon: Icon(Icons.today_outlined, color: brandAccent.withOpacity(0.8)),
+          onPressed: _showDatePicker,
+          icon: Icon(
+            Icons.calendar_month_rounded,
+            color: brandAccent.withOpacity(0.8),
+          ),
+          tooltip: 'Select Date',
         ),
         const SizedBox(width: 8),
       ],
     );
   }
 
-  Widget _buildLightDateHeader(List<DateTime> weekDays) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: weekDays.map((date) {
-          bool isSelected = DateUtils.isSameDay(date, _selectedDate);
-          bool isToday = DateUtils.isSameDay(date, DateTime.now());
-
-          return GestureDetector(
-            onTap: () => setState(() => _selectedDate = date),
-            child: AnimatedContainer(
-              duration: 200.ms,
-              width: 45,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? brandAccent.withOpacity(0.1)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-                border: isSelected
-                    ? Border.all(color: brandAccent.withOpacity(0.2))
-                    : (isToday
-                          ? Border.all(color: brandAccent.withOpacity(0.1))
-                          : null),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    DateFormat('E').format(date).toUpperCase(),
-                    style: TextStyle(
-                      color: isSelected
-                          ? brandAccent
-                          : slate500.withOpacity(0.5),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    date.day.toString(),
-                    style: TextStyle(
-                      color: isSelected ? brandAccent : Colors.black87,
-                      fontWeight: isSelected
-                          ? FontWeight.w900
-                          : FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
+  Future<void> _showDatePicker() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: brandAccent,
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
             ),
-          );
-        }).toList(),
-      ),
+          ),
+          child: child!,
+        );
+      },
     );
+
+    if (picked != null && picked != _selectedDate) {
+      setState(() => _selectedDate = picked);
+      _fetchMonthlySchedule();
+    }
   }
 
   Widget _buildLightEventCard(Map<String, dynamic> task) {

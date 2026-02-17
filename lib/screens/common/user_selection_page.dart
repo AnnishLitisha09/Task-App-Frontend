@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../services/user_service.dart';
 
 class UserSelectionPage extends StatefulWidget {
   final List<Map<String, dynamic>> initialSelection;
   final bool multiSelect;
-  final List<String>? allowedRoles; // NEW: To filter roles (e.g., ["Faculty", "HOD"])
+  final List<String>? allowedRoles;
 
   const UserSelectionPage({
     super.key,
@@ -25,46 +26,52 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
   String _searchQuery = "";
   final TextEditingController _searchController = TextEditingController();
 
+  // API state
+  final UserService _userService = UserService();
+  Map<String, dynamic>? _apiData;
+  bool _isLoading = true;
+  String? _errorMessage;
+
   // Selection State
   late List<Map<String, dynamic>> _selectedItems;
-
-  // Mock Data
-  final Map<String, List<String>> _roleToDepts = {
-    'Students': ['IT', 'Computer Science', 'Mechanical', 'Electrical'],
-    'Faculty': ['IT', 'Computer Science', 'Physics', 'Mathematics'],
-    'Staff': ['Administration', 'Maintenance', 'Library'],
-  };
-
-  final Map<String, List<Map<String, dynamic>>> _deptToUsers = {
-    'IT': [
-      {'id': 's1', 'name': 'Aditya Kumar', 'role': 'Student', 'type': 'user'},
-      {'id': 's2', 'name': 'Bhavya Singh', 'role': 'Student', 'type': 'user'},
-      {'id': 'f1', 'name': 'Dr. Ramesh Rao', 'role': 'Faculty', 'type': 'user'},
-    ],
-    'Computer Science': [
-      {'id': 's3', 'name': 'Chirag Gupta', 'role': 'Student', 'type': 'user'},
-      {'id': 's4', 'name': 'Deepak Verma', 'role': 'Student', 'type': 'user'},
-      {
-        'id': 'f2',
-        'name': 'Prof. Sunita Williams',
-        'role': 'Faculty',
-        'type': 'user',
-      },
-    ],
-  };
 
   @override
   void initState() {
     super.initState();
     _selectedItems = List.from(widget.initialSelection);
-    if (widget.allowedRoles != null && widget.allowedRoles!.length == 1) {
-      _selectedRole = widget.allowedRoles!.first;
-      _currentLevel = 1;
+    _fetchUserData();
+  }
+
+  Future<void> _fetchUserData() async {
+    try {
+      final data = await _userService.getUsersByDepartment();
+      if (mounted) {
+        setState(() {
+          _apiData = data;
+          _isLoading = false;
+
+          // Auto-select role if only one allowed
+          if (widget.allowedRoles != null && widget.allowedRoles!.length == 1) {
+            _selectedRole = widget.allowedRoles!.first;
+            _currentLevel = 1;
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+          _isLoading = false;
+        });
+      }
     }
   }
 
   void _goBack() {
-    if (_currentLevel > (widget.allowedRoles != null && widget.allowedRoles!.length == 1 ? 1 : 0)) {
+    if (_currentLevel >
+        (widget.allowedRoles != null && widget.allowedRoles!.length == 1
+            ? 1
+            : 0)) {
       setState(() {
         _currentLevel--;
         if (_currentLevel == 0) _selectedRole = null;
@@ -76,28 +83,102 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
   }
 
   bool _isSelected(String id) {
-    return _selectedItems.any((u) => u['id'] == id);
+    return _selectedItems.any(
+      (u) => u['id'] == id || u['user_id']?.toString() == id,
+    );
   }
 
   void _toggleItem(Map<String, dynamic> item) {
-    setState(() {
-      if (_isSelected(item['id'])) {
-        if (widget.multiSelect) {
-          _selectedItems.removeWhere((u) => u['id'] == item['id']);
-        }
-      } else {
-        if (!widget.multiSelect) {
-          _selectedItems = [item];
-          Navigator.pop(context, _selectedItems);
+    if (item['type'] == 'user') {
+      final id = (item['id'] ?? item['user_id'])?.toString() ?? '';
+      setState(() {
+        if (_isSelected(id)) {
+          if (widget.multiSelect) {
+            _selectedItems.removeWhere(
+              (u) => (u['id'] ?? u['user_id'])?.toString() == id,
+            );
+          }
         } else {
-          _selectedItems.add(item);
+          if (!widget.multiSelect) {
+            _selectedItems = [item];
+            Navigator.pop(context, _selectedItems);
+          } else {
+            _selectedItems.add(item);
+          }
         }
+      });
+    } else {
+      // Handle Group Toggle (Role or Dept)
+      List<Map<String, dynamic>> usersInGroup = [];
+      if (item['type'] == 'role') {
+        final roleKey = item['roleKey'];
+        if (roleKey == 'staff') {
+          usersInGroup = List<Map<String, dynamic>>.from(
+            _apiData!['staff'] ?? [],
+          );
+        } else {
+          final Map<String, dynamic> depts = _apiData![roleKey] ?? {};
+          for (var deptUsers in depts.values) {
+            usersInGroup.addAll(List<Map<String, dynamic>>.from(deptUsers));
+          }
+        }
+      } else if (item['type'] == 'dept') {
+        final Map<String, dynamic> depts = _apiData![_selectedRole!] ?? {};
+        usersInGroup = List<Map<String, dynamic>>.from(
+          depts[item['name']] ?? [],
+        );
       }
-    });
+
+      setState(() {
+        final allInGroupSelected = usersInGroup.every(
+          (u) => _isSelected((u['user_id'] ?? u['id']).toString()),
+        );
+
+        if (allInGroupSelected) {
+          // Deselect all
+          for (var u in usersInGroup) {
+            final uid = (u['user_id'] ?? u['id']).toString();
+            _selectedItems.removeWhere(
+              (existing) =>
+                  (existing['user_id'] ?? existing['id']).toString() == uid,
+            );
+          }
+        } else {
+          // Select all (avoid duplicates)
+          for (var u in usersInGroup) {
+            final uid = (u['user_id'] ?? u['id']).toString();
+            if (!_isSelected(uid)) {
+              _selectedItems.add(u);
+            }
+          }
+        }
+      });
+    }
+  }
+
+  int _getUserCount(String type, {String? roleKey, String? deptName}) {
+    if (_apiData == null) return 0;
+    if (type == 'role') {
+      if (roleKey == 'staff') return (_apiData!['staff'] as List?)?.length ?? 0;
+      final Map<String, dynamic>? depts =
+          _apiData![roleKey] as Map<String, dynamic>?;
+      if (depts == null) return 0;
+      int count = 0;
+      for (var userList in depts.values) {
+        count += (userList as List).length;
+      }
+      return count;
+    } else if (type == 'dept') {
+      final Map<String, dynamic>? depts =
+          _apiData![_selectedRole!] as Map<String, dynamic>?;
+      return (depts?[deptName] as List?)?.length ?? 0;
+    }
+    return 0;
   }
 
   @override
   Widget build(BuildContext context) {
+    // ... rest of build method ...
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -111,19 +192,19 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
           ),
           onPressed: _goBack,
         ),
-        title: _currentLevel == 0 && _searchQuery.isEmpty 
-          ? const Text(
-              "Select Role",
-              style: TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ) 
-          : _buildSearchField(), 
+        title: _currentLevel == 0 && _searchQuery.isEmpty
+            ? const Text(
+                "Select Role",
+                style: TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              )
+            : _buildSearchField(),
         actions: [
           if (_selectedItems.isNotEmpty && widget.multiSelect)
-             Padding(
+            Padding(
               padding: const EdgeInsets.only(right: 16),
               child: Center(
                 child: Container(
@@ -187,7 +268,11 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
       controller: _searchController,
       autofocus: false,
       decoration: InputDecoration(
-        hintText: _currentLevel == 0 ? "Search Roles..." : (_currentLevel == 1 ? "Search Departments..." : "Search Users..."),
+        hintText: _currentLevel == 0
+            ? "Search Roles..."
+            : (_currentLevel == 1
+                  ? "Search Departments..."
+                  : "Search Users..."),
         border: InputBorder.none,
         hintStyle: TextStyle(color: Colors.grey[400]),
       ),
@@ -201,6 +286,24 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
   }
 
   Widget _buildCurrentLevelView() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_errorMessage != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(_errorMessage!, textAlign: TextAlign.center),
+            TextButton(onPressed: _fetchUserData, child: const Text("Retry")),
+          ],
+        ),
+      );
+    }
+    if (_apiData == null) return const SizedBox.shrink();
+
     if (_currentLevel == 0) return _buildRoleList();
     if (_currentLevel == 1) return _buildDeptList();
     return _buildUserList();
@@ -210,55 +313,101 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
     final List<Map<String, dynamic>> roles = [
       {
         'title': "All Students",
-        'subtitle': "Target entire Student community",
+        'subtitle': "Grouped by Department",
         'icon': Icons.groups_rounded,
         'type': 'role',
         'id': 'role_students',
-        'roleName': 'Students',
+        'roleKey': 'students',
       },
       {
         'title': "All Faculty",
-        'subtitle': "Target entire Faculty community",
+        'subtitle': "Grouped by Department",
         'icon': Icons.person_search_rounded,
         'type': 'role',
         'id': 'role_faculty',
-        'roleName': 'Faculty',
+        'roleKey': 'faculty',
       },
       {
-        'title': "All Staff",
-        'subtitle': "Target entire Staff community",
+        'title': "Principal",
+        'subtitle': "Institutional Head",
+        'icon': Icons.account_box_rounded,
+        'type': 'role',
+        'id': 'role_principal',
+        'roleKey': 'principal',
+      },
+      {
+        'title': "Dean",
+        'subtitle': "Institutional Dean",
+        'icon': Icons.school_rounded,
+        'type': 'role',
+        'id': 'role_dean',
+        'roleKey': 'dean',
+      },
+      {
+        'title': "HODs",
+        'subtitle': "Department Heads",
+        'icon': Icons.admin_panel_settings_rounded,
+        'type': 'role',
+        'id': 'role_hods',
+        'roleKey': 'hods',
+      },
+      {
+        'title': "Staff",
+        'subtitle': "Technical & Admin Staff",
         'icon': Icons.badge_rounded,
         'type': 'role',
         'id': 'role_staff',
-        'roleName': 'Staff',
+        'roleKey': 'staff',
       },
     ];
 
     // Filter by allowedRoles
-    final filteredRoles = widget.allowedRoles == null 
-        ? roles 
-        : roles.where((r) => widget.allowedRoles!.contains(r['roleName'])).toList();
+    final filteredRoles = widget.allowedRoles == null
+        ? roles
+        : roles
+              .where(
+                (r) =>
+                    widget.allowedRoles!.contains(r['roleKey']) ||
+                    widget.allowedRoles!.contains(
+                      r['title'].toString().replaceFirst('All ', ''),
+                    ),
+              )
+              .toList();
 
     // Filter by search query
-    final displayRoles = _searchQuery.isEmpty 
-        ? filteredRoles 
-        : filteredRoles.where((r) => r['title'].toString().toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+    final displayRoles = _searchQuery.isEmpty
+        ? filteredRoles
+        : filteredRoles
+              .where(
+                (r) => r['title'].toString().toLowerCase().contains(
+                  _searchQuery.toLowerCase(),
+                ),
+              )
+              .toList();
 
     return ListView.builder(
       padding: const EdgeInsets.all(24),
       itemCount: displayRoles.length,
       itemBuilder: (context, index) {
         final role = displayRoles[index];
+        final count = _getUserCount('role', roleKey: role['roleKey']);
         return _selectionTile(
-          title: role['title'],
+          title: "${role['title']} ($count)",
           subtitle: role['subtitle'],
           icon: role['icon'],
           type: role['type'],
           id: role['id'],
+          roleKey: role['roleKey'],
           onTap: () => setState(() {
-            _selectedRole = role['roleName'];
-            _currentLevel = 1;
-            _searchQuery = ""; // Reset search on drill down
+            _selectedRole = role['roleKey'];
+            // Staff jump straight to users (level 2) since it's a flat list
+            if (_selectedRole == 'staff') {
+              _currentLevel = 2;
+              _selectedDept = 'Staff';
+            } else {
+              _currentLevel = 1;
+            }
+            _searchQuery = "";
             _searchController.clear();
           }),
         );
@@ -267,10 +416,17 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
   }
 
   Widget _buildDeptList() {
-    final depts = _roleToDepts[_selectedRole] ?? [];
-    final displayDepts = _searchQuery.isEmpty 
-        ? depts 
-        : depts.where((d) => d.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+    final Map<String, dynamic> roleDepts =
+        _apiData![_selectedRole] as Map<String, dynamic>? ?? {};
+    final depts = roleDepts.keys.toList();
+
+    final displayDepts = _searchQuery.isEmpty
+        ? depts
+        : depts
+              .where(
+                (d) => d.toLowerCase().contains(_searchQuery.toLowerCase()),
+              )
+              .toList();
 
     return ListView.builder(
       padding: const EdgeInsets.all(24),
@@ -278,8 +434,9 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
       itemBuilder: (context, index) {
         final deptName = displayDepts[index];
         final id = "dept_${_selectedRole}_$deptName";
+        final count = _getUserCount('dept', deptName: deptName);
         return _selectionTile(
-          title: deptName,
+          title: "$deptName ($count)",
           subtitle: "Target all in $deptName",
           icon: Icons.account_balance_rounded,
           type: 'dept',
@@ -287,7 +444,7 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
           onTap: () => setState(() {
             _selectedDept = deptName;
             _currentLevel = 2;
-            _searchQuery = ""; // Reset search
+            _searchQuery = "";
             _searchController.clear();
           }),
         );
@@ -296,10 +453,25 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
   }
 
   Widget _buildUserList() {
-    final users = _deptToUsers[_selectedDept] ?? [];
-    final displayUsers = _searchQuery.isEmpty 
-        ? users 
-        : users.where((u) => u['name'].toString().toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+    List<Map<String, dynamic>> users = [];
+
+    if (_selectedRole == 'staff') {
+      users = List<Map<String, dynamic>>.from(_apiData!['staff'] ?? []);
+    } else {
+      final Map<String, dynamic> roleDepts =
+          _apiData![_selectedRole] as Map<String, dynamic>? ?? {};
+      users = List<Map<String, dynamic>>.from(roleDepts[_selectedDept] ?? []);
+    }
+
+    final displayUsers = _searchQuery.isEmpty
+        ? users
+        : users
+              .where(
+                (u) => (u['name'] ?? '').toString().toLowerCase().contains(
+                  _searchQuery.toLowerCase(),
+                ),
+              )
+              .toList();
 
     if (displayUsers.isEmpty) {
       return Center(
@@ -321,7 +493,8 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
       itemCount: displayUsers.length,
       itemBuilder: (context, index) {
         final user = displayUsers[index];
-        final isSelected = _isSelected(user['id']);
+        final id = (user['user_id'] ?? user['id'])?.toString() ?? '';
+        final isSelected = _isSelected(id);
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
@@ -349,13 +522,16 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
               ),
             ),
             title: Text(
-              user['name'],
+              user['name'] ?? "Unknown",
               style: TextStyle(
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 color: isSelected ? AppTheme.brandAccent : Colors.black87,
               ),
             ),
-            subtitle: Text(user['role'], style: const TextStyle(fontSize: 12)),
+            subtitle: Text(
+              user['type'] ?? user['designation'] ?? _selectedRole ?? "",
+              style: const TextStyle(fontSize: 12),
+            ),
             trailing: widget.multiSelect
                 ? Checkbox(
                     value: isSelected,
@@ -380,8 +556,37 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
     required String type,
     required String id,
     required VoidCallback onTap,
+    String? roleKey,
   }) {
-    final isSelectedItem = _isSelected(id);
+    List<Map<String, dynamic>> usersInGroup = [];
+    if (type == 'role') {
+      if (roleKey == 'staff') {
+        usersInGroup = List<Map<String, dynamic>>.from(
+          _apiData!['staff'] ?? [],
+        );
+      } else if (roleKey != null) {
+        final Map<String, dynamic> depts = _apiData![roleKey] ?? {};
+        for (var deptUsers in depts.values) {
+          usersInGroup.addAll(List<Map<String, dynamic>>.from(deptUsers));
+        }
+      }
+    } else if (type == 'dept') {
+      final Map<String, dynamic> depts = _apiData![_selectedRole!] ?? {};
+      final deptName = title.split(' (').first; // Extract name from title
+      usersInGroup = List<Map<String, dynamic>>.from(depts[deptName] ?? []);
+    }
+
+    final isSelectedItem =
+        usersInGroup.isNotEmpty &&
+        usersInGroup.every(
+          (u) => _isSelected((u['user_id'] ?? u['id']).toString()),
+        );
+    final isPartiallySelected =
+        !isSelectedItem &&
+        usersInGroup.any(
+          (u) => _isSelected((u['user_id'] ?? u['id']).toString()),
+        );
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
@@ -427,12 +632,22 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
             if (widget.multiSelect)
               Checkbox(
                 value: isSelectedItem,
-                onChanged: (_) =>
-                    _toggleItem({'id': id, 'name': title, 'type': type}),
+                tristate: true,
+                onChanged: (_) => _toggleItem({
+                  'id': id,
+                  'name': title.split(' (').first,
+                  'type': type,
+                  'roleKey': roleKey,
+                }),
                 activeColor: AppTheme.brandAccent,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(4),
                 ),
+                fillColor: MaterialStateProperty.resolveWith((states) {
+                  if (isPartiallySelected)
+                    return AppTheme.brandAccent.withOpacity(0.5);
+                  return null;
+                }),
               ),
             const Icon(Icons.chevron_right_rounded),
           ],

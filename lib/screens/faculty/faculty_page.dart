@@ -13,6 +13,7 @@ import '../../components/unified_reject_dialog.dart';
 import '../common/task_detail_page.dart';
 import '../../models/faculty_dashboard_stats.dart';
 import '../common/user_selection_page.dart';
+import '../../services/task_service.dart';
 
 class FacultyPage extends StatefulWidget {
   final bool isBlocked;
@@ -29,11 +30,13 @@ class FacultyPage extends StatefulWidget {
 
 class _FacultyPageState extends State<FacultyPage> {
   FacultyDashboardStats? _stats;
+  List<dynamic> _pendingProofs = [];
 
   @override
   void initState() {
     super.initState();
     _fetchStats();
+    _fetchPendingProofs();
   }
 
   Future<void> _fetchStats() async {
@@ -67,6 +70,32 @@ class _FacultyPageState extends State<FacultyPage> {
     } catch (e) {
       if (mounted) {
         setState(() {});
+      }
+    }
+  }
+
+  Future<void> _fetchPendingProofs() async {
+    try {
+      final TaskService taskService = TaskService();
+      final response = await taskService.getPendingProofs();
+      if (mounted) {
+        setState(() {
+          // Handle new API response structure with 'tasks' array
+          if (response is Map<String, dynamic> &&
+              response.containsKey('tasks')) {
+            _pendingProofs = response['tasks'] as List;
+          } else if (response is List) {
+            _pendingProofs = response;
+          } else {
+            _pendingProofs = [];
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _pendingProofs = [];
+        });
       }
     }
   }
@@ -127,217 +156,6 @@ class _FacultyPageState extends State<FacultyPage> {
         );
         _fetchStats(); // Refresh
       },
-    );
-  }
-
-  void _showDirectiveActionSheet(BuildContext context, int index) {
-    if (_stats == null) return;
-    final task = _stats!.pendingTasks[index];
-    final title = task['title'] ?? 'Task';
-    final description = task['description'] ?? 'No description available';
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-        ),
-        padding: const EdgeInsets.fromLTRB(24, 32, 24, 48),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceColor,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF0F172A),
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              description,
-              style: const TextStyle(color: AppTheme.textSub, height: 1.5),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 32),
-            Row(
-              children: [
-                Expanded(
-                  child: _actionButton(
-                    "Reject",
-                    AppTheme.danger,
-                    Icons.close_rounded,
-                    () {
-                      Navigator.pop(context);
-                      _showRejectDialog(index);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _actionButton(
-                    "Accept",
-                    AppTheme.success,
-                    Icons.check_rounded,
-                    () {
-                      Navigator.pop(context);
-                      _acceptTask(index);
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            _actionTile(
-              context,
-              "Transfer Task",
-              "Assign this directive to another faculty member",
-              Icons.trending_up_rounded,
-              AppTheme.brandAccent,
-              () {
-                Navigator.pop(context);
-                _handleTransfer(title);
-              },
-            ),
-            const SizedBox(height: 12),
-            _actionTile(
-              context,
-              "View Full Details",
-              "Open detailed view of this task",
-              Icons.visibility_outlined,
-              Colors.blueGrey,
-              () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => TaskDetailsPage(
-                      taskData: {
-                        'title': title,
-                        'sub': description,
-                        'accent': AppTheme.brandAccent,
-                        'icon': Icons.assignment_turned_in_rounded,
-                        'heroTag': "directive_${task['task_id']}_$index",
-                        'startDate': task['start_date'] ?? "N/A",
-                        'deadline': task['end_date'] ?? "N/A",
-                        'completionType': task['type'] ?? "APPROVAL",
-                        'isRequest': true,
-                        'authority': "Administration",
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _actionButton(
-    String label,
-    Color color,
-    IconData icon,
-    VoidCallback onTap,
-  ) {
-    return ElevatedButton(
-      onPressed: onTap,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color.withOpacity(0.1),
-        foregroundColor: color,
-        elevation: 0,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 20),
-          const SizedBox(width: 8),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
-
-  Widget _actionTile(
-    BuildContext context,
-    String title,
-    String sub,
-    IconData icon,
-    Color color,
-    VoidCallback onTap,
-  ) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withOpacity(0.1)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.brandPrimary,
-                      fontSize: 16,
-                    ),
-                  ),
-                  Text(
-                    sub,
-                    style: const TextStyle(
-                      color: AppTheme.textSub,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.arrow_forward_ios_rounded,
-              size: 14,
-              color: AppTheme.textSub.withOpacity(0.3),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -543,6 +361,8 @@ class _FacultyPageState extends State<FacultyPage> {
                                 MaterialPageRoute(
                                   builder: (context) => TaskDetailsPage(
                                     taskData: {
+                                      'task_id':
+                                          data['task_id'], // Added task_id
                                       'title': data['title'],
                                       'sub': data['description'],
                                       'accent': AppTheme.brandAccent,
@@ -614,6 +434,8 @@ class _FacultyPageState extends State<FacultyPage> {
                                 MaterialPageRoute(
                                   builder: (context) => TaskDetailsPage(
                                     taskData: {
+                                      'task_id':
+                                          item['task_id'], // Added task_id
                                       'title': item['title'],
                                       'sub': item['status'],
                                       'accent': AppTheme.success,
@@ -635,47 +457,76 @@ class _FacultyPageState extends State<FacultyPage> {
                         const SizedBox(height: 32),
 
                         SectionHeader(
-                          title: "Pending Paperwork",
+                          title: "Pending Proofs",
+                          isStatus: true,
+                          count: _pendingProofs.length,
                           onViewAll: () {},
                         ),
-                        _docItem(
-                          "Monthly Attendance Report",
-                          "Required",
-                          Icons.description_outlined,
-                        ),
+                        if (_pendingProofs.isEmpty)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 20),
+                              child: Text(
+                                "No pending proofs to review",
+                                style: TextStyle(
+                                  color: AppTheme.textSub,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          ..._pendingProofs.map((proof) {
+                            final String heroTag =
+                                "proof_${proof['task_id']}_pending";
+                            // Extract deadline information
+                            final deadline = proof['deadline'];
+                            final String deadlineStr = deadline != null
+                                ? "${deadline['end_date'] ?? 'N/A'} ${deadline['end_time'] ?? ''}"
+                                : "N/A";
+
+                            return TaskCard(
+                              title: proof['title'] ?? 'Proof Task',
+                              sub:
+                                  proof['description'] ??
+                                  'Proof Status: ${proof['proof_status'] ?? 'Pending'}',
+                              accent: Colors.orange,
+                              icon: Icons.photo_camera_rounded,
+                              heroTag: heroTag,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => TaskDetailsPage(
+                                    taskData: {
+                                      'task_id': proof['task_id'],
+                                      'assignment_id': proof['assignment_id'],
+                                      'title': proof['title'],
+                                      'sub':
+                                          proof['description'] ??
+                                          'Awaiting proof verification',
+                                      'accent': Colors.orange,
+                                      'icon': Icons.photo_camera_rounded,
+                                      'heroTag': heroTag,
+                                      'deadline': deadlineStr,
+                                      'completionType': "PROOF_REVIEW",
+                                      'isRequest': false,
+                                      'userRole': 'Faculty',
+                                      'is_document': proof['is_document'],
+                                      'status': proof['status'],
+                                      'proof_status': proof['proof_status'],
+                                    },
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+
+                        const SizedBox(height: 32),
                       ]),
                     ),
                   ),
                 ],
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _docItem(String title, String status, IconData icon) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceColor,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: AppTheme.textSub, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(title, style: AppTheme.bodyMain.copyWith(fontSize: 14)),
-          ),
-          Text(
-            status,
-            style: const TextStyle(
-              color: AppTheme.brandAccent,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
             ),
           ),
         ],
