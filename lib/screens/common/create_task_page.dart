@@ -26,11 +26,14 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   // Services
   final ResourceService _resourceService = ResourceService();
   final UserService _userService = UserService();
+  final TaskService _taskService = TaskService();
 
   // --- FULLY COMPLIANT STATE ---
   late Map<String, dynamic> _taskData;
   List<Map<String, dynamic>> _venues = [];
+  List<dynamic> _taskTitles = [];
   bool _isLoadingVenues = false;
+  bool _isLoadingTitles = false;
   String? _userRole;
 
   @override
@@ -38,11 +41,13 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     super.initState();
     _fetchUserRole();
     _fetchVenues();
+    _fetchTaskTitles();
 
     // 1. Define your full default template
     final Map<String, dynamic> defaultData = {
       'taskCategory': 'Directive Task',
       'title': '',
+      'task_title_id': null,
       'description': '',
       'category': 'Academic',
       'priority': 'Medium',
@@ -81,6 +86,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'activityTags': <String>[],
       'attachDocuments': false,
       'selectedDocuments': <String>[],
+      'is_document': true,
+      'closure_ids': [1],
     };
 
     // 1. Start with template defaults
@@ -171,6 +178,35 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       });
     } catch (e) {
       // Fallback
+    }
+  }
+
+  Future<void> _fetchTaskTitles() async {
+    setState(() => _isLoadingTitles = true);
+    try {
+      final titles = await _taskService.getTaskTitles();
+
+      // Filter titles according to target_role
+      final String userRoleLower = _userRole?.toLowerCase() ?? '';
+      final filteredTitles = titles.where((t) {
+        final targetRole =
+            (t['target_role'] as String?)?.toLowerCase() ?? 'all';
+        return targetRole == 'all' || targetRole == userRoleLower;
+      }).toList();
+
+      setState(() {
+        _taskTitles = filteredTitles;
+        _isLoadingTitles = false;
+        // Auto-select first item if current title is empty
+        if (_taskTitles.isNotEmpty &&
+            (_taskData['title'] == null || _taskData['title'].isEmpty)) {
+          final first = _taskTitles.first;
+          _taskData['title'] = first['task_title'];
+          _taskData['task_title_id'] = first['id'];
+        }
+      });
+    } catch (e) {
+      setState(() => _isLoadingTitles = false);
     }
   }
 
@@ -287,13 +323,26 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         }),
       ),
       const SizedBox(height: 24),
-      _modernField(
-        label: isSelfLog ? "ACTIVITY TITLE" : "TASK TITLE",
-        hint: isSelfLog ? "Research review" : "Audit Report",
-        icon: isSelfLog ? Icons.event_note : Icons.title,
-        initialValue: _taskData['title'],
-        onChanged: (v) => _taskData['title'] = v,
-      ),
+      if (_isLoadingTitles)
+        const Center(child: CircularProgressIndicator())
+      else
+        _searchableDropdown(
+          label: isSelfLog ? "ACTIVITY TITLE" : "TASK TITLE",
+          items: _taskTitles.map((t) => t['task_title'].toString()).toList(),
+          value: _taskData['title'],
+          onChanged: (v) {
+            final selectedTitle = _taskTitles.firstWhere(
+              (t) => t['task_title'] == v,
+              orElse: () => null,
+            );
+            setState(() {
+              _taskData['title'] = v;
+              if (selectedTitle != null) {
+                _taskData['task_title_id'] = selectedTitle['id'];
+              }
+            });
+          },
+        ),
       const SizedBox(height: 24),
       _modernField(
         label: "DESCRIPTION",
@@ -1109,6 +1158,94 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     );
   }
 
+  Widget _searchableDropdown({
+    required String label,
+    required List<String> items,
+    required String? value,
+    required Function(String?) onChanged,
+  }) {
+    // 1. Sanitize and Deduplicate Items
+    final List<String> sanitizedItems = items.map((e) => e.trim()).toList();
+    final Set<String> itemSet = sanitizedItems.toSet();
+
+    // 2. Ensure current value is in the set
+    if (value != null && value.trim().isNotEmpty) {
+      itemSet.add(value.trim());
+    }
+
+    final List<String> effectiveItems = itemSet.toList();
+
+    // 3. Robust selection value
+    String? dropdownValue = value?.trim();
+    if (dropdownValue != null && !itemSet.contains(dropdownValue)) {
+      dropdownValue = null;
+    }
+    if (dropdownValue == null && effectiveItems.isNotEmpty) {
+      dropdownValue = effectiveItems.first;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            color: Colors.black54,
+          ),
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: () async {
+            if (effectiveItems.isEmpty) return;
+
+            final String? selected = await showDialog<String>(
+              context: context,
+              builder: (BuildContext context) {
+                return _SearchableDropdownDialog(
+                  items: effectiveItems,
+                  initialValue: dropdownValue,
+                  title: label,
+                );
+              },
+            );
+
+            if (selected != null && selected != dropdownValue) {
+              onChanged(selected);
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    dropdownValue ?? 'Select Item',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: dropdownValue != null
+                          ? Colors.black87
+                          : Colors.grey[400],
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const Icon(Icons.arrow_drop_down, color: Colors.grey),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _modernDropdown(
     String label,
     List<String> items,
@@ -1486,8 +1623,14 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             ? '${_taskData['endTime'].hour.toString().padLeft(2, '0')}:${_taskData['endTime'].minute.toString().padLeft(2, '0')}:00'
             : '17:00:00',
       };
+    } else if (_taskData['taskType'] == 'Bidding Task') {
+      taskTypeData = {
+        'task_name': 'Bidding Task',
+        'start_date': DateFormat('yyyy-MM-dd').format(_taskData['startDate']),
+        'end_date': DateFormat('yyyy-MM-dd').format(_taskData['endDate']),
+      };
     } else {
-      // Default for other types like Long Task
+      // Default for Long Task and others
       taskTypeData = {
         'task_name': _taskData['taskType'],
         'start_date': DateFormat('yyyy-MM-dd').format(_taskData['startDate']),
@@ -1512,19 +1655,21 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         .where((id) => id > 0)
         .toList();
 
-    // Map logic: merge is_mandatory_flag into is_mandatory
     final bool isMandatory = _taskData['is_mandatory_flag'] ?? false;
 
-    // Build the payload
+    // Build the full payload matching the unified-create API
     final payload = {
-      'title': _taskData['title'],
+      'task_title_id': _taskData['task_title_id'], // Added task_title_id
+      'description': _taskData['description'] ?? '',
       'category': _taskData['category'],
-      'priority': _taskData['priority'].toLowerCase(),
+      'priority': (_taskData['priority'] as String).toLowerCase(),
+      'origin_type': 'directive',
       'venue_id': venueId,
       'score': _taskData['score'],
       'is_mandatory': isMandatory,
       'is_package': _taskData['isPackageTask'],
-      'closure_ids': closureIds,
+      'is_document': _taskData['is_document'] ?? true,
+      'closure_ids': _taskData['closure_ids'] ?? [1],
       'task_type_data': taskTypeData,
       'assignee_ids': assigneeIds,
     };
@@ -1556,12 +1701,12 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     }
   }
 
-  void _submitSelfLog() {
+  void _submitSelfLog() async {
     // Validate required fields
-    if (_taskData['title'] == null || _taskData['title'].isEmpty) {
+    if (_taskData['title'] == null || (_taskData['title'] as String).isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Please enter an activity title'),
+        const SnackBar(
+          content: Text('Please enter an activity title'),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ),
@@ -1569,21 +1714,72 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       return;
     }
 
-    // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Activity log submitted successfully!'),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    // Build the activity date string
+    final activityDate =
+        _taskData['activityDate'] as DateTime? ?? DateTime.now();
+    final dateStr = DateFormat('yyyy-MM-dd').format(activityDate);
 
-    // TODO: Send self-log data to backend API
-    // For now, just print the data
-    print('Self Log Data: ${_taskData}');
+    // Build time strings
+    final TimeOfDay? startTime = _taskData['startTime'] is TimeOfDay
+        ? _taskData['startTime'] as TimeOfDay
+        : null;
+    final TimeOfDay? endTime = _taskData['endTime'] is TimeOfDay
+        ? _taskData['endTime'] as TimeOfDay
+        : null;
 
-    // Navigate back or clear form
-    Navigator.pop(context);
+    final startTimeStr = startTime != null
+        ? '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}:00'
+        : '00:00:00';
+    final endTimeStr = endTime != null
+        ? '${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}:00'
+        : '00:00:00';
+
+    final double hours =
+        (_taskData['calculatedHours'] as num?)?.toDouble() ?? 0.0;
+
+    // Build the unified-create payload for self-log
+    final payload = {
+      'task_title_id': _taskData['task_title_id'], // Added task_title_id
+      'description': _taskData['description'] ?? '',
+      'category': _taskData['category'] ?? 'Academic',
+      'priority': 'medium',
+      'origin_type': 'self-log',
+      'is_document': _taskData['is_document'] ?? true,
+      'closure_ids': _taskData['closure_ids'] ?? [1],
+      'task_type_data': {
+        'task_name': 'Self Log',
+        'start_date': dateStr,
+        'start_time': startTimeStr,
+        'end_time': endTimeStr,
+        'time_quota_hours': hours,
+      },
+    };
+
+    try {
+      final taskService = TaskService();
+      await taskService.createTaskUnified(payload);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Activity log submitted successfully!'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to submit log: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   void _addSubTask() {
@@ -1679,4 +1875,153 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       style: const TextStyle(color: Colors.grey, fontSize: 12),
     ),
   );
+}
+
+// Custom Dialog for Searchable Dropdown
+class _SearchableDropdownDialog extends StatefulWidget {
+  final List<String> items;
+  final String? initialValue;
+  final String title;
+
+  const _SearchableDropdownDialog({
+    required this.items,
+    this.initialValue,
+    required this.title,
+  });
+
+  @override
+  State<_SearchableDropdownDialog> createState() =>
+      _SearchableDropdownDialogState();
+}
+
+class _SearchableDropdownDialogState extends State<_SearchableDropdownDialog> {
+  final TextEditingController _searchController = TextEditingController();
+  List<String> _filteredItems = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filteredItems = widget.items;
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _filterItems(String query) {
+    setState(() {
+      _filteredItems = widget.items
+          .where((item) => item.toLowerCase().contains(query.toLowerCase()))
+          .toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Color accent = const Color(0xFF6366F1);
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: Colors.white,
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight:
+              MediaQuery.of(context).size.height *
+              0.7, // Max 70% of screen height
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Title and Close Button
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    "Search ${widget.title}",
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  splashRadius: 20,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Search Bar
+            TextField(
+              controller: _searchController,
+              onChanged: _filterItems,
+              decoration: InputDecoration(
+                hintText: "Search...",
+                prefixIcon: const Icon(Icons.search, size: 20),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                filled: true,
+                fillColor: Colors.grey[100],
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // List of Items
+            Expanded(
+              child: _filteredItems.isEmpty
+                  ? const Center(
+                      child: Text(
+                        "No options found.",
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _filteredItems.length,
+                      itemBuilder: (context, index) {
+                        final item = _filteredItems[index];
+                        final isSelected = item == widget.initialValue;
+
+                        return ListTile(
+                          title: Text(
+                            item,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: isSelected ? accent : Colors.black87,
+                            ),
+                          ),
+                          trailing: isSelected
+                              ? Icon(Icons.check, color: accent, size: 20)
+                              : null,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context, item);
+                          },
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

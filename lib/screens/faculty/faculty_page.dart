@@ -14,6 +14,7 @@ import '../common/task_detail_page.dart';
 import '../../models/faculty_dashboard_stats.dart';
 import '../common/user_selection_page.dart';
 import '../../services/task_service.dart';
+import '../../services/user_service.dart';
 
 class FacultyPage extends StatefulWidget {
   final bool isBlocked;
@@ -31,12 +32,35 @@ class FacultyPage extends StatefulWidget {
 class _FacultyPageState extends State<FacultyPage> {
   FacultyDashboardStats? _stats;
   List<dynamic> _pendingProofs = [];
+  List<dynamic> _escalations = [];
+  String? _userRole;
 
   @override
   void initState() {
     super.initState();
-    _fetchStats();
-    _fetchPendingProofs();
+    _refreshAll();
+  }
+
+  Future<void> _refreshAll() async {
+    await Future.wait([
+      _fetchUserRole(),
+      _fetchStats(),
+      _fetchPendingProofs(),
+      _fetchEscalations(),
+    ]);
+  }
+
+  Future<void> _fetchUserRole() async {
+    try {
+      final profile = await UserService().getUserProfile();
+      if (mounted) {
+        setState(() {
+          _userRole = profile.role;
+        });
+      }
+    } catch (e) {
+      // Fallback
+    }
   }
 
   Future<void> _fetchStats() async {
@@ -100,61 +124,193 @@ class _FacultyPageState extends State<FacultyPage> {
     }
   }
 
-  // --- Logic: Handlers ---
-  void _acceptTask(int index) {
-    // Note: In a real app, this would call an API
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Task accepted"),
-        backgroundColor: AppTheme.success,
-      ),
-    );
+  Future<void> _fetchEscalations() async {
+    try {
+      final TaskService taskService = TaskService();
+      final escalations = await taskService.getEscalations();
+      if (mounted) {
+        setState(() {
+          _escalations = escalations;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _escalations = []);
+      }
+    }
   }
 
-  Future<void> _handleTransfer(String title) async {
+  // --- Logic: Handlers ---
+  Future<void> _acceptTask(int index) async {
+    if (_stats == null) return;
+    final task = _stats!.pendingTasks[index];
+    final taskId = task['task_id'];
+
+    if (taskId == null) return;
+
+    // Show loading overlay
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      await TaskService().acceptTask(taskId);
+      if (mounted) {
+        Navigator.pop(context); // Close loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Task accepted successfully"),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+        _refreshAll();
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error accepting task: $e"),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      }
+    }
+  }
+
+  List<String> _getTransferableRoles() {
+    final role = _userRole?.toLowerCase() ?? '';
+    final List<String> hierarchy = [
+      'admin',
+      'principal',
+      'dean',
+      'hod',
+      'faculty',
+      'student',
+      'staff',
+    ];
+    int userIndex = hierarchy.indexOf(role);
+    // If unknown role, default strictly to students and staff
+    if (userIndex == -1) return ['students', 'staff'];
+
+    final Map<String, String> keyMap = {
+      'hod': 'hods',
+      'student': 'students',
+      'faculty': 'faculty',
+      'staff': 'staff',
+      'admin': 'admin',
+      'principal': 'principal',
+      'dean': 'dean',
+    };
+
+    // Return roles equal to or higher than the user in hierarchy
+    return hierarchy
+        .sublist(0, userIndex + 1)
+        .map((r) => keyMap[r] ?? r)
+        .toList();
+  }
+
+  Future<void> _handleTransfer(int taskId, String title) async {
     final List<Map<String, dynamic>>? result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => const UserSelectionPage(
+        builder: (context) => UserSelectionPage(
           multiSelect: false,
-          allowedRoles: ["Faculty"], // Only transfer to Faculty
+          allowedRoles: _getTransferableRoles(),
         ),
       ),
     );
 
     if (result != null && result.isNotEmpty) {
       final selectedUser = result.first;
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              "Task '$title' transferred to ${selectedUser['name']}",
-            ),
-            backgroundColor: AppTheme.success,
-          ),
+      final selectedUserId = selectedUser['user_id'] ?? selectedUser['id'];
+
+      if (selectedUserId == null || !mounted) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        await TaskService().rejectTask(
+          taskId,
+          "Transferred to ${selectedUser['name']}",
+          transferToUserId: selectedUserId,
         );
-        _fetchStats(); // Refresh to reflect changes
+
+        if (mounted) {
+          Navigator.pop(context); // Close loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                "Task '$title' transferred to ${selectedUser['name']}",
+              ),
+              backgroundColor: AppTheme.success,
+            ),
+          );
+          _refreshAll();
+        }
+      } catch (e) {
+        if (mounted) {
+          Navigator.pop(context); // Close loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Error transferring task: $e"),
+              backgroundColor: AppTheme.danger,
+            ),
+          );
+        }
       }
     }
   }
 
   void _showRejectDialog(int index) {
     if (_stats == null) return;
-    final taskTitle = _stats!.pendingTasks[index]['title'] ?? 'Task';
+    final task = _stats!.pendingTasks[index];
+    final taskId = task['task_id'];
+    final taskTitle = task['title'] ?? 'Task';
+
+    if (taskId == null) return;
 
     UnifiedRejectDialog.show(
       context,
       taskTitle: taskTitle,
-      onTransfer: () => _handleTransfer(taskTitle), // Trigger transfer
-      onReject: (reason, details) {
-        // Handle rejection logic here
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Task rejected: $reason"),
-            backgroundColor: AppTheme.danger,
-          ),
+      onTransfer: () => _handleTransfer(taskId, taskTitle), // Trigger transfer
+      onReject: (reason, details) async {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) =>
+              const Center(child: CircularProgressIndicator()),
         );
-        _fetchStats(); // Refresh
+
+        try {
+          await TaskService().rejectTask(taskId, reason);
+          if (mounted) {
+            Navigator.pop(context); // Close loading
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Task rejected: $reason"),
+                backgroundColor: AppTheme.success,
+              ),
+            );
+            _refreshAll();
+          }
+        } catch (e) {
+          if (mounted) {
+            Navigator.pop(context); // Close loading
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Error rejecting task: $e"),
+                backgroundColor: AppTheme.danger,
+              ),
+            );
+          }
+        }
       },
     );
   }
@@ -183,7 +339,7 @@ class _FacultyPageState extends State<FacultyPage> {
           ),
           SafeArea(
             child: RefreshIndicator(
-              onRefresh: _fetchStats,
+              onRefresh: _refreshAll,
               color: AppTheme.brandAccent,
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(
@@ -389,16 +545,61 @@ class _FacultyPageState extends State<FacultyPage> {
                         SectionHeader(
                           title: "Escalated Tasks",
                           isStatus: true,
-                          count: 1, // Mock count
+                          count: _escalations.length,
                           onViewAll: () {},
                         ),
-                        TaskCard(
-                          title: "Venue Security Audit",
-                          sub: "Escalated by Prof. Aristhoth • High Priority",
-                          accent: AppTheme.danger,
-                          icon: Icons.priority_high_rounded,
-                          onTap: () {},
-                        ),
+                        if (_escalations.isEmpty)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 20),
+                              child: Text(
+                                "No escalated tasks",
+                                style: TextStyle(
+                                  color: AppTheme.textSub,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          ..._escalations.map((escalation) {
+                            final String heroTag =
+                                "escalation_${escalation['task_id']}_pending";
+                            return TaskCard(
+                              title: escalation['title'] ?? "Escalated Task",
+                              sub:
+                                  escalation['escalated_reason'] ??
+                                  escalation['description'] ??
+                                  "High Priority",
+                              accent: AppTheme.danger,
+                              icon: Icons.priority_high_rounded,
+                              heroTag: heroTag,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => TaskDetailsPage(
+                                    taskData: {
+                                      'task_id': escalation['task_id'],
+                                      'title': escalation['title'],
+                                      'sub': escalation['description'],
+                                      'accent': AppTheme.danger,
+                                      'icon': Icons.priority_high_rounded,
+                                      'heroTag': heroTag,
+                                      'startDate':
+                                          escalation['start_date'] ?? "N/A",
+                                      'deadline':
+                                          escalation['end_date'] ?? "N/A",
+                                      'completionType':
+                                          escalation['type'] ?? "INFO",
+                                      'isRequest': false,
+                                      'authority': "Administration",
+                                      'userRole': 'Faculty',
+                                    },
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
 
                         const SizedBox(height: 32),
 

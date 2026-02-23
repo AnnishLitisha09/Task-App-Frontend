@@ -1,5 +1,3 @@
-import '../models/task_detail_model.dart'; // Reuse for task list in details
-
 class StudentSummary {
   final int id;
   final String name;
@@ -19,28 +17,29 @@ class StudentSummary {
     this.avatarUrl,
     this.totalScore = 0,
     this.totalPenalty = 0,
-    this.department = 'CSE',
-    this.year = '3rd',
+    this.department = 'Unknown',
+    this.year = 'N/A',
   });
 
   factory StudentSummary.fromJson(Map<String, dynamic> json) {
     return StudentSummary(
-      id: json['id'] ?? 0,
+      id: json['user_id'] ?? json['id'] ?? 0,
       name: json['name'] ?? 'Unknown Student',
       email: json['email'] ?? '',
-      registerNumber: json['register_number'] ?? 'N/A',
+      registerNumber: json['reg_no'] ?? json['register_number'] ?? 'N/A',
       avatarUrl: json['avatar_url'],
-      totalScore: (json['total_score'] ?? 0).toDouble(),
-      totalPenalty: (json['total_penalty'] ?? 0).toDouble(),
-      department: json['department'] ?? 'CSE',
-      year: json['year'] ?? '3rd',
+      totalScore: double.tryParse(json['score']?.toString() ?? '0') ?? 0.0,
+      totalPenalty: double.tryParse(json['penalty']?.toString() ?? '0') ?? 0.0,
+      department:
+          json['Department']?['name'] ?? json['department'] ?? 'Unknown',
+      year: json['year']?.toString() ?? 'N/A',
     );
   }
 }
 
 class StudentDetail extends StudentSummary {
-  final List<TaskDetailModel> activeTasks;
-  final List<TaskDetailModel> completedTasks;
+  final List<dynamic> directives;
+  final List<dynamic> selfLogs;
   final Map<String, dynamic> attendanceStats;
 
   StudentDetail({
@@ -53,13 +52,17 @@ class StudentDetail extends StudentSummary {
     super.totalPenalty,
     super.department,
     super.year,
-    this.activeTasks = const [],
-    this.completedTasks = const [],
+    this.directives = const [],
+    this.selfLogs = const [],
     this.attendanceStats = const {},
   });
 
   factory StudentDetail.fromJson(Map<String, dynamic> json) {
-    var summary = StudentSummary.fromJson(json);
+    // API returns profile inside "profile", and tasks inside "today"
+    final profileJson = json['profile'] ?? json;
+    var summary = StudentSummary.fromJson(profileJson);
+
+    final todayJson = json['today'] ?? {};
 
     return StudentDetail(
       id: summary.id,
@@ -71,16 +74,8 @@ class StudentDetail extends StudentSummary {
       totalPenalty: summary.totalPenalty,
       department: summary.department,
       year: summary.year,
-      activeTasks:
-          (json['active_tasks'] as List?)
-              ?.map((e) => TaskDetailModel.fromJson(e))
-              .toList() ??
-          [],
-      completedTasks:
-          (json['completed_tasks'] as List?)
-              ?.map((e) => TaskDetailModel.fromJson(e))
-              .toList() ??
-          [],
+      directives: todayJson['directives'] ?? [],
+      selfLogs: todayJson['self_logs'] ?? [],
       attendanceStats: json['attendance_stats'] ?? {},
     );
   }

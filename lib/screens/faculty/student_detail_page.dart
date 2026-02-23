@@ -88,26 +88,22 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
             const SizedBox(height: 32),
 
             // Active Tasks
-            _buildSectionHeader("Active Tasks"),
+            _buildSectionHeader("Directives Today"),
             const SizedBox(height: 16),
-            if (_studentDetail!.activeTasks.isEmpty)
-              _buildEmptyState("No active tasks assigned.")
+            if (_studentDetail!.directives.isEmpty)
+              _buildEmptyState("No directives assigned today.")
             else
-              ..._studentDetail!.activeTasks.map(
-                (task) => _buildTaskItem(task),
-              ),
+              ..._studentDetail!.directives.map((task) => _buildTaskItem(task)),
 
             const SizedBox(height: 32),
 
             // History
-            _buildSectionHeader("Recent History"),
+            _buildSectionHeader("Self Logs Today"),
             const SizedBox(height: 16),
-            if (_studentDetail!.completedTasks.isEmpty)
-              _buildEmptyState("No history available.")
+            if (_studentDetail!.selfLogs.isEmpty)
+              _buildEmptyState("No self logs tracked today.")
             else
-              ..._studentDetail!.completedTasks.map(
-                (task) => _buildTaskItem(task),
-              ),
+              ..._studentDetail!.selfLogs.map((task) => _buildTaskItem(task)),
           ],
         ),
       ),
@@ -219,50 +215,119 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
   }
 
   Widget _buildTaskItem(dynamic task) {
-    // Placeholder for task item since we are using mock data and
-    // might not have full TaskDetailModel populated yet in service
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppTheme.brandAccent.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
+    if (task == null) return const SizedBox.shrink();
+
+    final title = task['title'] ?? task['task_title'] ?? "Untitled Task";
+    final category = task['category'] ?? "General";
+    final status = task['status'] ?? "PENDING";
+    final isEscalate =
+        task['is_escalate'] == true || task['isEscalate'] == true;
+
+    Color statusColor;
+    if (status.toString().toUpperCase() == "COMPLETED") {
+      statusColor = AppTheme.success;
+    } else if (status.toString().toUpperCase() == "REJECTED") {
+      statusColor = AppTheme.danger;
+    } else {
+      statusColor = const Color(0xFF64748B); // Fallback Slate color
+    }
+
+    return InkWell(
+      onTap: () {
+        // You can integrate TaskDetailsPage here if you have taskId
+        // Navigator.push(context, MaterialPageRoute(builder: (_) => TaskDetailsPage(...)))
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-            child: const Icon(
-              Icons.assignment,
-              color: AppTheme.brandAccent,
-              size: 20,
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isEscalate
+                    ? AppTheme.danger.withOpacity(0.1)
+                    : AppTheme.brandAccent.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                isEscalate
+                    ? Icons.priority_high_rounded
+                    : Icons.assignment_outlined,
+                color: isEscalate ? AppTheme.danger : AppTheme.brandAccent,
+                size: 20,
+              ),
             ),
-          ),
-          const SizedBox(width: 16),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Task Title", // Replace with task.title
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E293B),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isEscalate
+                          ? AppTheme.danger
+                          : const Color(0xFF1E293B),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                Text(
-                  "Assigned: Today", // Replace with date
-                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text(
+                        category,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          status,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: statusColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 14,
+              color: Colors.grey,
+            ),
+          ],
+        ),
       ),
     );
   }

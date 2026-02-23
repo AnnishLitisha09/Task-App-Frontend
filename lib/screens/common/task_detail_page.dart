@@ -203,28 +203,30 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
             ),
           ),
           const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "ASSIGNED VENUE",
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  color: textSub,
-                  letterSpacing: 1,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "ASSIGNED VENUE",
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: textSub,
+                    letterSpacing: 1,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                venueName,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: textMain,
+                const SizedBox(height: 2),
+                Text(
+                  venueName,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: textMain,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),

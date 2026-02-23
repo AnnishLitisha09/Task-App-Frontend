@@ -4,6 +4,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'create_task_page.dart';
 import 'task_creation_view_page.dart';
 import 'self_log_detail_page.dart';
+import '../../services/task_service.dart';
+import 'package:intl/intl.dart';
 
 class TaskManagementPage extends StatefulWidget {
   const TaskManagementPage({super.key});
@@ -22,73 +24,96 @@ class _TaskManagementPageState extends State<TaskManagementPage>
   String _directiveSearchQuery = '';
   String _selfLogSearchQuery = '';
 
-  // Mock Directive Tasks - Now in a list for filtering
-  final List<Map<String, dynamic>> _directiveTasks = [
-    {
-      'title': 'System Architecture Exam',
-      'category': 'Assessment',
-      'taskType': 'Fixed Time Task',
-      'locationId': 'Room 402',
-      'priority': 'Critical',
-      'completionMethods': ['QR Scan', 'Photo'],
-      'selectedDate': DateTime(2026, 2, 12),
-      'description':
-          "Ensure all hardware is calibrated before the exam starts.",
-      'ownerId': "Prof. Aristhoth",
-      'approvalAuthority': "Dept. Head Sarah",
-      'status': "Pending",
-    },
-    {
-      'title': 'Monthly Audit Report',
-      'category': 'Assessment',
-      'taskType': 'Recurring Task',
-      'locationId': 'Main Hall',
-      'priority': 'Medium',
-      'completionMethods': ['Doc Upload'],
-      'selectedDate': DateTime(2026, 2, 15),
-      'description': "Submit the audit report for the current month.",
-      'ownerId': "Prof. Aristhoth",
-      'approvalAuthority': "Dept. Head Sarah",
-      'status': "Completed",
-    },
-    {
-      'title': 'Lab Maintenance',
-      'category': 'Maintenance',
-      'taskType': 'Fixed Time Task',
-      'locationId': 'CS Lab 1',
-      'priority': 'High',
-      'completionMethods': ['Photo'],
-      'selectedDate': DateTime(2026, 2, 18),
-      'description': "Check all systems for software updates.",
-      'ownerId': "Prof. Aristhoth",
-      'status': "Pending",
-    },
-  ];
-
-  // Mock self-log data
-  final List<Map<String, dynamic>> _selfLogs = [
-    {
-      'title': 'Research Paper Review',
-      'description': 'Reviewed 3 research papers on AI and machine learning',
-      'startTime': '09:00 AM',
-      'endTime': '11:30 AM',
-      'duration': 2.5,
-      'date': 'Feb 16, 2026',
-    },
-    {
-      'title': 'Project Development',
-      'description': 'Worked on Flutter app features and bug fixes',
-      'startTime': '02:00 PM',
-      'endTime': '05:00 PM',
-      'duration': 3.0,
-      'date': 'Feb 16, 2026',
-    },
-  ];
+  List<Map<String, dynamic>> _directiveTasks = [];
+  List<Map<String, dynamic>> _selfLogs = [];
+  int _totalCount = 0;
+  int _directiveCount = 0;
+  int _selfLogCount = 0;
+  bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _fetchDailyReport();
+  }
+
+  Future<void> _fetchDailyReport() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final taskService = TaskService();
+      final report = await taskService.getDailyReport();
+
+      if (mounted) {
+        setState(() {
+          _directiveTasks = report.directiveTasks
+              .map(
+                (t) => {
+                  'task_id': t.taskId,
+                  'title': t.title,
+                  'category': t.category,
+                  'taskType': t.originType,
+                  'locationId': t.venue ?? 'N/A',
+                  'priority': t.priority,
+                  'completionMethods': t.isDocument
+                      ? ['Doc Upload']
+                      : ['Photo'],
+                  'selectedDate': DateTime.parse(t.time.startDate),
+                  'description': t.description,
+                  'status': t.status,
+                },
+              )
+              .toList();
+
+          _selfLogs = report.selfLogTasks
+              .map(
+                (t) => {
+                  'task_id': t.taskId,
+                  'title': t.title,
+                  'description': t.description,
+                  'startTime': t.time.startTime,
+                  'endTime': t.time.endTime,
+                  'duration': _calculateDuration(
+                    t.time.startTime,
+                    t.time.endTime,
+                  ),
+                  'date': DateFormat(
+                    'MMM dd, yyyy',
+                  ).format(DateTime.parse(t.time.startDate)),
+                },
+              )
+              .toList();
+
+          _directiveCount = report.directiveTaskCount;
+          _selfLogCount = report.selfLogCount;
+          _totalCount = report.totalTask;
+
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = e.toString();
+        });
+      }
+    }
+  }
+
+  double _calculateDuration(String start, String end) {
+    try {
+      final startTime = DateFormat("HH:mm:ss").parse(start);
+      final endTime = DateFormat("HH:mm:ss").parse(end);
+      return endTime.difference(startTime).inMinutes / 60.0;
+    } catch (e) {
+      return 0.0;
+    }
   }
 
   @override
@@ -156,10 +181,32 @@ class _TaskManagementPageState extends State<TaskManagementPage>
               _buildTabBar(),
               // Tab Content
               Expanded(
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [_buildDirectiveTasksTab(), _buildSelfLogsTab()],
-                ),
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _errorMessage != null
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              _errorMessage!,
+                              style: const TextStyle(color: Colors.red),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: _fetchDailyReport,
+                              child: const Text("Retry"),
+                            ),
+                          ],
+                        ),
+                      )
+                    : TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _buildDirectiveTasksTab(),
+                          _buildSelfLogsTab(),
+                        ],
+                      ),
               ),
             ],
           ),
@@ -387,7 +434,10 @@ class _TaskManagementPageState extends State<TaskManagementPage>
                     children: [
                       _badge("Self Log", Colors.blueGrey),
                       const Spacer(),
-                      _badge('${log['duration']}h', brandPrimary),
+                      _badge(
+                        '${(log['duration'] as num).toStringAsFixed(2)}h',
+                        brandPrimary,
+                      ),
                       const SizedBox(width: 8),
                       _buildLogMenu(log),
                     ],
@@ -505,11 +555,23 @@ class _TaskManagementPageState extends State<TaskManagementPage>
   Widget _buildLightStatsRow() {
     return Row(
       children: [
-        _statChip("12", "Active", brandPrimary),
+        _statChip(
+          _totalCount.toString().padLeft(2, '0'),
+          "Total",
+          brandPrimary,
+        ),
         const SizedBox(width: 12),
-        _statChip("05", "Review", const Color(0xFFF59E0B)),
+        _statChip(
+          _directiveCount.toString().padLeft(2, '0'),
+          "Directives",
+          const Color(0xFFF59E0B),
+        ),
         const SizedBox(width: 12),
-        _statChip("28", "Done", const Color(0xFF10B981)),
+        _statChip(
+          _selfLogCount.toString().padLeft(2, '0'),
+          "Self-Logs",
+          const Color(0xFF10B981),
+        ),
       ],
     );
   }

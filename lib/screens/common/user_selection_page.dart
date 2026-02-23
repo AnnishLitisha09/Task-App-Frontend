@@ -89,7 +89,10 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
   }
 
   void _toggleItem(Map<String, dynamic> item) {
-    if (item['type'] == 'user') {
+    // Users from API often don't have a 'type' field, while roles and depts do.
+    final isRoleOrDept = item['type'] == 'role' || item['type'] == 'dept';
+
+    if (!isRoleOrDept) {
       final id = (item['id'] ?? item['user_id'])?.toString() ?? '';
       setState(() {
         if (_isSelected(id)) {
