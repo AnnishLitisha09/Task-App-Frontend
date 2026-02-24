@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/task_detail_model.dart';
 import '../models/daily_report_model.dart';
+import '../models/venue_dashboard_model.dart';
 
 class TaskService {
   Future<TaskDetailModel> getTaskDetail(String taskId) async {
@@ -147,6 +148,34 @@ class TaskService {
     }
   }
 
+  Future<VenueDashboardResponse> getVenueDashboard() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}tasks/venue-dashboard'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return VenueDashboardResponse.fromJson(data);
+      } else {
+        throw Exception(
+          'Failed to load venue dashboard: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      throw Exception('Error fetching venue dashboard: $e');
+    }
+  }
+
   Future<List<dynamic>> getTaskTitles() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -213,7 +242,9 @@ class TaskService {
       }
 
       final response = await http.put(
-        Uri.parse('${backendUrl}tasks/reject/$taskId'),
+        Uri.parse('${backendUrl}tasks/$taskId/reject'),
+
+        // Uri.parse('${backendUrl}tasks/$taskId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',

@@ -10,8 +10,13 @@ enum ActivityStatus { NOT_STARTED, IN_PROGRESS, PAUSED, COMPLETED }
 
 class TaskDetailsPage extends StatefulWidget {
   final Map<String, dynamic> taskData;
+  final String viewMode; // e.g., 'standard', 'incharge'
 
-  const TaskDetailsPage({super.key, required this.taskData});
+  const TaskDetailsPage({
+    super.key,
+    required this.taskData,
+    this.viewMode = 'standard',
+  });
 
   @override
   State<TaskDetailsPage> createState() => _TaskDetailsPageState();
@@ -97,7 +102,10 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildPriorityBadge(isApprovalWorkflow),
+                if (widget.viewMode != 'incharge') ...[
+                  _buildPriorityBadge(isApprovalWorkflow),
+                  const SizedBox(height: 12),
+                ],
                 const SizedBox(height: 12),
                 _buildHeaderSection(),
                 const SizedBox(height: 24),
@@ -125,9 +133,10 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
               ],
             ),
           ),
-          _buildFloatingBottomAction(
-            isApprovalWorkflow,
-          ), // UPDATED: Adaptive button
+          if (widget.viewMode != 'incharge')
+            _buildFloatingBottomAction(
+              isApprovalWorkflow,
+            ), // UPDATED: Adaptive button
         ],
       ),
     );

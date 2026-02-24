@@ -6,6 +6,9 @@ import '../../components/custom_app_bar.dart';
 import '../../components/stat_card.dart';
 import '../../components/task_card.dart';
 import '../../components/section_header.dart';
+import '../../services/task_service.dart';
+import '../../models/venue_dashboard_model.dart';
+import '../common/task_detail_page.dart';
 
 class RoleUserPage extends StatefulWidget {
   final String title;
@@ -18,6 +21,90 @@ class RoleUserPage extends StatefulWidget {
 }
 
 class _RoleUserPageState extends State<RoleUserPage> {
+  final TaskService _taskService = TaskService();
+  VenueDashboardResponse? _venueDashboard;
+  bool _isLoading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.scope.toLowerCase() == 'infrastructure') {
+      _fetchVenueDashboard();
+    }
+  }
+
+  Future<void> _fetchVenueDashboard() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final data = await _taskService.getVenueDashboard();
+      setState(() {
+        _venueDashboard = data;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _handleApproveVenueTask(int taskId) async {
+    try {
+      await _taskService.acceptTask(taskId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Venue request approved!'),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+      }
+      _fetchVenueDashboard();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to approve: $e'),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleRejectVenueTask(int taskId) async {
+    try {
+      await _taskService.rejectTask(
+        taskId,
+        'Venue request rejected from dashboard',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Venue request rejected.'),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+      }
+      _fetchVenueDashboard();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to reject: $e'),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     String formattedDate = DateFormat('EEEE, MMM dd').format(DateTime.now());
@@ -43,18 +130,36 @@ class _RoleUserPageState extends State<RoleUserPage> {
                   date: formattedDate,
                   notificationCount: 1, // Mock count
                 ),
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  sliver: SliverList(
-                    delegate: SliverChildListDelegate([
-                      const SizedBox(height: 12),
-                      _buildScopeDynamicMetrics(),
-                      const SizedBox(height: 32),
-                      ..._buildLogicDrivenTasks(),
-                      const SizedBox(height: 100),
-                    ]),
+                if (_isLoading)
+                  const SliverFillRemaining(
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: AppTheme.brandAccent,
+                      ),
+                    ),
+                  )
+                else if (_error != null)
+                  SliverFillRemaining(
+                    child: Center(
+                      child: Text(
+                        'Error: $_error',
+                        style: const TextStyle(color: AppTheme.danger),
+                      ),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate([
+                        const SizedBox(height: 12),
+                        _buildScopeDynamicMetrics(),
+                        const SizedBox(height: 32),
+                        ..._buildLogicDrivenTasks(),
+                        const SizedBox(height: 100),
+                      ]),
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -108,20 +213,37 @@ class _RoleUserPageState extends State<RoleUserPage> {
           ],
         );
       case 'infrastructure':
+        final totalVenues =
+            _venueDashboard?.totalVenuesManaged.toString() ?? "0";
+        final firstVenueStats = _venueDashboard?.venues.isNotEmpty == true
+            ? _venueDashboard!.venues.first.stats
+            : null;
+
+        final usagePercentage =
+            firstVenueStats?.todayUsagePercentage ?? "0.00%";
+        final bookingsCount = firstVenueStats?.bookedCount.toString() ?? "0";
+
         return Row(
           children: [
             StatCard(
-              label: "Venue Usage",
-              value: "85%",
+              label: "Total Venues",
+              value: totalVenues,
               icon: Icons.stadium_rounded,
               color: AppTheme.success,
             ),
             const SizedBox(width: 12),
             StatCard(
-              label: "Bookings",
-              value: "24",
-              icon: Icons.calendar_today_rounded,
+              label: "Venue Usage",
+              value: usagePercentage,
+              icon: Icons.pie_chart_rounded,
               color: AppTheme.brandAccent,
+            ),
+            const SizedBox(width: 12),
+            StatCard(
+              label: "Bookings",
+              value: bookingsCount,
+              icon: Icons.calendar_today_rounded,
+              color: AppTheme.warning,
             ),
           ],
         );
@@ -222,36 +344,128 @@ class _RoleUserPageState extends State<RoleUserPage> {
         ),
       );
     } else if (scope == 'infrastructure') {
-      sections.add(SectionHeader(title: "Today's Bookings", onViewAll: () {}));
-      sections.add(
-        const TaskCard(
-          title: "Seminar Hall A",
-          sub: "Workshop • 02:00 PM",
-          accent: AppTheme.brandAccent,
-          icon: Icons.meeting_room_rounded,
-        ),
-      );
+      if (_venueDashboard == null || _venueDashboard!.venues.isEmpty) {
+        sections.add(const Center(child: Text("No venue data available.")));
+      } else {
+        final venue = _venueDashboard!.venues.first;
 
-      sections.add(const SizedBox(height: 24));
-      sections.add(SectionHeader(title: "Venue Requests", onViewAll: () {}));
-      sections.add(
-        const TaskCard(
-          title: "Auditorium Request",
-          sub: "Annual Cultural Fest",
-          accent: AppTheme.success,
-          icon: Icons.stadium_rounded,
-          isApproval: true,
-        ),
-      );
-      sections.add(SectionHeader(title: "Booking History", onViewAll: () {}));
-      sections.add(
-        const TaskCard(
-          title: "Seminar Hall A",
-          sub: "Workshop • 02:00 PM",
-          accent: AppTheme.brandAccent,
-          icon: Icons.meeting_room_rounded,
-        ),
-      );
+        sections.add(
+          SectionHeader(title: "Today's Bookings", onViewAll: () {}),
+        );
+
+        if (venue.bookedTasks.isEmpty) {
+          sections.add(
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12.0),
+              child: Text(
+                "No booked tasks for today.",
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+          );
+        } else {
+          for (var task in venue.bookedTasks) {
+            final title = task is Map
+                ? (task['title'] ?? 'Unknown Task')
+                : 'Unknown Task';
+            final sub = task is Map
+                ? (task['description'] ?? 'No description')
+                : 'No description';
+
+            sections.add(
+              TaskCard(
+                title: title,
+                sub: sub,
+                accent: AppTheme.brandAccent,
+                icon: Icons.meeting_room_rounded,
+                onTap: task is Map
+                    ? () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => TaskDetailsPage(
+                              taskData: task.cast<String, dynamic>(),
+                              viewMode: 'incharge',
+                            ),
+                          ),
+                        );
+                      }
+                    : null,
+              ),
+            );
+            sections.add(const SizedBox(height: 12));
+          }
+        }
+
+        sections.add(const SizedBox(height: 12));
+        sections.add(
+          SectionHeader(title: "Pending Approvals", onViewAll: () {}),
+        );
+
+        if (venue.pendingApprovalTasks.isEmpty) {
+          sections.add(
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12.0),
+              child: Text(
+                "No pending venue requests.",
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+          );
+        } else {
+          for (var task in venue.pendingApprovalTasks) {
+            final title = task is Map
+                ? (task['title'] ?? 'Unknown Request')
+                : 'Unknown Request';
+            final sub = task is Map
+                ? (task['description'] ?? 'No description')
+                : 'No description';
+            final taskId = task is Map
+                ? (task['task_id'] ?? task['id'] ?? 0)
+                : 0;
+
+            sections.add(
+              TaskCard(
+                title: title,
+                sub: sub,
+                accent: AppTheme.warning,
+                icon: Icons.stadium_rounded,
+                isApproval: true,
+                onAccept: taskId != 0
+                    ? () => _handleApproveVenueTask(taskId)
+                    : null,
+                onReject: taskId != 0
+                    ? () => _handleRejectVenueTask(taskId)
+                    : null,
+                onTap: task is Map
+                    ? () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => TaskDetailsPage(
+                              taskData: task.cast<String, dynamic>(),
+                              viewMode: 'incharge',
+                            ),
+                          ),
+                        );
+                      }
+                    : null,
+              ),
+            );
+            sections.add(const SizedBox(height: 12));
+          }
+        }
+
+        sections.add(SectionHeader(title: "Booking History", onViewAll: () {}));
+        sections.add(
+          const TaskCard(
+            title: "Seminar Hall A",
+            sub: "Workshop • 02:00 PM",
+            accent: AppTheme.brandAccent,
+            icon: Icons.meeting_room_rounded,
+          ),
+        );
+      }
     }
 
     return sections;
