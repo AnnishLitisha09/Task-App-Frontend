@@ -71,18 +71,123 @@ class _ScorePerformancePageState extends State<ScorePerformancePage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
+      Widget sh({double w = double.infinity, double h = 14, double r = 8}) =>
+          Container(
+                width: w,
+                height: h,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade200,
+                  borderRadius: BorderRadius.circular(r),
+                ),
+              )
+              .animate(onPlay: (c) => c.repeat())
+              .shimmer(duration: 1300.ms, color: Colors.white.withOpacity(0.7));
+
       return Scaffold(
         backgroundColor: Colors.white,
-        body: Center(
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          title: const Text("Performance", style: AppTheme.h1),
+          centerTitle: false,
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: AppTheme.textMain,
+              size: 20,
+            ),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const CircularProgressIndicator(
-                color: AppTheme.brandAccent,
-                strokeWidth: 3,
+              // Score overview chips
+              Row(
+                children: [
+                  Expanded(
+                    child:
+                        Container(
+                              height: 70,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            )
+                            .animate(onPlay: (c) => c.repeat())
+                            .shimmer(
+                              duration: 1300.ms,
+                              color: Colors.white.withOpacity(0.7),
+                            ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child:
+                        Container(
+                              height: 70,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            )
+                            .animate(onPlay: (c) => c.repeat())
+                            .shimmer(
+                              duration: 1300.ms,
+                              color: Colors.white.withOpacity(0.7),
+                            ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child:
+                        Container(
+                              height: 70,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            )
+                            .animate(onPlay: (c) => c.repeat())
+                            .shimmer(
+                              duration: 1300.ms,
+                              color: Colors.white.withOpacity(0.7),
+                            ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 24),
-              Text("Fetching your progress...", style: AppTheme.bodyMain),
+              const SizedBox(height: 40),
+              // Chart card
+              Container(
+                    height: 240,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  )
+                  .animate(onPlay: (c) => c.repeat())
+                  .shimmer(
+                    duration: 1300.ms,
+                    color: Colors.white.withOpacity(0.7),
+                  ),
+              const SizedBox(height: 40),
+              sh(w: 120, h: 18, r: 8),
+              const SizedBox(height: 16),
+              for (int i = 0; i < 5; i++) ...[
+                Container(
+                      height: 58,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    )
+                    .animate(onPlay: (c) => c.repeat())
+                    .shimmer(
+                      duration: 1300.ms,
+                      color: Colors.white.withOpacity(0.7),
+                    ),
+                const SizedBox(height: 12),
+              ],
             ],
           ),
         ),
