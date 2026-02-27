@@ -232,9 +232,27 @@ class _ScorePerformancePageState extends State<ScorePerformancePage> {
               style: AppTheme.overline.copyWith(color: color, fontSize: 8),
             ),
             const SizedBox(height: 4),
-            Text(
-              value,
-              style: AppTheme.h1.copyWith(color: color, fontSize: 24),
+            Builder(
+              builder: (context) {
+                int? numericValue = int.tryParse(value);
+                if (numericValue == null) {
+                  return Text(
+                    value,
+                    style: AppTheme.h1.copyWith(color: color, fontSize: 24),
+                  );
+                }
+                return TweenAnimationBuilder<double>(
+                  tween: Tween<double>(begin: 0, end: numericValue.toDouble()),
+                  duration: const Duration(seconds: 2),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, val, child) {
+                    return Text(
+                      val.toInt().toString(),
+                      style: AppTheme.h1.copyWith(color: color, fontSize: 24),
+                    );
+                  },
+                );
+              },
             ),
           ],
         ),

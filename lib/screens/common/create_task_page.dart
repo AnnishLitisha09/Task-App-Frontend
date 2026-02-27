@@ -1288,7 +1288,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             ? const LinearProgressIndicator(minHeight: 2)
             : DropdownButtonFormField<String>(
                 dropdownColor: Colors.white,
-                value: dropdownValue,
+                initialValue: dropdownValue,
                 items: effectiveItems
                     .map(
                       (e) => DropdownMenuItem(

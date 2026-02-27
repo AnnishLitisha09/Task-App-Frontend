@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
+import '../../components/skeleton_loader.dart';
+import 'all_staff_schedule_page.dart';
 
 class StaffPage extends StatefulWidget {
   const StaffPage({super.key});
@@ -20,19 +22,60 @@ class _StaffPageState extends State<StaffPage> {
   final Color warningColor = const Color(0xFFF59E0B);
   final Color destructive = const Color(0xFFF43F5E);
 
-  // --- State Data ---
-  // To test the "No Requests" view, simply empty this list.
-  List<Map<String, dynamic>> pendingRequests = [
+  bool _isLoading = true;
+
+  List<Map<String, dynamic>> todayTasks = [
     {
-      "title": "Emergency Pipe Repair",
-      "sub": "Block A • High Priority",
-      "color": const Color(0xFFF59E0B),
-      "icon": Icons.plumbing_rounded,
+      "title": "Regular Site Inspection",
+      "time": "09:00 AM - 11:00 AM",
+      "color": const Color(0xFF6366F1),
+      "icon": Icons.visibility_rounded,
+    },
+    {
+      "title": "Staff Briefing",
+      "time": "01:00 PM - 01:30 PM",
+      "color": Colors.purple,
+      "icon": Icons.groups_rounded,
+    },
+    {
+      "title": "Waste Management Review",
+      "time": "03:00 PM - 04:00 PM",
+      "color": const Color(0xFF10B981),
+      "icon": Icons.recycling_rounded,
+    },
+  ];
+
+  List<Map<String, dynamic>> recentActivity = [
+    {
+      "title": "Waste Collection Done",
+      "time": "Today, 08:20 AM",
+      "color": const Color(0xFF10B981),
+      "icon": Icons.check_circle_outline_rounded,
+    },
+    {
+      "title": "Shift Started: John Doe",
+      "time": "Today, 06:00 AM",
+      "color": Colors.blueGrey,
+      "icon": Icons.login_rounded,
+    },
+    {
+      "title": "Routine Checkup",
+      "time": "Yesterday, 05:00 PM",
+      "color": const Color(0xFF6366F1),
+      "icon": Icons.fact_check_outlined,
     },
   ];
 
   int totalTasksCompleted = 48;
   int activeEmployees = 12;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 900), () {
+      if (mounted) setState(() => _isLoading = false);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +85,6 @@ class _StaffPageState extends State<StaffPage> {
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // Background Glow Decoration
           Positioned(
             top: -100,
             right: -50,
@@ -56,76 +98,92 @@ class _StaffPageState extends State<StaffPage> {
               physics: const BouncingScrollPhysics(),
               slivers: [
                 _buildHeader(formattedDate),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-                  sliver: SliverList(
-                    delegate: SliverChildListDelegate([
-                      _buildStatsGrid(),
-                      const SizedBox(height: 32),
+                if (_isLoading)
+                  const SliverToBoxAdapter(child: DashboardSkeleton())
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate([
+                        _buildStatsGrid(),
+                        const SizedBox(height: 32),
 
-                      // 1. TODAY'S TASKS
-                      _buildSectionHeader("Today's Schedule", onViewAll: () {}),
-                      _taskCard(
-                        "Regular Site Inspection",
-                        "09:00 AM - 11:00 AM",
-                        brandAccent,
-                        Icons.visibility_rounded,
-                      ),
-                      _taskCard(
-                        "Staff Briefing",
-                        "01:00 PM - 01:30 PM",
-                        Colors.purple,
-                        Icons.groups_rounded,
-                      ),
-
-                      const SizedBox(height: 32),
-
-                      // 3. RECENT HISTORY (Enhanced Layout)
-                      _buildSectionHeader("Recent Activity", onViewAll: () {}),
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(
-                            color: brandPrimary.withOpacity(0.05),
+                        // --- Today's Schedule (max 2) ---
+                        _buildSectionHeader(
+                          "Today's Schedule",
+                          onViewAll: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const AllStaffSchedulePage(),
+                            ),
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: brandPrimary.withOpacity(0.03),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
                         ),
-                        child: Column(
-                          children: [
-                            _enhancedHistoryTile(
-                              "Waste Collection Done",
-                              "Today, 08:20 AM",
-                              successColor,
-                              Icons.check_circle_outline_rounded,
-                              isFirst: true,
+                        ...todayTasks
+                            .take(2)
+                            .map(
+                              (task) => _taskCard(
+                                task['title'] as String,
+                                task['time'] as String,
+                                task['color'] as Color,
+                                task['icon'] as IconData,
+                              ),
                             ),
-                            _enhancedHistoryTile(
-                              "Shift Started: John Doe",
-                              "Today, 06:00 AM",
-                              Colors.blueGrey,
-                              Icons.login_rounded,
+
+                        const SizedBox(height: 32),
+
+                        // --- Recent Activity (max 2) ---
+                        _buildSectionHeader(
+                          "Recent Activity",
+                          onViewAll: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const AllStaffSchedulePage(),
                             ),
-                            _enhancedHistoryTile(
-                              "Routine Checkup",
-                              "Yesterday, 05:00 PM",
-                              brandAccent,
-                              Icons.fact_check_outlined,
-                              isLast: true,
-                            ),
-                          ],
+                          ),
                         ),
-                      ).animate().fadeIn(duration: 500.ms),
-                    ]),
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(28),
+                            border: Border.all(
+                              color: brandPrimary.withOpacity(0.05),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: brandPrimary.withOpacity(0.03),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            children: recentActivity
+                                .take(2)
+                                .toList()
+                                .asMap()
+                                .entries
+                                .map((entry) {
+                                  final idx = entry.key;
+                                  final item = entry.value;
+                                  final isFirst = idx == 0;
+                                  final isLast =
+                                      idx == recentActivity.take(2).length - 1;
+                                  return _enhancedHistoryTile(
+                                    item['title'] as String,
+                                    item['time'] as String,
+                                    item['color'] as Color,
+                                    item['icon'] as IconData,
+                                    isFirst: isFirst,
+                                    isLast: isLast,
+                                  );
+                                })
+                                .toList(),
+                          ),
+                        ).animate().fadeIn(duration: 500.ms),
+                      ]),
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -193,12 +251,7 @@ class _StaffPageState extends State<StaffPage> {
           Icons.assignment_turned_in_rounded,
           successColor,
         ),
-        _statTile(
-          "Pending",
-          pendingRequests.length.toString().padLeft(2, '0'),
-          Icons.pending_actions_rounded,
-          warningColor,
-        ),
+        _statTile("Pending", "01", Icons.pending_actions_rounded, warningColor),
         _statTile(
           "Employees",
           activeEmployees.toString(),

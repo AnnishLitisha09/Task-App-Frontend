@@ -27,7 +27,10 @@ class CustomAppBar extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
-                  colors: [AppTheme.brandAccent, AppTheme.brandAccent.withOpacity(0.2)],
+                  colors: [
+                    AppTheme.brandAccent,
+                    AppTheme.brandAccent.withOpacity(0.2),
+                  ],
                 ),
               ),
               child: CircleAvatar(
@@ -44,12 +47,12 @@ class CustomAppBar extends StatelessWidget {
                 if (date != null)
                   Text(
                     date!,
-                    style: AppTheme.bodySub,
+                    style: AppTheme.bodySub.copyWith(
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                Text(
-                  title,
-                  style: AppTheme.h2.copyWith(fontSize: 18),
-                ),
+                Text(title, style: AppTheme.h2.copyWith(fontSize: 18)),
               ],
             ),
             const Spacer(),
@@ -78,7 +81,11 @@ class CustomAppBar extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          const Icon(Icons.notifications_none_rounded, color: AppTheme.textMain, size: 22),
+          const Icon(
+            Icons.notifications_none_rounded,
+            color: AppTheme.textMain,
+            size: 22,
+          ),
           if (notificationCount > 0)
             Positioned(
               top: 12,

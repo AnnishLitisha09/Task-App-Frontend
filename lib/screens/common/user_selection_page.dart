@@ -646,9 +646,10 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(4),
                 ),
-                fillColor: MaterialStateProperty.resolveWith((states) {
-                  if (isPartiallySelected)
+                fillColor: WidgetStateProperty.resolveWith((states) {
+                  if (isPartiallySelected) {
                     return AppTheme.brandAccent.withOpacity(0.5);
+                  }
                   return null;
                 }),
               ),

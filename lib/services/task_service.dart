@@ -5,6 +5,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/task_detail_model.dart';
 import '../models/daily_report_model.dart';
 import '../models/venue_dashboard_model.dart';
+import '../models/venue_history_model.dart';
+import '../models/managed_venues_model.dart';
 
 class TaskService {
   Future<TaskDetailModel> getTaskDetail(String taskId) async {
@@ -148,7 +150,38 @@ class TaskService {
     }
   }
 
-  Future<VenueDashboardResponse> getVenueDashboard() async {
+  Future<VenueDetailsResponse> getVenueDetails({int? venueId}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      String url = '${backendUrl}tasks/venue-details';
+      if (venueId != null) {
+        url += '?venue_id=$venueId';
+      }
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return VenueDetailsResponse.fromJson(data);
+      } else {
+        throw Exception('Failed to load venue details: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching venue details: $e');
+    }
+  }
+
+  Future<VenueDetailsResponse> getVenueDashboard() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken') ?? '';
@@ -165,7 +198,7 @@ class TaskService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return VenueDashboardResponse.fromJson(data);
+        return VenueDetailsResponse.fromJson(data);
       } else {
         throw Exception(
           'Failed to load venue dashboard: ${response.statusCode}',
@@ -173,6 +206,34 @@ class TaskService {
       }
     } catch (e) {
       throw Exception('Error fetching venue dashboard: $e');
+    }
+  }
+
+  Future<ManagedVenuesResponse> getManagedVenues() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}tasks/venues/my-list'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return ManagedVenuesResponse.fromJson(data);
+      } else {
+        throw Exception(
+          'Failed to load managed venues: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      throw Exception('Error fetching managed venues: $e');
     }
   }
 
@@ -260,6 +321,61 @@ class TaskService {
     }
   }
 
+  Future<dynamic> getPendingTasks() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}tasks/pending'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to load pending tasks: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching pending tasks: $e');
+    }
+  }
+
+  Future<List<dynamic>> getAllTasksToday() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}tasks/today'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map && data.containsKey('tasks')) {
+          return data['tasks'] as List;
+        }
+        if (data is List) return data;
+        return [];
+      } else {
+        throw Exception("Failed to load today's tasks: ${response.statusCode}");
+      }
+    } catch (e) {
+      throw Exception("Error fetching today's tasks: $e");
+    }
+  }
+
   Future<List<dynamic>> getEscalations() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -286,6 +402,40 @@ class TaskService {
       }
     } catch (e) {
       throw Exception('Error fetching escalations: $e');
+    }
+  }
+
+  Future<VenueHistoryResponse> getVenueHistory({
+    int? venueId,
+    int days = 7,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      String url = '${backendUrl}tasks/venue-history?days=$days';
+      if (venueId != null) {
+        url += '&venue_id=$venueId';
+      }
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return VenueHistoryResponse.fromJson(data);
+      } else {
+        throw Exception('Failed to load venue history: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching venue history: $e');
     }
   }
 }

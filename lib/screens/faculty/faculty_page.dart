@@ -9,12 +9,17 @@ import '../../components/custom_app_bar.dart';
 import '../../components/stat_card.dart';
 import '../../components/task_card.dart';
 import '../../components/section_header.dart';
+import '../../components/skeleton_loader.dart';
 import '../../components/unified_reject_dialog.dart';
 import '../common/task_detail_page.dart';
 import '../../models/faculty_dashboard_stats.dart';
 import '../common/user_selection_page.dart';
 import '../../services/task_service.dart';
 import '../../services/user_service.dart';
+import 'all_directives_page.dart';
+import 'all_escalations_page.dart';
+import 'all_schedule_page.dart';
+import 'all_proofs_page.dart';
 
 class FacultyPage extends StatefulWidget {
   final bool isBlocked;
@@ -34,6 +39,7 @@ class _FacultyPageState extends State<FacultyPage> {
   List<dynamic> _pendingProofs = [];
   List<dynamic> _escalations = [];
   String? _userRole;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -42,12 +48,14 @@ class _FacultyPageState extends State<FacultyPage> {
   }
 
   Future<void> _refreshAll() async {
+    setState(() => _isLoading = true);
     await Future.wait([
       _fetchUserRole(),
       _fetchStats(),
       _fetchPendingProofs(),
       _fetchEscalations(),
     ]);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   Future<void> _fetchUserRole() async {
@@ -64,7 +72,6 @@ class _FacultyPageState extends State<FacultyPage> {
   }
 
   Future<void> _fetchStats() async {
-    setState(() {});
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken');
@@ -92,9 +99,7 @@ class _FacultyPageState extends State<FacultyPage> {
         throw Exception('Failed to load dashboard: ${response.statusCode}');
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {});
-      }
+      if (mounted) setState(() {});
     }
   }
 
@@ -104,7 +109,6 @@ class _FacultyPageState extends State<FacultyPage> {
       final response = await taskService.getPendingProofs();
       if (mounted) {
         setState(() {
-          // Handle new API response structure with 'tasks' array
           if (response is Map<String, dynamic> &&
               response.containsKey('tasks')) {
             _pendingProofs = response['tasks'] as List;
@@ -116,11 +120,7 @@ class _FacultyPageState extends State<FacultyPage> {
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _pendingProofs = [];
-        });
-      }
+      if (mounted) setState(() => _pendingProofs = []);
     }
   }
 
@@ -128,15 +128,9 @@ class _FacultyPageState extends State<FacultyPage> {
     try {
       final TaskService taskService = TaskService();
       final escalations = await taskService.getEscalations();
-      if (mounted) {
-        setState(() {
-          _escalations = escalations;
-        });
-      }
+      if (mounted) setState(() => _escalations = escalations);
     } catch (e) {
-      if (mounted) {
-        setState(() => _escalations = []);
-      }
+      if (mounted) setState(() => _escalations = []);
     }
   }
 
@@ -145,20 +139,19 @@ class _FacultyPageState extends State<FacultyPage> {
     if (_stats == null) return;
     final task = _stats!.pendingTasks[index];
     final taskId = task['task_id'];
-
     if (taskId == null) return;
 
-    // Show loading overlay
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
+    // Fast reflex: Optimistically update local state
+    setState(() {
+      final task = _stats!.pendingTasks.removeAt(index);
+      _stats!.allTasksToday.insert(0, task);
+      _stats!.dailyStats.totalTasksAssignedToday = _stats!.allTasksToday.length;
+      _stats!.dailyStats.pendingTasksCount = _stats!.pendingTasks.length;
+    });
 
     try {
       await TaskService().acceptTask(taskId);
       if (mounted) {
-        Navigator.pop(context); // Close loading
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Task accepted successfully"),
@@ -169,13 +162,13 @@ class _FacultyPageState extends State<FacultyPage> {
       }
     } catch (e) {
       if (mounted) {
-        Navigator.pop(context); // Close loading
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Error accepting task: $e"),
             backgroundColor: AppTheme.danger,
           ),
         );
+        _refreshAll(); // Revert/Sync with server
       }
     }
   }
@@ -192,7 +185,6 @@ class _FacultyPageState extends State<FacultyPage> {
       'staff',
     ];
     int userIndex = hierarchy.indexOf(role);
-    // If unknown role, default strictly to students and staff
     if (userIndex == -1) return ['students', 'staff'];
 
     final Map<String, String> keyMap = {
@@ -205,7 +197,6 @@ class _FacultyPageState extends State<FacultyPage> {
       'dean': 'dean',
     };
 
-    // Return roles equal to or higher than the user in hierarchy
     return hierarchy
         .sublist(0, userIndex + 1)
         .map((r) => keyMap[r] ?? r)
@@ -226,7 +217,6 @@ class _FacultyPageState extends State<FacultyPage> {
     if (result != null && result.isNotEmpty) {
       final selectedUser = result.first;
       final selectedUserId = selectedUser['user_id'] ?? selectedUser['id'];
-
       if (selectedUserId == null || !mounted) return;
 
       showDialog(
@@ -241,9 +231,8 @@ class _FacultyPageState extends State<FacultyPage> {
           "Transferred to ${selectedUser['name']}",
           transferToUserId: selectedUserId,
         );
-
         if (mounted) {
-          Navigator.pop(context); // Close loading
+          Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -256,7 +245,7 @@ class _FacultyPageState extends State<FacultyPage> {
         }
       } catch (e) {
         if (mounted) {
-          Navigator.pop(context); // Close loading
+          Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text("Error transferring task: $e"),
@@ -273,13 +262,12 @@ class _FacultyPageState extends State<FacultyPage> {
     final task = _stats!.pendingTasks[index];
     final taskId = task['task_id'];
     final taskTitle = task['title'] ?? 'Task';
-
     if (taskId == null) return;
 
     UnifiedRejectDialog.show(
       context,
       taskTitle: taskTitle,
-      onTransfer: () => _handleTransfer(taskId, taskTitle), // Trigger transfer
+      onTransfer: () => _handleTransfer(taskId, taskTitle),
       onReject: (reason, details) async {
         showDialog(
           context: context,
@@ -287,11 +275,10 @@ class _FacultyPageState extends State<FacultyPage> {
           builder: (context) =>
               const Center(child: CircularProgressIndicator()),
         );
-
         try {
           await TaskService().rejectTask(taskId, reason);
           if (mounted) {
-            Navigator.pop(context); // Close loading
+            Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text("Task rejected: $reason"),
@@ -302,7 +289,7 @@ class _FacultyPageState extends State<FacultyPage> {
           }
         } catch (e) {
           if (mounted) {
-            Navigator.pop(context); // Close loading
+            Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text("Error rejecting task: $e"),
@@ -317,7 +304,6 @@ class _FacultyPageState extends State<FacultyPage> {
 
   @override
   Widget build(BuildContext context) {
-    // We removed full-page loading/error guards to improve UX as requested.
     final info = _stats?.facultyInfo;
     final daily = _stats?.dailyStats;
     final pending = _stats?.pendingTasks ?? [];
@@ -409,323 +395,435 @@ class _FacultyPageState extends State<FacultyPage> {
                         ),
                       ),
                     ),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-                    sliver: SliverList(
-                      delegate: SliverChildListDelegate([
-                        GridView.count(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 16,
-                          mainAxisSpacing: 16,
-                          childAspectRatio: 1.4,
-                          children: [
-                            StatCard(
-                              label: "Pending",
-                              value: (daily?.pendingTasksCount ?? 0).toString(),
-                              icon: Icons.move_to_inbox,
-                              color: AppTheme.brandAccent,
+                  if (_isLoading)
+                    const SliverToBoxAdapter(child: DashboardSkeleton())
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
+                      sliver: SliverList(
+                        delegate: SliverChildListDelegate([
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                StatCard(
+                                  label: "Pending",
+                                  value: (daily?.pendingTasksCount ?? 0)
+                                      .toString(),
+                                  icon: Icons.move_to_inbox,
+                                  color: AppTheme.brandAccent,
+                                ),
+                                const SizedBox(width: 12),
+                                StatCard(
+                                  label: "Tasks Today",
+                                  value: (daily?.totalTasksAssignedToday ?? 0)
+                                      .toString(),
+                                  icon: Icons.assignment_rounded,
+                                  color: AppTheme.success,
+                                ),
+                                const SizedBox(width: 12),
+                                StatCard(
+                                  label: "Mentees",
+                                  value: (daily?.menteeStudentsCount ?? 0)
+                                      .toString(),
+                                  icon: Icons.people_alt_rounded,
+                                  color: AppTheme.warning,
+                                ),
+                                const SizedBox(width: 12),
+                                StatCard(
+                                  label: "Hours",
+                                  value: "0",
+                                  icon: Icons.access_time_filled_rounded,
+                                  color: Colors.teal,
+                                ),
+                              ],
                             ),
-                            StatCard(
-                              label: "Tasks Today",
-                              value: (daily?.totalTasksAssignedToday ?? 0)
-                                  .toString(),
-                              icon: Icons.assignment_rounded,
-                              color: AppTheme.success,
-                            ),
-                            StatCard(
-                              label: "Mentees",
-                              value: (daily?.menteeStudentsCount ?? 0)
-                                  .toString(),
-                              icon: Icons.people_alt_rounded,
-                              color: AppTheme.warning,
-                            ),
-                            StatCard(
-                              label: "Hours",
-                              value: "0",
-                              icon: Icons.access_time_filled_rounded,
-                              color: Colors.teal,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 32),
+                          ),
+                          const SizedBox(height: 32),
 
-                        SectionHeader(
-                          title: "Incoming Directives",
-                          isStatus: true,
-                          count: pending.length,
-                          onViewAll: () {},
-                        ),
-
-                        if (pending.isEmpty)
-                          const Center(
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(vertical: 20),
-                              child: Text(
-                                "No pending directives",
-                                style: TextStyle(
-                                  color: AppTheme.textSub,
-                                  fontStyle: FontStyle.italic,
+                          // --- Incoming Directives (max 2) ---
+                          SectionHeader(
+                            title: "Incoming Directives",
+                            isStatus: true,
+                            count: pending.length,
+                            onViewAll: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => AllDirectivesPage(
+                                  userRole: _userRole ?? 'Faculty',
+                                  isBlocked: widget.isBlocked,
+                                  onRefreshParent: _refreshAll,
                                 ),
                               ),
                             ),
-                          )
-                        else
-                          ...pending.asMap().entries.map((entry) {
-                            int idx = entry.key;
-                            var data = entry.value;
-                            final String heroTag =
-                                "directive_${data['task_id']}_$idx";
-                            return TaskCard(
-                              title: data['title'] ?? 'Task',
-                              sub: data['description'] ?? 'No description',
-                              accent: AppTheme.brandAccent,
-                              icon: Icons.assignment_turned_in_rounded,
-                              heroTag: heroTag,
-                              isRequest: true,
-                              onAccept: () {
-                                if (widget.isBlocked) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        "Please acknowledge your schedule first.",
+                          ),
+                          if (pending.isEmpty)
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 20),
+                                child: Text(
+                                  "No pending directives",
+                                  style: TextStyle(
+                                    color: AppTheme.textSub,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            ...pending.take(2).toList().asMap().entries.map((
+                              entry,
+                            ) {
+                              int idx = entry.key;
+                              var data = entry.value;
+                              final String heroTag =
+                                  "directive_${data['task_id']}_$idx";
+
+                              final taskType =
+                                  data['task_type'] as Map<String, dynamic>? ??
+                                  {};
+                              final String dateStr =
+                                  taskType['start_date'] ?? "";
+                              final String startTime =
+                                  taskType['start_time'] ?? "";
+                              final String endTime = taskType['end_time'] ?? "";
+                              String timeInfo = "";
+                              if (startTime.isNotEmpty && endTime.isNotEmpty) {
+                                timeInfo =
+                                    " (${startTime.substring(0, 5)} - ${endTime.substring(0, 5)})";
+                              } else if (startTime.isNotEmpty) {
+                                timeInfo = " (${startTime.substring(0, 5)})";
+                              }
+
+                              final String formattedDate = dateStr.isNotEmpty
+                                  ? DateFormat(
+                                      'MMM dd, yyyy',
+                                    ).format(DateTime.parse(dateStr))
+                                  : "";
+
+                              final String dateDisplay =
+                                  formattedDate.isNotEmpty
+                                  ? "$formattedDate$timeInfo"
+                                  : "";
+                              final bool hasDesc =
+                                  data['description'] != null &&
+                                  data['description'].toString().isNotEmpty;
+                              final String finalDesc = hasDesc
+                                  ? " • ${data['description']}"
+                                  : "";
+                              final String subText = "$dateDisplay$finalDesc";
+
+                              return TaskCard(
+                                title: data['title'] ?? 'Task',
+                                sub: subText,
+                                accent: AppTheme.brandAccent,
+                                icon: Icons.assignment_turned_in_rounded,
+                                heroTag: heroTag,
+                                isRequest: true,
+                                onAccept: () {
+                                  if (widget.isBlocked) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          "Please acknowledge your schedule first.",
+                                        ),
+                                        backgroundColor: AppTheme.warning,
                                       ),
-                                      backgroundColor: AppTheme.warning,
-                                    ),
-                                  );
-                                  return;
-                                }
-                                _acceptTask(idx);
-                              },
-                              onReject: () {
-                                if (widget.isBlocked) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        "Please acknowledge your schedule first.",
+                                    );
+                                    return;
+                                  }
+                                  _acceptTask(idx);
+                                },
+                                onReject: () {
+                                  if (widget.isBlocked) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          "Please acknowledge your schedule first.",
+                                        ),
+                                        backgroundColor: AppTheme.warning,
                                       ),
-                                      backgroundColor: AppTheme.warning,
+                                    );
+                                    return;
+                                  }
+                                  _showRejectDialog(idx);
+                                },
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => TaskDetailsPage(
+                                      taskData: {
+                                        'task_id': data['task_id'],
+                                        'title': data['title'],
+                                        'sub': data['description'],
+                                        'accent': AppTheme.brandAccent,
+                                        'icon':
+                                            Icons.assignment_turned_in_rounded,
+                                        'heroTag': heroTag,
+                                        'startDate':
+                                            taskType['start_date'] ?? "N/A",
+                                        'deadline':
+                                            taskType['end_date'] ?? "N/A",
+                                        'completionType':
+                                            data['type'] ?? "APPROVAL",
+                                        'isRequest': true,
+                                        'authority': "Administration",
+                                        'userRole': 'Faculty',
+                                      },
                                     ),
-                                  );
-                                  return;
-                                }
-                                _showRejectDialog(idx);
-                              },
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => TaskDetailsPage(
-                                    taskData: {
-                                      'task_id':
-                                          data['task_id'], // Added task_id
-                                      'title': data['title'],
-                                      'sub': data['description'],
-                                      'accent': AppTheme.brandAccent,
-                                      'icon':
-                                          Icons.assignment_turned_in_rounded,
-                                      'heroTag': heroTag,
-                                      'startDate': data['start_date'] ?? "N/A",
-                                      'deadline': data['end_date'] ?? "N/A",
-                                      'completionType':
-                                          data['type'] ?? "APPROVAL",
-                                      'isRequest': true,
-                                      'authority': "Administration",
-                                      'userRole':
-                                          'Faculty', // Ensure transfer option shows
-                                    },
                                   ),
                                 ),
-                              ),
-                            );
-                          }),
+                              );
+                            }),
 
-                        const SizedBox(height: 32),
+                          const SizedBox(height: 32),
 
-                        SectionHeader(
-                          title: "Escalated Tasks",
-                          isStatus: true,
-                          count: _escalations.length,
-                          onViewAll: () {},
-                        ),
-                        if (_escalations.isEmpty)
-                          const Center(
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(vertical: 20),
-                              child: Text(
-                                "No escalated tasks",
-                                style: TextStyle(
-                                  color: AppTheme.textSub,
-                                  fontStyle: FontStyle.italic,
+                          // --- Escalated Tasks (max 2) ---
+                          SectionHeader(
+                            title: "Escalated Tasks",
+                            isStatus: true,
+                            count: _escalations.length,
+                            onViewAll: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => AllEscalationsPage(
+                                  userRole: _userRole ?? 'Faculty',
                                 ),
                               ),
                             ),
-                          )
-                        else
-                          ..._escalations.map((escalation) {
-                            final String heroTag =
-                                "escalation_${escalation['task_id']}_pending";
-                            return TaskCard(
-                              title: escalation['title'] ?? "Escalated Task",
-                              sub:
-                                  escalation['escalated_reason'] ??
-                                  escalation['description'] ??
-                                  "High Priority",
-                              accent: AppTheme.danger,
-                              icon: Icons.priority_high_rounded,
-                              heroTag: heroTag,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => TaskDetailsPage(
-                                    taskData: {
-                                      'task_id': escalation['task_id'],
-                                      'title': escalation['title'],
-                                      'sub': escalation['description'],
-                                      'accent': AppTheme.danger,
-                                      'icon': Icons.priority_high_rounded,
-                                      'heroTag': heroTag,
-                                      'startDate':
-                                          escalation['start_date'] ?? "N/A",
-                                      'deadline':
-                                          escalation['end_date'] ?? "N/A",
-                                      'completionType':
-                                          escalation['type'] ?? "INFO",
-                                      'isRequest': false,
-                                      'authority': "Administration",
-                                      'userRole': 'Faculty',
-                                    },
+                          ),
+                          if (_escalations.isEmpty)
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 20),
+                                child: Text(
+                                  "No escalated tasks",
+                                  style: TextStyle(
+                                    color: AppTheme.textSub,
+                                    fontStyle: FontStyle.italic,
                                   ),
                                 ),
                               ),
-                            );
-                          }),
-
-                        const SizedBox(height: 32),
-
-                        SectionHeader(
-                          title: "Today's Schedule",
-                          onViewAll: () {},
-                        ),
-                        if (allTasks.isEmpty)
-                          const Center(
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(vertical: 20),
-                              child: Text(
-                                "No tasks scheduled for today",
-                                style: TextStyle(
-                                  color: AppTheme.textSub,
-                                  fontStyle: FontStyle.italic,
+                            )
+                          else
+                            ..._escalations.take(2).map((escalation) {
+                              final String heroTag =
+                                  "escalation_${escalation['task_id']}_pending";
+                              return TaskCard(
+                                title: escalation['title'] ?? "Escalated Task",
+                                sub:
+                                    escalation['escalated_reason'] ??
+                                    escalation['description'] ??
+                                    "High Priority",
+                                accent: AppTheme.danger,
+                                icon: Icons.priority_high_rounded,
+                                heroTag: heroTag,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => TaskDetailsPage(
+                                      taskData: {
+                                        'task_id': escalation['task_id'],
+                                        'title': escalation['title'],
+                                        'sub': escalation['description'],
+                                        'accent': AppTheme.danger,
+                                        'icon': Icons.priority_high_rounded,
+                                        'heroTag': heroTag,
+                                        'startDate':
+                                            escalation['start_date'] ?? "N/A",
+                                        'deadline':
+                                            escalation['end_date'] ?? "N/A",
+                                        'completionType':
+                                            escalation['type'] ?? "INFO",
+                                        'isRequest': false,
+                                        'authority': "Administration",
+                                        'userRole': 'Faculty',
+                                      },
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                          )
-                        else
-                          ...allTasks.map((item) {
-                            final String heroTag =
-                                "task_${item['task_id']}_today";
-                            return TaskCard(
-                              title: item['title'] ?? 'Task',
-                              sub: item['status'] ?? 'Scheduled',
-                              accent: AppTheme.success,
-                              icon: Icons.calendar_today_rounded,
-                              heroTag: heroTag,
-                              onTap: () => Navigator.push(
+                              );
+                            }),
+
+                          const SizedBox(height: 32),
+
+                          // --- Today's Schedule (max 2) ---
+                          SectionHeader(
+                            title: "Today's Schedule",
+                            onViewAll: () async {
+                              await Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => TaskDetailsPage(
-                                    taskData: {
-                                      'task_id':
-                                          item['task_id'], // Added task_id
-                                      'title': item['title'],
-                                      'sub': item['status'],
-                                      'accent': AppTheme.success,
-                                      'icon': Icons.calendar_today_rounded,
-                                      'heroTag': heroTag,
-                                      'startDate': item['start_date'] ?? "N/A",
-                                      'deadline': item['end_date'] ?? "N/A",
-                                      'completionType': "INFO",
-                                      "isRequest": false,
-                                      'userRole':
-                                          'Faculty', // Ensure transfer option shows if needed
-                                    },
+                                  builder: (_) => AllSchedulePage(
+                                    userRole: _userRole ?? 'Faculty',
+                                  ),
+                                ),
+                              );
+                              _refreshAll();
+                            },
+                          ),
+                          if (allTasks.isEmpty)
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 20),
+                                child: Text(
+                                  "No tasks scheduled for today",
+                                  style: TextStyle(
+                                    color: AppTheme.textSub,
+                                    fontStyle: FontStyle.italic,
                                   ),
                                 ),
                               ),
-                            );
-                          }),
+                            )
+                          else
+                            ...allTasks.take(2).map((item) {
+                              final String heroTag =
+                                  "task_${item['task_id']}_today";
+                              final taskType =
+                                  item['task_type'] as Map<String, dynamic>? ??
+                                  {};
+                              final String dateStr =
+                                  taskType['start_date'] ?? "";
+                              final String startTime =
+                                  taskType['start_time'] ?? "";
+                              final String endTime = taskType['end_time'] ?? "";
 
-                        const SizedBox(height: 32),
+                              String timeInfo = "";
+                              if (startTime.isNotEmpty && endTime.isNotEmpty) {
+                                timeInfo =
+                                    " (${startTime.substring(0, 5)} - ${endTime.substring(0, 5)})";
+                              } else if (startTime.isNotEmpty) {
+                                timeInfo = " (${startTime.substring(0, 5)})";
+                              }
 
-                        SectionHeader(
-                          title: "Pending Proofs",
-                          isStatus: true,
-                          count: _pendingProofs.length,
-                          onViewAll: () {},
-                        ),
-                        if (_pendingProofs.isEmpty)
-                          const Center(
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(vertical: 20),
-                              child: Text(
-                                "No pending proofs to review",
-                                style: TextStyle(
-                                  color: AppTheme.textSub,
-                                  fontStyle: FontStyle.italic,
+                              final String formattedDate = dateStr.isNotEmpty
+                                  ? DateFormat(
+                                      'MMM dd, yyyy',
+                                    ).format(DateTime.parse(dateStr))
+                                  : "";
+
+                              final String dateDisplay =
+                                  formattedDate.isNotEmpty
+                                  ? "$formattedDate$timeInfo"
+                                  : "";
+                              final bool hasDesc =
+                                  item['description'] != null &&
+                                  item['description'].toString().isNotEmpty;
+                              final String finalDesc = hasDesc
+                                  ? " • ${item['description']}"
+                                  : "";
+                              final String subText = "$dateDisplay$finalDesc";
+
+                              return TaskCard(
+                                title: item['title'] ?? 'Task',
+                                sub: subText,
+                                accent: AppTheme.success,
+                                icon: Icons.calendar_today_rounded,
+                                heroTag: heroTag,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => TaskDetailsPage(
+                                      taskData: {
+                                        'task_id': item['task_id'],
+                                        'title': item['title'],
+                                        'sub': item['status'],
+                                        'accent': AppTheme.success,
+                                        'icon': Icons.calendar_today_rounded,
+                                        'heroTag': heroTag,
+                                        'startDate':
+                                            taskType['start_date'] ?? "N/A",
+                                        'deadline':
+                                            taskType['end_date'] ?? "N/A",
+                                        'completionType': "INFO",
+                                        "isRequest": false,
+                                        'userRole': 'Faculty',
+                                      },
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                          )
-                        else
-                          ..._pendingProofs.map((proof) {
-                            final String heroTag =
-                                "proof_${proof['task_id']}_pending";
-                            // Extract deadline information
-                            final deadline = proof['deadline'];
-                            final String deadlineStr = deadline != null
-                                ? "${deadline['end_date'] ?? 'N/A'} ${deadline['end_time'] ?? ''}"
-                                : "N/A";
+                              );
+                            }),
 
-                            return TaskCard(
-                              title: proof['title'] ?? 'Proof Task',
-                              sub:
-                                  proof['description'] ??
-                                  'Proof Status: ${proof['proof_status'] ?? 'Pending'}',
-                              accent: Colors.orange,
-                              icon: Icons.photo_camera_rounded,
-                              heroTag: heroTag,
-                              onTap: () => Navigator.push(
+                          const SizedBox(height: 32),
+
+                          // --- Pending Proofs (max 2) ---
+                          SectionHeader(
+                            title: "Pending Proofs",
+                            isStatus: true,
+                            count: _pendingProofs.length,
+                            onViewAll: () async {
+                              await Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => TaskDetailsPage(
-                                    taskData: {
-                                      'task_id': proof['task_id'],
-                                      'assignment_id': proof['assignment_id'],
-                                      'title': proof['title'],
-                                      'sub':
-                                          proof['description'] ??
-                                          'Awaiting proof verification',
-                                      'accent': Colors.orange,
-                                      'icon': Icons.photo_camera_rounded,
-                                      'heroTag': heroTag,
-                                      'deadline': deadlineStr,
-                                      'completionType': "PROOF_REVIEW",
-                                      'isRequest': false,
-                                      'userRole': 'Faculty',
-                                      'is_document': proof['is_document'],
-                                      'status': proof['status'],
-                                      'proof_status': proof['proof_status'],
-                                    },
+                                  builder: (_) => const AllProofsPage(),
+                                ),
+                              );
+                              _refreshAll();
+                            },
+                          ),
+                          if (_pendingProofs.isEmpty)
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 20),
+                                child: Text(
+                                  "No pending proofs to review",
+                                  style: TextStyle(
+                                    color: AppTheme.textSub,
+                                    fontStyle: FontStyle.italic,
                                   ),
                                 ),
                               ),
-                            );
-                          }),
+                            )
+                          else
+                            ..._pendingProofs.take(2).map((proof) {
+                              final String heroTag =
+                                  "proof_${proof['task_id']}_pending";
+                              final deadline = proof['deadline'];
+                              final String deadlineStr = deadline != null
+                                  ? "${deadline['end_date'] ?? 'N/A'} ${deadline['end_time'] ?? ''}"
+                                  : "N/A";
 
-                        const SizedBox(height: 32),
-                      ]),
+                              return TaskCard(
+                                title: proof['title'] ?? 'Proof Task',
+                                sub:
+                                    proof['description'] ??
+                                    'Proof Status: ${proof['proof_status'] ?? 'Pending'}',
+                                accent: Colors.orange,
+                                icon: Icons.photo_camera_rounded,
+                                heroTag: heroTag,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => TaskDetailsPage(
+                                      taskData: {
+                                        'task_id': proof['task_id'],
+                                        'assignment_id': proof['assignment_id'],
+                                        'title': proof['title'],
+                                        'sub':
+                                            proof['description'] ??
+                                            'Awaiting proof verification',
+                                        'accent': Colors.orange,
+                                        'icon': Icons.photo_camera_rounded,
+                                        'heroTag': heroTag,
+                                        'deadline': deadlineStr,
+                                        'completionType': "PROOF_REVIEW",
+                                        'isRequest': false,
+                                        'userRole': 'Faculty',
+                                        'is_document': proof['is_document'],
+                                        'status': proof['status'],
+                                        'proof_status': proof['proof_status'],
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+
+                          const SizedBox(height: 32),
+                        ]),
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),

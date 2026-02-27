@@ -35,7 +35,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   // Activity Lifecycle State
   ActivityStatus _activityStatus = ActivityStatus.NOT_STARTED;
   DateTime? _activityStartTime;
-  Duration _pausedDuration = Duration.zero;
+  final Duration _pausedDuration = Duration.zero;
 
   TaskDetailModel? _taskDetail;
   bool _isLoading = true;
@@ -91,6 +91,10 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         type.contains("APPROVAL") ||
         (_taskDetail?.isApproved == false && _taskDetail?.status == 'Pending');
 
+    final bool isRequest =
+        widget.taskData['isRequest'] == true ||
+        _taskDetail?.status == 'pending';
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: _buildCustomAppBar(context),
@@ -98,7 +102,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         children: [
           SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 140),
+            padding: EdgeInsets.fromLTRB(24, 8, 24, isRequest ? 24 : 140),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -133,10 +137,12 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
               ],
             ),
           ),
-          if (widget.viewMode != 'incharge')
+          if ((widget.viewMode == 'incharge' && isRequest) ||
+              (widget.viewMode != 'incharge' && !isRequest))
             _buildFloatingBottomAction(
-              isApprovalWorkflow,
-            ), // UPDATED: Adaptive button
+              isApprovalWorkflow ||
+                  (widget.viewMode == 'incharge' && isRequest),
+            ),
         ],
       ),
     );
@@ -397,7 +403,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         Expanded(
           flex: 1,
           child: ElevatedButton(
-            onPressed: () => Navigator.pop(context, "rejected"),
+            onPressed: () => _handleApprovalAction(false),
             style: ElevatedButton.styleFrom(
               backgroundColor: destructive.withOpacity(0.9),
               foregroundColor: destructive,
@@ -422,7 +428,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         Expanded(
           flex: 2,
           child: ElevatedButton(
-            onPressed: () => Navigator.pop(context, "approved"),
+            onPressed: () => _handleApprovalAction(true),
             style: ElevatedButton.styleFrom(
               backgroundColor: successColor,
               foregroundColor: Colors.white,
@@ -439,6 +445,45 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         ),
       ],
     );
+  }
+
+  Future<void> _handleApprovalAction(bool approve) async {
+    final taskId =
+        int.tryParse(
+          widget.taskData['task_id']?.toString() ??
+              widget.taskData['id']?.toString() ??
+              "",
+        ) ??
+        0;
+
+    if (taskId == 0) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final service = TaskService();
+      if (approve) {
+        await service.acceptTask(taskId);
+      } else {
+        await service.rejectTask(taskId, "Rejected by manager");
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(approve ? "Task Approved" : "Task Rejected"),
+            backgroundColor: approve ? successColor : destructive,
+          ),
+        );
+        Navigator.pop(context, approve ? "approved" : "rejected");
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e"), backgroundColor: destructive),
+        );
+      }
+    }
   }
 
   // Dynamic Layout Based on Activity Status

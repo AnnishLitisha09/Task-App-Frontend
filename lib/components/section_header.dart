@@ -6,7 +6,7 @@ class SectionHeader extends StatelessWidget {
   final int? count;
   final bool isStatus;
   final Color? color;
-  final VoidCallback onViewAll;
+  final VoidCallback? onViewAll;
 
   const SectionHeader({
     super.key,
@@ -14,7 +14,7 @@ class SectionHeader extends StatelessWidget {
     this.count,
     this.isStatus = false,
     this.color,
-    required this.onViewAll,
+    this.onViewAll,
   });
 
   @override
@@ -23,11 +23,9 @@ class SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 20, left: 4),
       child: Row(
         children: [
-          Text(
-            title,
-            style: AppTheme.h2.copyWith(color: color),
-          ),
-          if ((isStatus && (count ?? 0) > 0) || (count != null && count! > 0)) ...[
+          Text(title, style: AppTheme.h2.copyWith(color: color)),
+          if ((isStatus && (count ?? 0) > 0) ||
+              (count != null && count! > 0)) ...[
             const SizedBox(width: 8),
             if (isStatus && count != null)
               Container(
@@ -56,23 +54,27 @@ class SectionHeader extends StatelessWidget {
               ),
           ],
           const Spacer(),
-          TextButton(
-            onPressed: onViewAll,
-            style: TextButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text(
-              "View All",
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.brandAccent,
+          if (onViewAll != null)
+            TextButton(
+              onPressed: onViewAll,
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                "View All",
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.brandAccent,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

@@ -3,8 +3,8 @@ import 'faculty_info.dart';
 class FacultyDashboardStats {
   final FacultyInfo facultyInfo;
   final DailyStats dailyStats;
-  final List<dynamic> allTasksToday;
-  final List<dynamic> pendingTasks;
+  List<dynamic> allTasksToday;
+  List<dynamic> pendingTasks;
 
   FacultyDashboardStats({
     required this.facultyInfo,
@@ -25,8 +25,8 @@ class FacultyDashboardStats {
 
 class DailyStats {
   final String date;
-  final int totalTasksAssignedToday;
-  final int pendingTasksCount;
+  int totalTasksAssignedToday;
+  int pendingTasksCount;
   final int menteeStudentsCount;
 
   DailyStats({

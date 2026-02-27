@@ -11,6 +11,9 @@ import '../role_user/all_faculty_page.dart';
 import '../role_user/dept_directory_page.dart';
 import '../role_user/view_dept_tasks.dart';
 import '../student/on_duty_wallet_page.dart';
+import '../role_user/venue_availability_page.dart';
+import '../role_user/resource_availability_page.dart';
+import '../role_user/maintenance_logs_page.dart';
 
 class ProfilePage extends StatefulWidget {
   final String role;
@@ -162,14 +165,36 @@ class _ProfilePageState extends State<ProfilePage> {
               _buildSettingsGroup("Asset Management", [
                 _settingsTile(
                   Icons.meeting_room_outlined,
-                  "Venue Availability",
-                  "Update room and hall statuses",
-                  onTap: () {},
+                  "Venue Status & Availability",
+                  "Manage room statuses and view history",
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const VenueAvailabilityPage(),
+                    ),
+                  ),
+                ),
+                _settingsTile(
+                  Icons.inventory_2_outlined,
+                  "Resource Inventory",
+                  "Track devices, utilization and health",
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ResourceAvailabilityPage(),
+                    ),
+                  ),
                 ),
                 _settingsTile(
                   Icons.build_circle_outlined,
                   "Maintenance Logs",
-                  "Track facility repair requests",
+                  "Detailed records of facility repairs",
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const MaintenanceLogsPage(),
+                    ),
+                  ),
                 ),
               ]),
 

@@ -73,9 +73,9 @@ class _LoginPageState extends State<LoginPage> {
         String rawScope = (user['scope_details'] ?? 'none')
             .toString()
             .toLowerCase();
-        if (rawScope.contains('department'))
+        if (rawScope.contains('department')) {
           scope = 'department';
-        else if (rawScope.contains('institution'))
+        } else if (rawScope.contains('institution'))
           scope = 'institution';
         else if (rawScope.contains('infrastructure'))
           scope = 'infrastructure';
@@ -162,9 +162,9 @@ class _LoginPageState extends State<LoginPage> {
         String rawScope = (user['scope_details'] ?? 'none')
             .toString()
             .toLowerCase();
-        if (rawScope.contains('department'))
+        if (rawScope.contains('department')) {
           scope = 'department';
-        else if (rawScope.contains('institution'))
+        } else if (rawScope.contains('institution'))
           scope = 'institution';
         else if (rawScope.contains('infrastructure'))
           scope = 'infrastructure';
@@ -375,12 +375,13 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ),
         child: _isGoogleSignInLoading
-            ? const SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ? SizedBox(
+                height: 24,
+                width: 24,
+                child: Image.network(
+                  'https://i.gifer.com/ZKZg.gif', // generic nice loading GIF
+                  color: Colors.white, // tinted to white for Main Button
+                  fit: BoxFit.contain,
                 ),
               )
             : const Text(
@@ -476,11 +477,13 @@ class _LoginPageState extends State<LoginPage> {
         ),
         child: _isGoogleSignInLoading
             ? SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                height: 24,
+                width: 24,
+                child: Image.network(
+                  'https://i.gifer.com/ZKZg.gif', // generic nice loading GIF
+                  color:
+                      primaryColor, // tinted to primary color for Google Button
+                  fit: BoxFit.contain,
                 ),
               )
             : Row(

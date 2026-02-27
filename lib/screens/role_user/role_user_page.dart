@@ -6,9 +6,14 @@ import '../../components/custom_app_bar.dart';
 import '../../components/stat_card.dart';
 import '../../components/task_card.dart';
 import '../../components/section_header.dart';
+import '../../components/skeleton_loader.dart';
 import '../../services/task_service.dart';
 import '../../models/venue_dashboard_model.dart';
+import '../../models/venue_history_model.dart';
 import '../common/task_detail_page.dart';
+import './venue_history_page.dart';
+import './venue_approvals_page.dart';
+import './venue_schedule_page.dart';
 
 class RoleUserPage extends StatefulWidget {
   final String title;
@@ -22,8 +27,11 @@ class RoleUserPage extends StatefulWidget {
 
 class _RoleUserPageState extends State<RoleUserPage> {
   final TaskService _taskService = TaskService();
-  VenueDashboardResponse? _venueDashboard;
+  VenueDetailsResponse? _venueDetails;
+  VenueHistoryResponse? _globalHistory;
+  VenueDetailItem? _selectedRoleVenue;
   bool _isLoading = false;
+  bool _isHistoryLoading = false;
   String? _error;
 
   @override
@@ -43,9 +51,18 @@ class _RoleUserPageState extends State<RoleUserPage> {
     try {
       final data = await _taskService.getVenueDashboard();
       setState(() {
-        _venueDashboard = data;
+        _venueDetails = data;
+        if (data.venues.isNotEmpty && _selectedRoleVenue == null) {
+          _selectedRoleVenue = data.venues.first;
+        } else if (data.venues.isNotEmpty && _selectedRoleVenue != null) {
+          _selectedRoleVenue = data.venues.firstWhere(
+            (v) => v.venueId == _selectedRoleVenue!.venueId,
+            orElse: () => data.venues.first,
+          );
+        }
         _isLoading = false;
       });
+      _fetchScopedHistory(venueId: _selectedRoleVenue?.venueId);
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -54,54 +71,20 @@ class _RoleUserPageState extends State<RoleUserPage> {
     }
   }
 
-  Future<void> _handleApproveVenueTask(int taskId) async {
+  Future<void> _fetchScopedHistory({int? venueId}) async {
+    setState(() => _isHistoryLoading = true);
     try {
-      await _taskService.acceptTask(taskId);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Venue request approved!'),
-            backgroundColor: AppTheme.success,
-          ),
-        );
-      }
-      _fetchVenueDashboard();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to approve: $e'),
-            backgroundColor: AppTheme.danger,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _handleRejectVenueTask(int taskId) async {
-    try {
-      await _taskService.rejectTask(
-        taskId,
-        'Venue request rejected from dashboard',
+      final history = await _taskService.getVenueHistory(
+        venueId: venueId,
+        days: 7,
       );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Venue request rejected.'),
-            backgroundColor: AppTheme.success,
-          ),
-        );
-      }
-      _fetchVenueDashboard();
+      setState(() {
+        _globalHistory = history;
+        _isHistoryLoading = false;
+      });
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to reject: $e'),
-            backgroundColor: AppTheme.danger,
-          ),
-        );
-      }
+      debugPrint("Error fetching scoped history: $e");
+      setState(() => _isHistoryLoading = false);
     }
   }
 
@@ -128,22 +111,57 @@ class _RoleUserPageState extends State<RoleUserPage> {
                 CustomAppBar(
                   title: widget.title,
                   date: formattedDate,
-                  notificationCount: 1, // Mock count
+                  notificationCount: 1,
                 ),
                 if (_isLoading)
-                  const SliverFillRemaining(
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        color: AppTheme.brandAccent,
-                      ),
-                    ),
-                  )
+                  const SliverToBoxAdapter(child: DashboardSkeleton())
                 else if (_error != null)
                   SliverFillRemaining(
+                    hasScrollBody: false,
                     child: Center(
-                      child: Text(
-                        'Error: $_error',
-                        style: const TextStyle(color: AppTheme.danger),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.error_outline_rounded,
+                              color: AppTheme.danger.withOpacity(0.5),
+                              size: 48,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Failed to load dashboard',
+                              style: AppTheme.h2,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _error!,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: AppTheme.textSub),
+                            ),
+                            const SizedBox(height: 24),
+                            ElevatedButton.icon(
+                              onPressed: _fetchVenueDashboard,
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text("Retry"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.brandPrimary,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   )
@@ -213,37 +231,54 @@ class _RoleUserPageState extends State<RoleUserPage> {
           ],
         );
       case 'infrastructure':
-        final totalVenues =
-            _venueDashboard?.totalVenuesManaged.toString() ?? "0";
-        final firstVenueStats = _venueDashboard?.venues.isNotEmpty == true
-            ? _venueDashboard!.venues.first.stats
-            : null;
+        final totalVenues = _venueDetails?.totalVenuesManaged ?? 0;
+        int activeTodayCount = 0;
+        int pendingRequestsCount = 0;
+        if (_selectedRoleVenue != null) {
+          activeTodayCount = _selectedRoleVenue!.today.confirmedBookingsCount;
+          pendingRequestsCount = _selectedRoleVenue!.newRequestsPendingCount;
+        } else if (_venueDetails != null) {
+          for (var v in _venueDetails!.venues) {
+            activeTodayCount += v.today.confirmedBookingsCount;
+            pendingRequestsCount += v.newRequestsPendingCount;
+          }
+        }
 
-        final usagePercentage =
-            firstVenueStats?.todayUsagePercentage ?? "0.00%";
-        final bookingsCount = firstVenueStats?.bookedCount.toString() ?? "0";
-
-        return Row(
+        return GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 2,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          childAspectRatio: 1.8,
           children: [
             StatCard(
-              label: "Total Venues",
-              value: totalVenues,
+              label: _selectedRoleVenue != null ? "Selected" : "Managed",
+              value: _selectedRoleVenue != null ? "1" : totalVenues.toString(),
               icon: Icons.stadium_rounded,
               color: AppTheme.success,
             ),
-            const SizedBox(width: 12),
             StatCard(
-              label: "Venue Usage",
-              value: usagePercentage,
+              label: "Requests",
+              value: pendingRequestsCount.toString(),
+              icon: Icons.pending_actions_rounded,
+              color: AppTheme.warning,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const VenueApprovalsPage()),
+              ),
+            ),
+            StatCard(
+              label: "Upcoming",
+              value: activeTodayCount.toString(),
               icon: Icons.pie_chart_rounded,
               color: AppTheme.brandAccent,
             ),
-            const SizedBox(width: 12),
             StatCard(
-              label: "Bookings",
-              value: bookingsCount,
-              icon: Icons.calendar_today_rounded,
-              color: AppTheme.warning,
+              label: "Usage",
+              value: _selectedRoleVenue?.todayUsagePercentage ?? "0%",
+              icon: Icons.speed_rounded,
+              color: Colors.orangeAccent,
             ),
           ],
         );
@@ -252,11 +287,64 @@ class _RoleUserPageState extends State<RoleUserPage> {
     }
   }
 
+  Future<void> _handleVenueTaskAction(int taskId, bool approve) async {
+    // Fast reflex: Optimistically update local state if we have a selected venue
+    if (_selectedRoleVenue != null) {
+      setState(() {
+        final taskIndex = _selectedRoleVenue!.pendingApprovalTasks.indexWhere(
+          (t) => t.taskId == taskId,
+        );
+        if (taskIndex != -1) {
+          final task = _selectedRoleVenue!.pendingApprovalTasks.removeAt(
+            taskIndex,
+          );
+          if (approve) {
+            _selectedRoleVenue!.today.confirmedBookings.insert(0, task);
+            _selectedRoleVenue!.today.confirmedBookingsCount =
+                _selectedRoleVenue!.today.confirmedBookings.length;
+          }
+          _selectedRoleVenue!.newRequestsPendingCount =
+              _selectedRoleVenue!.pendingApprovalTasks.length;
+        }
+      });
+    }
+
+    try {
+      final service = TaskService();
+      if (approve) {
+        await service.acceptTask(taskId);
+      } else {
+        await service.rejectTask(taskId, "Rejected by manager");
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(approve ? "Booking Approved" : "Booking Rejected"),
+            backgroundColor: approve ? AppTheme.success : AppTheme.danger,
+          ),
+        );
+        _fetchVenueDashboard();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error: $e"),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+        _fetchVenueDashboard(); // Revert/Sync
+      }
+    }
+  }
+
   List<Widget> _buildLogicDrivenTasks() {
     List<Widget> sections = [];
     final String scope = widget.scope.toLowerCase();
 
     if (scope == 'institution') {
+      // --- Today's Schedule (max 2) ---
       sections.add(SectionHeader(title: "Today's Schedule", onViewAll: () {}));
       sections.add(
         const TaskCard(
@@ -268,6 +356,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
       );
 
       sections.add(const SizedBox(height: 24));
+      // --- Pending Approvals (max 2) ---
       sections.add(SectionHeader(title: "Pending Approvals", onViewAll: () {}));
       sections.add(
         const TaskCard(
@@ -289,6 +378,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
       );
 
       sections.add(const SizedBox(height: 24));
+      // --- Escalated Tasks (max 2) ---
       sections.add(SectionHeader(title: "Escalated Tasks", onViewAll: () {}));
       sections.add(
         const TaskCard(
@@ -300,6 +390,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
         ),
       );
     } else if (scope == 'department') {
+      // --- Dept. Priorities (max 2) ---
       sections.add(SectionHeader(title: "Dept. Priorities", onViewAll: () {}));
       sections.add(
         const TaskCard(
@@ -321,6 +412,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
       );
 
       sections.add(const SizedBox(height: 24));
+      // --- Quick Approvals (max 2) ---
       sections.add(SectionHeader(title: "Quick Approvals", onViewAll: () {}));
       sections.add(
         const TaskCard(
@@ -333,6 +425,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
       );
 
       sections.add(const SizedBox(height: 24));
+      // --- Escalated Tasks (max 2) ---
       sections.add(SectionHeader(title: "Escalated Tasks", onViewAll: () {}));
       sections.add(
         const TaskCard(
@@ -344,127 +437,240 @@ class _RoleUserPageState extends State<RoleUserPage> {
         ),
       );
     } else if (scope == 'infrastructure') {
-      if (_venueDashboard == null || _venueDashboard!.venues.isEmpty) {
+      if (_venueDetails == null || _venueDetails!.venues.isEmpty) {
         sections.add(const Center(child: Text("No venue data available.")));
       } else {
-        final venue = _venueDashboard!.venues.first;
-
-        sections.add(
-          SectionHeader(title: "Today's Bookings", onViewAll: () {}),
-        );
-
-        if (venue.bookedTasks.isEmpty) {
-          sections.add(
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12.0),
-              child: Text(
-                "No booked tasks for today.",
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-          );
-        } else {
-          for (var task in venue.bookedTasks) {
-            final title = task is Map
-                ? (task['title'] ?? 'Unknown Task')
-                : 'Unknown Task';
-            final sub = task is Map
-                ? (task['description'] ?? 'No description')
-                : 'No description';
-
-            sections.add(
-              TaskCard(
-                title: title,
-                sub: sub,
-                accent: AppTheme.brandAccent,
-                icon: Icons.meeting_room_rounded,
-                onTap: task is Map
-                    ? () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => TaskDetailsPage(
-                              taskData: task.cast<String, dynamic>(),
-                              viewMode: 'incharge',
-                            ),
-                          ),
-                        );
-                      }
-                    : null,
-              ),
-            );
-            sections.add(const SizedBox(height: 12));
-          }
+        // --- Venue Selector ---
+        if (_venueDetails!.totalVenuesManaged > 1) {
+          sections.add(const SectionHeader(title: "Select Venue"));
+          sections.add(_buildVenueDropdown());
+          sections.add(const SizedBox(height: 24));
         }
 
-        sections.add(const SizedBox(height: 12));
+        final currentVenue = _selectedRoleVenue ?? _venueDetails!.venues.first;
+
+        // --- Pending Approvals (Selected Venue) ---
         sections.add(
-          SectionHeader(title: "Pending Approvals", onViewAll: () {}),
-        );
-
-        if (venue.pendingApprovalTasks.isEmpty) {
-          sections.add(
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12.0),
-              child: Text(
-                "No pending venue requests.",
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-          );
-        } else {
-          for (var task in venue.pendingApprovalTasks) {
-            final title = task is Map
-                ? (task['title'] ?? 'Unknown Request')
-                : 'Unknown Request';
-            final sub = task is Map
-                ? (task['description'] ?? 'No description')
-                : 'No description';
-            final taskId = task is Map
-                ? (task['task_id'] ?? task['id'] ?? 0)
-                : 0;
-
-            sections.add(
-              TaskCard(
-                title: title,
-                sub: sub,
-                accent: AppTheme.warning,
-                icon: Icons.stadium_rounded,
-                isApproval: true,
-                onAccept: taskId != 0
-                    ? () => _handleApproveVenueTask(taskId)
-                    : null,
-                onReject: taskId != 0
-                    ? () => _handleRejectVenueTask(taskId)
-                    : null,
-                onTap: task is Map
-                    ? () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => TaskDetailsPage(
-                              taskData: task.cast<String, dynamic>(),
-                              viewMode: 'incharge',
-                            ),
-                          ),
-                        );
-                      }
-                    : null,
-              ),
-            );
-            sections.add(const SizedBox(height: 12));
-          }
-        }
-
-        sections.add(SectionHeader(title: "Booking History", onViewAll: () {}));
-        sections.add(
-          const TaskCard(
-            title: "Seminar Hall A",
-            sub: "Workshop • 02:00 PM",
-            accent: AppTheme.brandAccent,
-            icon: Icons.meeting_room_rounded,
+          SectionHeader(
+            title: "Pending Approvals",
+            onViewAll: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const VenueApprovalsPage()),
+              );
+              _fetchVenueDashboard();
+            },
           ),
         );
+
+        if (currentVenue.newRequestsPendingCount == 0 &&
+            currentVenue.pendingApprovalTasks.isEmpty) {
+          sections.add(
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Text(
+                  "No pending requests for this venue.",
+                  style: TextStyle(color: Colors.grey, fontSize: 13),
+                ),
+              ),
+            ),
+          );
+        } else {
+          // Use pendingApprovalTasks if it's available, otherwise we fallback to a message or mock if count > 0
+          for (var booking in currentVenue.pendingApprovalTasks.take(2)) {
+            sections.add(
+              TaskCard(
+                title: booking.title,
+                sub:
+                    "${currentVenue.name} • ${booking.fromTime} - ${booking.toTime} • By: ${booking.bookedBy}",
+                accent: AppTheme.warning,
+                icon: Icons.bolt_rounded,
+                isRequest: true,
+                onAccept: () => _handleVenueTaskAction(booking.taskId, true),
+                onReject: () => _handleVenueTaskAction(booking.taskId, false),
+                onTap: () async {
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TaskDetailsPage(
+                        taskData: {
+                          'task_id': booking.taskId,
+                          'title': booking.title,
+                          'isRequest': true,
+                        },
+                        viewMode: 'incharge',
+                      ),
+                    ),
+                  );
+                  if (result != null) {
+                    _fetchVenueDashboard();
+                  }
+                },
+              ),
+            );
+            sections.add(const SizedBox(height: 12));
+          }
+        }
+
+        sections.add(const SizedBox(height: 24));
+
+        // --- Today's Schedule (Selected Venue) ---
+        sections.add(
+          SectionHeader(
+            title: "Today's Schedule",
+            onViewAll: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const VenueSchedulePage()),
+            ),
+          ),
+        );
+
+        if (currentVenue.today.confirmedBookings.isEmpty) {
+          sections.add(
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Text(
+                  "No other bookings scheduled today.",
+                  style: TextStyle(color: Colors.grey, fontSize: 13),
+                ),
+              ),
+            ),
+          );
+        } else {
+          for (var booking in currentVenue.today.confirmedBookings.take(2)) {
+            final bool isCompleted =
+                booking.status.toLowerCase() == 'completed';
+            sections.add(
+              TaskCard(
+                title: booking.title,
+                sub:
+                    "${currentVenue.name} • ${booking.fromTime} - ${booking.toTime} • ${booking.status.toUpperCase()}",
+                accent: isCompleted ? AppTheme.success : AppTheme.brandAccent,
+                icon: isCompleted
+                    ? Icons.check_circle_rounded
+                    : Icons.meeting_room_rounded,
+                onTap: () async {
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TaskDetailsPage(
+                        taskData: {
+                          'task_id': booking.taskId,
+                          'title': booking.title,
+                        },
+                        viewMode: 'incharge',
+                      ),
+                    ),
+                  );
+                  if (result != null) {
+                    _fetchVenueDashboard();
+                  }
+                },
+              ),
+            );
+            sections.add(const SizedBox(height: 12));
+          }
+        }
+
+        sections.add(const SizedBox(height: 24));
+
+        // --- Recent History ---
+        sections.add(
+          SectionHeader(
+            title: "Recent History",
+            onViewAll: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => VenueHistoryViewAllPage(
+                  venueId: currentVenue.venueId,
+                  venueName: currentVenue.name,
+                ),
+              ),
+            ),
+          ),
+        );
+
+        if (_isHistoryLoading) {
+          sections.addAll([const SkeletonTaskCard(), const SkeletonTaskCard()]);
+        } else if (_globalHistory == null || _globalHistory!.history.isEmpty) {
+          sections.add(const Center(child: Text("No history records found")));
+        } else {
+          for (var item in _globalHistory!.history.take(2)) {
+            final statusCol = item.status == 'COMPLETED'
+                ? AppTheme.success
+                : (item.status == 'REJECTED'
+                      ? AppTheme.danger
+                      : AppTheme.warning);
+
+            sections.add(
+              InkWell(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => TaskDetailsPage(
+                      taskData: {'task_id': item.taskId, 'title': item.title},
+                      viewMode: 'incharge',
+                    ),
+                  ),
+                ),
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppTheme.surfaceColor, width: 2),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        height: 10,
+                        width: 10,
+                        decoration: BoxDecoration(
+                          color: statusCol,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.title,
+                              style: const TextStyle(
+                                color: AppTheme.textMain,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              item.userName ?? "Unknown User",
+                              style: TextStyle(
+                                color: AppTheme.textSub.withOpacity(0.6),
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        item.date,
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ).animate().fadeIn(),
+            );
+          }
+        }
       }
     }
 
@@ -546,10 +752,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
               children: [
                 Text(
                   val,
-                  style: AppTheme.bodyMain.copyWith(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
+                  style: AppTheme.h1.copyWith(fontSize: 20, height: 1.1),
                 ),
                 Text(
                   label,
@@ -557,6 +760,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -564,5 +768,73 @@ class _RoleUserPageState extends State<RoleUserPage> {
         ),
       ),
     ).animate().fadeIn().slideX(begin: 0.2);
+  }
+
+  Widget _buildVenueDropdown() {
+    if (_venueDetails == null || _venueDetails!.venues.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: AppTheme.brandAccent.withOpacity(0.2),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.brandAccent.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<VenueDetailItem>(
+          value: _selectedRoleVenue,
+          isExpanded: true,
+          icon: const Icon(
+            Icons.unfold_more_rounded,
+            color: AppTheme.brandAccent,
+            size: 20,
+          ),
+          items: _venueDetails!.venues.map((venue) {
+            return DropdownMenuItem(
+              value: venue,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.stadium_rounded,
+                    size: 18,
+                    color: AppTheme.brandAccent.withOpacity(0.7),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    venue.name,
+                    style: const TextStyle(
+                      color: AppTheme.textMain,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+          onChanged: (val) {
+            if (val != null) {
+              setState(() {
+                _selectedRoleVenue = val;
+              });
+              _fetchScopedHistory(venueId: val.venueId);
+            }
+          },
+        ),
+      ),
+    );
   }
 }
