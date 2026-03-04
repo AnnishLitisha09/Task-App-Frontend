@@ -310,17 +310,23 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     final bool isSelfLog = _taskData['taskCategory'] == 'Self Log';
 
     return [
-      _modernDropdown(
-        "TASK CATEGORY",
-        ["Directive Task", "Self Log"],
-        _taskData['taskCategory'],
-        (v) => setState(() {
-          _taskData['taskCategory'] = v;
-          _currentStep = 0;
-          if (_pageController.hasClients) {
-            _pageController.jumpToPage(0);
-          }
-        }),
+      AbsorbPointer(
+        absorbing: _userRole?.toLowerCase() == 'student',
+        child: Opacity(
+          opacity: _userRole?.toLowerCase() == 'student' ? 0.6 : 1.0,
+          child: _modernDropdown(
+            "TASK CATEGORY",
+            ["Directive Task", "Self Log"],
+            _taskData['taskCategory'],
+            (v) => setState(() {
+              _taskData['taskCategory'] = v;
+              _currentStep = 0;
+              if (_pageController.hasClients) {
+                _pageController.jumpToPage(0);
+              }
+            }),
+          ),
+        ),
       ),
       const SizedBox(height: 24),
       if (_isLoadingTitles)

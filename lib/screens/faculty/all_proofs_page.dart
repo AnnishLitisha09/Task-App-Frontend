@@ -26,7 +26,7 @@ class _AllProofsPageState extends State<AllProofsPage> {
   Future<void> _fetch() async {
     setState(() => _isLoading = true);
     try {
-      final response = await _taskService.getPendingProofs();
+      final dynamic response = await _taskService.getPendingProofs();
       if (mounted) {
         setState(() {
           if (response is Map && response.containsKey('tasks')) {

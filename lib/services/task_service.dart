@@ -376,7 +376,7 @@ class TaskService {
     }
   }
 
-  Future<List<dynamic>> getEscalations() async {
+  Future<List<dynamic>> getEscalations({bool unread = true}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken') ?? '';
@@ -384,7 +384,9 @@ class TaskService {
           dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
       final response = await http.get(
-        Uri.parse('${backendUrl}tasks/escalations/me'),
+        Uri.parse(
+          '${backendUrl}tasks/escalations/me${unread ? "?unread=true" : ""}',
+        ),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -395,6 +397,9 @@ class TaskService {
         final data = jsonDecode(response.body);
         if (data is Map<String, dynamic> && data.containsKey('data')) {
           return data['data'] as List<dynamic>;
+        }
+        if (data is Map<String, dynamic> && data.containsKey('escalations')) {
+          return data['escalations'] as List<dynamic>;
         }
         return data as List<dynamic>;
       } else {

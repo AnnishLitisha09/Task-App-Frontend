@@ -1,10 +1,22 @@
 import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../services/student_service.dart';
+import '../../models/coupon_model.dart';
 
-class OnDutyWalletPage extends StatelessWidget {
+class OnDutyWalletPage extends StatefulWidget {
   const OnDutyWalletPage({super.key});
+
+  @override
+  State<OnDutyWalletPage> createState() => _OnDutyWalletPageState();
+}
+
+class _OnDutyWalletPageState extends State<OnDutyWalletPage> {
+  final StudentService _studentService = StudentService();
+  bool _isLoading = true;
+  int _currentScore = 0;
+  List<Coupon> _availableCoupons = [];
+  List<RedeemedItem> _redeemedCoupons = [];
 
   // --- Design Tokens ---
   final Color brandAccent = const Color(0xFF6366F1);
@@ -13,6 +25,69 @@ class OnDutyWalletPage extends StatelessWidget {
   final Color surfaceColor = const Color(0xFFF8FAFC);
   final Color couponGold = const Color(0xFFF59E0B);
   final Color successGreen = const Color(0xFF10B981);
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchData();
+  }
+
+  Future<void> _fetchData() async {
+    setState(() => _isLoading = true);
+
+    // Fetch Available Coupons
+    try {
+      final availableResponse = await _studentService.getAvailableCoupons();
+      if (mounted) {
+        setState(() {
+          _availableCoupons = availableResponse.coupons;
+          _currentScore = availableResponse.score;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Available Coupons Error: $e")));
+      }
+    }
+
+    // Fetch Redeemed Coupons
+    try {
+      final redeemedResponse = await _studentService.getRedeemedCoupons();
+      if (mounted) {
+        setState(() {
+          _redeemedCoupons = redeemedResponse.items;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Redeemed Coupons Error: $e")));
+      }
+    }
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleRedeem(int couponId, String title) async {
+    try {
+      final success = await _studentService.redeemCoupon(couponId);
+      if (success && mounted) {
+        _showSuccessToast(context);
+        _fetchData(); // Refresh
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Redemption failed: $e")));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,44 +114,67 @@ class OnDutyWalletPage extends StatelessWidget {
           ),
         ),
       ),
-      body: Column(
-        children: [
-          _buildBalanceHeader(),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-              physics: const BouncingScrollPhysics(),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
               children: [
-                _sectionLabel("Active Coupons"),
-                _buildCouponCard(
-                  context,
-                  title: "Technical Symposium",
-                  id: "OD-99281",
-                  expiry: "Valid until Feb 12, 2026",
-                  status: "Active",
-                ),
-                _buildCouponCard(
-                  context,
-                  title: "Inter-College Sports Meet",
-                  id: "OD-99244",
-                  expiry: "Valid until Feb 15, 2026",
-                  status: "Active",
-                ),
-                const SizedBox(height: 24),
-                _sectionLabel("Expired"),
-                _buildCouponCard(
-                  context,
-                  title: "UI/UX Design Workshop",
-                  id: "OD-98102",
-                  expiry: "Expired Jan 30, 2026",
-                  status: "Expired",
-                  isExpired: true,
+                _buildBalanceHeader(),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _fetchData,
+                    child: ListView(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 10,
+                      ),
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        if (_availableCoupons.isNotEmpty) ...[
+                          _sectionLabel("Available Coupons"),
+                          ..._availableCoupons.map(
+                            (coupon) => _buildCouponCard(
+                              context,
+                              id: "OD-${coupon.id}",
+                              title: coupon.name,
+                              expiry: "Cost: ${coupon.points} Credits",
+                              status: "Available",
+                              couponId: coupon.id,
+                              points: coupon.points,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+                        if (_redeemedCoupons.isNotEmpty) ...[
+                          _sectionLabel("Redeemed"),
+                          ..._redeemedCoupons.map(
+                            (item) => _buildCouponCard(
+                              context,
+                              id: "RD-${item.redemptionId}",
+                              title: item.couponName,
+                              expiry:
+                                  "Deducted: ${item.pointsDeducted} Credits",
+                              status: "Redeemed",
+                              isRedeemed: true,
+                            ),
+                          ),
+                        ],
+                        if (_availableCoupons.isEmpty &&
+                            _redeemedCoupons.isEmpty)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.only(top: 100),
+                              child: Text(
+                                "No coupons available",
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -85,10 +183,9 @@ class OnDutyWalletPage extends StatelessWidget {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.all(24),
-      height: 180, // Defined height for a better card aspect ratio
+      height: 180,
       child: Stack(
         children: [
-          // 1. The Main Gradient Base
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -106,8 +203,6 @@ class OnDutyWalletPage extends StatelessWidget {
               ],
             ),
           ),
-
-          // 2. Abstract "Mesh" Design Decor
           Positioned(
             right: -20,
             top: -20,
@@ -116,8 +211,6 @@ class OnDutyWalletPage extends StatelessWidget {
               backgroundColor: Colors.white.withOpacity(0.08),
             ),
           ),
-
-          // 3. The Content Layer
           Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -146,9 +239,9 @@ class OnDutyWalletPage extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Text(
-                      "12",
-                      style: TextStyle(
+                    Text(
+                      "$_currentScore",
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 56,
                         fontWeight: FontWeight.w900,
@@ -169,8 +262,8 @@ class OnDutyWalletPage extends StatelessWidget {
                   ],
                 ),
                 const Spacer(),
-                // 4. Glass-morphic Refresh Badge
                 ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                     child: Container(
@@ -195,7 +288,7 @@ class OnDutyWalletPage extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            "Next Refresh: March 01",
+                            "Synced with Wallet",
                             style: TextStyle(
                               color: Colors.white.withOpacity(0.9),
                               fontSize: 10,
@@ -222,26 +315,27 @@ class OnDutyWalletPage extends StatelessWidget {
     required String id,
     required String expiry,
     required String status,
-    bool isExpired = false,
+    bool isRedeemed = false,
+    int? couponId,
+    int? points,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: isExpired ? surfaceColor : Colors.white,
+        color: isRedeemed ? surfaceColor : Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isExpired ? Colors.transparent : surfaceColor,
+          color: isRedeemed ? Colors.transparent : surfaceColor,
           width: 2,
         ),
       ),
       child: IntrinsicHeight(
         child: Row(
           children: [
-            // Side Bar Decor
             Container(
               width: 10,
               decoration: BoxDecoration(
-                color: isExpired ? slate500.withOpacity(0.2) : brandAccent,
+                color: isRedeemed ? slate500.withOpacity(0.2) : brandAccent,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(20),
                   bottomLeft: Radius.circular(20),
@@ -265,7 +359,7 @@ class OnDutyWalletPage extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        if (!isExpired)
+                        if (!isRedeemed)
                           Icon(
                             Icons.verified_rounded,
                             color: couponGold,
@@ -277,12 +371,9 @@ class OnDutyWalletPage extends StatelessWidget {
                     Text(
                       title,
                       style: TextStyle(
-                        color: isExpired ? slate500 : slate900,
+                        color: isRedeemed ? slate500 : slate900,
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
-                        decoration: isExpired
-                            ? TextDecoration.lineThrough
-                            : null,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -304,10 +395,10 @@ class OnDutyWalletPage extends StatelessWidget {
                 ),
               ),
             ),
-            // REDEEM BUTTON
-            if (!isExpired)
+            if (!isRedeemed && couponId != null)
               GestureDetector(
-                onTap: () => _showRedeemDialog(context, title),
+                onTap: () =>
+                    _showRedeemDialog(context, title, couponId, points ?? 0),
                 child: Container(
                   width: 75,
                   decoration: BoxDecoration(
@@ -344,7 +435,12 @@ class OnDutyWalletPage extends StatelessWidget {
   }
 
   // --- REDEMPTION DIALOG ---
-  void _showRedeemDialog(BuildContext context, String title) {
+  void _showRedeemDialog(
+    BuildContext context,
+    String title,
+    int couponId,
+    int cost,
+  ) {
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -377,7 +473,7 @@ class OnDutyWalletPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                "Confirm use of OD credit for:\n\"$title\"",
+                "Confirm use of $cost credits for:\n\"$title\"",
                 textAlign: TextAlign.center,
                 style: TextStyle(color: slate500, fontSize: 14, height: 1.5),
               ),
@@ -401,7 +497,7 @@ class OnDutyWalletPage extends StatelessWidget {
                     child: ElevatedButton(
                       onPressed: () {
                         Navigator.pop(context);
-                        _showSuccessToast(context);
+                        _handleRedeem(couponId, title);
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: brandAccent,

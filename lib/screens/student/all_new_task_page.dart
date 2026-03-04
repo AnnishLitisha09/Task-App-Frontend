@@ -1,17 +1,120 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../services/task_service.dart';
+import '../../theme/app_theme.dart';
+import '../../components/skeleton_loader.dart';
 
-class AllNewTasksPage extends StatelessWidget {
-  // CALLBACK: This is the bridge to the MainWrapper
+class AllNewTasksPage extends StatefulWidget {
   final Function(Map<String, dynamic>) onAccept;
+  final List<dynamic>? initialTasks;
 
-  const AllNewTasksPage({super.key, required this.onAccept});
+  const AllNewTasksPage({super.key, required this.onAccept, this.initialTasks});
 
-  final Color brandAccent = const Color(0xFF6366F1);
-  final Color textMain = const Color(0xFF1E293B);
-  final Color textSub = const Color(0xFF64748B);
-  final Color destructive = const Color(0xFFF43F5E);
-  final Color successColor = const Color(0xFF10B981);
+  @override
+  State<AllNewTasksPage> createState() => _AllNewTasksPageState();
+}
+
+class _AllNewTasksPageState extends State<AllNewTasksPage> {
+  final TaskService _taskService = TaskService();
+  bool _isLoading = true;
+  List<dynamic> _groupedItems = [];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialTasks != null && widget.initialTasks!.isNotEmpty) {
+      _processTasks(widget.initialTasks!);
+      _isLoading = false;
+    } else {
+      _fetch();
+    }
+  }
+
+  Future<void> _fetch() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await _taskService.getPendingTasks();
+      List<dynamic> rawTasks = [];
+
+      if (response is List) {
+        rawTasks = response;
+      } else if (response is Map) {
+        rawTasks =
+            response['pending_for_approval'] ??
+            response['pending_tasks'] ??
+            response['tasks'] ??
+            [];
+      }
+
+      _processTasks(rawTasks);
+
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _processTasks(List<dynamic> tasks) {
+    if (tasks.isEmpty) {
+      _groupedItems = [];
+      return;
+    }
+
+    // Convert all to standardized maps for sorting/grouping
+    final List<Map<String, dynamic>> normalizedTasks = tasks.map((t) {
+      if (t is Map<String, dynamic>) {
+        // Ensure timing is a string for this page
+        final Map<String, dynamic> result = Map.from(t);
+        result['timing'] = _extractTimingFromMap(t);
+        return result;
+      }
+
+      // Fallback for models
+      try {
+        return {
+          'task_id': t.taskId,
+          'title': t.title,
+          'category': t.category,
+          'priority': t.priority,
+          'date': t.date,
+          'timing': t.timing,
+        };
+      } catch (e) {
+        return <String, dynamic>{'title': t.toString(), 'timing': 'Anytime'};
+      }
+    }).toList();
+
+    // Sort by timing
+    normalizedTasks.sort((a, b) {
+      String tA = (a['timing'] == null || a['timing'].toString().isEmpty)
+          ? '23:59'
+          : a['timing'].toString();
+      String tB = (b['timing'] == null || b['timing'].toString().isEmpty)
+          ? '23:59'
+          : b['timing'].toString();
+      return tA.compareTo(tB);
+    });
+
+    List<dynamic> result = [];
+    String currentHeader = '';
+
+    for (var t in normalizedTasks) {
+      String timing = (t['timing'] == null || t['timing'].toString().isEmpty)
+          ? 'Anytime'
+          : t['timing'].toString();
+
+      if (timing != currentHeader) {
+        currentHeader = timing;
+        result.add({'isHeader': true, 'title': currentHeader});
+      }
+      result.add(t);
+    }
+    _groupedItems = result;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,25 +125,68 @@ class AllNewTasksPage extends StatelessWidget {
         elevation: 0,
         centerTitle: false,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new, color: textMain, size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: AppTheme.textMain,
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text("Incoming Requests", 
-          style: TextStyle(color: textMain, fontWeight: FontWeight.w900, fontSize: 20)),
+        title: const Text(
+          "Incoming Requests",
+          style: TextStyle(
+            color: AppTheme.textMain,
+            fontWeight: FontWeight.w900,
+            fontSize: 20,
+          ),
+        ),
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        itemCount: 3, 
-        itemBuilder: (context, index) {
-          // Dummy data for simulation
-          List<String> titles = ["Research Assistant", "Library Support", "Lab Supervisor"];
-          return _buildRequestCard(context, titles[index], "Dept. of Science • ${index + 1}h ago", index + 10);
-        },
+      body: _isLoading
+          ? _buildSkeleton()
+          : _groupedItems.isEmpty
+          ? _buildEmptyState()
+          : RefreshIndicator(
+              onRefresh: _fetch,
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
+                itemCount: _groupedItems.length,
+                itemBuilder: (context, index) {
+                  final item = _groupedItems[index];
+
+                  if (item is Map && item['isHeader'] == true) {
+                    return _buildTimeHeader(item['title']);
+                  }
+
+                  return _buildRequestCard(context, item);
+                },
+              ),
+            ),
+    );
+  }
+
+  Widget _buildTimeHeader(String time) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 24, bottom: 12),
+      child: Text(
+        time,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w900,
+          color: AppTheme.brandAccent,
+          letterSpacing: 0.5,
+        ),
       ),
     );
   }
 
-  Widget _buildRequestCard(BuildContext context, String title, String timestamp, int startTime) {
+  Widget _buildRequestCard(BuildContext context, dynamic task) {
+    final title = task['title'] ?? 'Task';
+    final category = task['category'] ?? 'General';
+    final taskId = task['task_id'];
+
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(20),
@@ -53,7 +199,7 @@ class AllNewTasksPage extends StatelessWidget {
             color: Colors.black.withOpacity(0.03),
             blurRadius: 20,
             offset: const Offset(0, 10),
-          )
+          ),
         ],
       ),
       child: Column(
@@ -64,18 +210,35 @@ class AllNewTasksPage extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: brandAccent.withOpacity(0.1),
+                  color: AppTheme.brandAccent.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(Icons.bolt_rounded, color: brandAccent, size: 20),
+                child: const Icon(
+                  Icons.bolt_rounded,
+                  color: AppTheme.brandAccent,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: TextStyle(color: textMain, fontWeight: FontWeight.w800, fontSize: 16)),
-                    Text(timestamp, style: TextStyle(color: textSub, fontSize: 12)),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: AppTheme.textMain,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                    Text(
+                      "${task['date'] ?? task['start_date']?.split('T')[0] ?? 'Today'} • ${task['timing'] ?? 'Anytime'} • $category",
+                      style: const TextStyle(
+                        color: AppTheme.textSub,
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -85,29 +248,25 @@ class AllNewTasksPage extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _actionBtn(context, "Reject", destructive, () => _showRejectDialog(context, title)),
+                child: _actionBtn(
+                  context,
+                  "Reject",
+                  AppTheme.danger,
+                  () => _showRejectDialog(context, title, taskId),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _actionBtn(context, "Accept", successColor, () {
-                  // EXECUTE CALLBACK: Send data to MainWrapper
-                  onAccept({
-                    "title": title,
-                    "sub": timestamp.split("•")[0].trim(),
-                    "start": startTime, // Dynamic start time based on index
-                    "dur": 90,         // 1.5 hours
-                    "icon": Icons.task_alt_rounded,
+                child: _actionBtn(context, "Accept", AppTheme.success, () {
+                  widget.onAccept({
+                    'task_id': taskId,
+                    'title': title,
+                    'timing': task['timing'],
                   });
 
-                  Navigator.pop(context); // Go back
-                  
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text("Success: $title added to schedule"),
-                      behavior: SnackBarBehavior.floating,
-                      backgroundColor: successColor,
-                    ),
-                  );
+                  // The acceptance API is usually handled by the callback in StudentPage
+                  // which checks for overlaps first.
+                  Navigator.pop(context);
                 }),
               ),
             ],
@@ -117,7 +276,12 @@ class AllNewTasksPage extends StatelessWidget {
     ).animate().fadeIn().slideY(begin: 0.1, end: 0);
   }
 
-  Widget _actionBtn(BuildContext context, String label, Color color, VoidCallback onTap) {
+  Widget _actionBtn(
+    BuildContext context,
+    String label,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -129,35 +293,66 @@ class AllNewTasksPage extends StatelessWidget {
           border: Border.all(color: color.withOpacity(0.1)),
         ),
         child: Center(
-          child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
         ),
       ),
     );
   }
 
-  void _showRejectDialog(BuildContext context, String taskName) {
+  void _showRejectDialog(BuildContext context, String taskName, int taskId) {
+    // Basic rejection dialog for now
+    TextEditingController reasonController = TextEditingController();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        padding: EdgeInsets.only(left: 24, right: 24, top: 32, bottom: MediaQuery.of(context).viewInsets.bottom + 32),
-        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 32,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 32,
+        ),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Reject Request", style: TextStyle(color: textMain, fontSize: 20, fontWeight: FontWeight.w900)),
+            const Text(
+              "Reject Request",
+              style: TextStyle(
+                color: AppTheme.textMain,
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
             const SizedBox(height: 8),
-            Text("Why are you declining '$taskName'?", style: TextStyle(color: textSub)),
+            Text(
+              "Why are you declining '$taskName'?",
+              style: const TextStyle(color: AppTheme.textSub),
+            ),
             const SizedBox(height: 20),
             TextField(
+              controller: reasonController,
               maxLines: 3,
               decoration: InputDecoration(
                 hintText: "Enter your reason here...",
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
               ),
             ),
             const SizedBox(height: 24),
@@ -165,14 +360,72 @@ class AllNewTasksPage extends StatelessWidget {
               width: double.infinity,
               height: 55,
               child: ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                style: ElevatedButton.styleFrom(backgroundColor: destructive, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                child: const Text("Confirm Rejection", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                onPressed: () async {
+                  await _taskService.rejectTask(taskId, reasonController.text);
+                  if (mounted) {
+                    Navigator.pop(context);
+                    Navigator.pop(this.context);
+                    _fetch();
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.danger,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: const Text(
+                  "Confirm Rejection",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildSkeleton() {
+    return const SingleChildScrollView(
+      padding: EdgeInsets.all(24),
+      child: Column(
+        children: [SkeletonTaskCard(), SkeletonTaskCard(), SkeletonTaskCard()],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.inbox_rounded, size: 64, color: AppTheme.dividerColor),
+          SizedBox(height: 16),
+          Text(
+            "No new requests",
+            style: TextStyle(color: AppTheme.textSub, fontSize: 16),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _extractTimingFromMap(Map<String, dynamic> task) {
+    final rawTiming = task['timing'];
+    if (rawTiming is String) return rawTiming;
+    if (rawTiming is Map) {
+      final start = rawTiming['start_time'] ?? '';
+      final end = rawTiming['end_time'] ?? '';
+      if (start.isNotEmpty && end.isNotEmpty) return "$start - $end";
+      return start.isNotEmpty ? start : (end.isNotEmpty ? end : 'Anytime');
+    }
+    final s = task['start_time'] ?? '';
+    final e = task['end_time'] ?? '';
+    if (s.isNotEmpty && e.isNotEmpty) return "$s - $e";
+    return s.isNotEmpty ? s : (e.isNotEmpty ? e : 'Anytime');
   }
 }

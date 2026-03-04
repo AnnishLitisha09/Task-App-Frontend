@@ -106,11 +106,10 @@ class _FacultyPageState extends State<FacultyPage> {
   Future<void> _fetchPendingProofs() async {
     try {
       final TaskService taskService = TaskService();
-      final response = await taskService.getPendingProofs();
+      final dynamic response = await taskService.getPendingProofs();
       if (mounted) {
         setState(() {
-          if (response is Map<String, dynamic> &&
-              response.containsKey('tasks')) {
+          if (response is Map && response.containsKey('tasks')) {
             _pendingProofs = response['tasks'] as List;
           } else if (response is List) {
             _pendingProofs = response;
@@ -320,7 +319,12 @@ class _FacultyPageState extends State<FacultyPage> {
             right: -50,
             child: CircleAvatar(
               radius: 150,
-              backgroundColor: AppTheme.brandAccent.withOpacity(0.05),
+              backgroundColor: const Color.fromARGB(
+                255,
+                209,
+                149,
+                237,
+              ).withOpacity(0.05),
             ),
           ),
           SafeArea(
@@ -337,7 +341,7 @@ class _FacultyPageState extends State<FacultyPage> {
                     date: formattedDate,
                     notificationCount: pending.length,
                     profileImageUrl: info != null
-                        ? 'https://i.pravatar.cc/150?u=faculty${info.id}'
+                        ? 'https://ui-avatars.com/api/?name=${info.name.replaceAll(' ', '+')}&background=random'
                         : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
                   ),
                   if (widget.isBlocked)
@@ -402,42 +406,56 @@ class _FacultyPageState extends State<FacultyPage> {
                       padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate([
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: [
-                                StatCard(
-                                  label: "Pending",
-                                  value: (daily?.pendingTasksCount ?? 0)
-                                      .toString(),
-                                  icon: Icons.move_to_inbox,
-                                  color: AppTheme.brandAccent,
-                                ),
-                                const SizedBox(width: 12),
-                                StatCard(
-                                  label: "Tasks Today",
-                                  value: (daily?.totalTasksAssignedToday ?? 0)
-                                      .toString(),
-                                  icon: Icons.assignment_rounded,
-                                  color: AppTheme.success,
-                                ),
-                                const SizedBox(width: 12),
-                                StatCard(
-                                  label: "Mentees",
-                                  value: (daily?.menteeStudentsCount ?? 0)
-                                      .toString(),
-                                  icon: Icons.people_alt_rounded,
-                                  color: AppTheme.warning,
-                                ),
-                                const SizedBox(width: 12),
-                                StatCard(
-                                  label: "Hours",
-                                  value: "0",
-                                  icon: Icons.access_time_filled_rounded,
-                                  color: Colors.teal,
-                                ),
-                              ],
-                            ),
+                          Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: StatCard(
+                                      label: "Pending",
+                                      value: (daily?.pendingTasksCount ?? 0)
+                                          .toString(),
+                                      icon: Icons.move_to_inbox,
+                                      color: AppTheme.brandAccent,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: StatCard(
+                                      label: "Tasks Today",
+                                      value:
+                                          (daily?.totalTasksAssignedToday ?? 0)
+                                              .toString(),
+                                      icon: Icons.assignment_rounded,
+                                      color: AppTheme.success,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: StatCard(
+                                      label: "Mentees",
+                                      value: (daily?.menteeStudentsCount ?? 0)
+                                          .toString(),
+                                      icon: Icons.people_alt_rounded,
+                                      color: AppTheme.warning,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: StatCard(
+                                      label: "Hours",
+                                      value: "0",
+                                      icon: Icons.access_time_filled_rounded,
+                                      color: Colors.teal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 32),
 
@@ -471,9 +489,9 @@ class _FacultyPageState extends State<FacultyPage> {
                               ),
                             )
                           else
-                            ...pending.take(2).toList().asMap().entries.map((
-                              entry,
-                            ) {
+                            ...pending.take(2).toList().asMap().entries.map<
+                              Widget
+                            >((entry) {
                               int idx = entry.key;
                               var data = entry.value;
                               final String heroTag =
@@ -514,6 +532,7 @@ class _FacultyPageState extends State<FacultyPage> {
                               final String subText = "$dateDisplay$finalDesc";
 
                               return TaskCard(
+                                key: ValueKey(heroTag),
                                 title: data['title'] ?? 'Task',
                                 sub: subText,
                                 accent: AppTheme.brandAccent,
@@ -574,7 +593,7 @@ class _FacultyPageState extends State<FacultyPage> {
                                   ),
                                 ),
                               );
-                            }),
+                            }).toList(),
 
                           const SizedBox(height: 32),
 
@@ -606,15 +625,29 @@ class _FacultyPageState extends State<FacultyPage> {
                               ),
                             )
                           else
-                            ..._escalations.take(2).map((escalation) {
+                            ..._escalations.take(2).map<Widget>((escalation) {
                               final String heroTag =
-                                  "escalation_${escalation['task_id']}_pending";
+                                  "escalation_${escalation['task_id'] ?? escalation['id']}_pending";
+                              final String title =
+                                  escalation['task_title']?.toString() ??
+                                  escalation['title']?.toString() ??
+                                  'Escalated Task';
+                              final String sub =
+                                  escalation['reason']?.toString() ??
+                                  escalation['message']?.toString() ??
+                                  escalation['escalated_reason']?.toString() ??
+                                  'Requires attention';
+                              final String dateStr =
+                                  escalation['created_at'] != null
+                                  ? escalation['created_at']
+                                        .toString()
+                                        .split('T')
+                                        .first
+                                  : 'N/A';
                               return TaskCard(
-                                title: escalation['title'] ?? "Escalated Task",
-                                sub:
-                                    escalation['escalated_reason'] ??
-                                    escalation['description'] ??
-                                    "High Priority",
+                                key: ValueKey(heroTag),
+                                title: title,
+                                sub: '$sub • $dateStr',
                                 accent: AppTheme.danger,
                                 icon: Icons.priority_high_rounded,
                                 heroTag: heroTag,
@@ -624,26 +657,27 @@ class _FacultyPageState extends State<FacultyPage> {
                                     builder: (context) => TaskDetailsPage(
                                       taskData: {
                                         'task_id': escalation['task_id'],
-                                        'title': escalation['title'],
-                                        'sub': escalation['description'],
+                                        'title': title,
+                                        'sub': sub,
                                         'accent': AppTheme.danger,
                                         'icon': Icons.priority_high_rounded,
                                         'heroTag': heroTag,
-                                        'startDate':
-                                            escalation['start_date'] ?? "N/A",
+                                        'startDate': dateStr,
                                         'deadline':
-                                            escalation['end_date'] ?? "N/A",
+                                            escalation['end_date'] ?? 'N/A',
                                         'completionType':
-                                            escalation['type'] ?? "INFO",
+                                            escalation['status'] ??
+                                            escalation['type'] ??
+                                            'PENDING',
                                         'isRequest': false,
-                                        'authority': "Administration",
+                                        'authority': 'Administration',
                                         'userRole': 'Faculty',
                                       },
                                     ),
                                   ),
                                 ),
                               );
-                            }),
+                            }).toList(),
 
                           const SizedBox(height: 32),
 
@@ -676,7 +710,7 @@ class _FacultyPageState extends State<FacultyPage> {
                               ),
                             )
                           else
-                            ...allTasks.take(2).map((item) {
+                            ...allTasks.take(2).map<Widget>((item) {
                               final String heroTag =
                                   "task_${item['task_id']}_today";
                               final taskType =
@@ -715,6 +749,7 @@ class _FacultyPageState extends State<FacultyPage> {
                               final String subText = "$dateDisplay$finalDesc";
 
                               return TaskCard(
+                                key: ValueKey(heroTag),
                                 title: item['title'] ?? 'Task',
                                 sub: subText,
                                 accent: AppTheme.success,
@@ -743,7 +778,7 @@ class _FacultyPageState extends State<FacultyPage> {
                                   ),
                                 ),
                               );
-                            }),
+                            }).toList(),
 
                           const SizedBox(height: 32),
 
@@ -776,7 +811,7 @@ class _FacultyPageState extends State<FacultyPage> {
                               ),
                             )
                           else
-                            ..._pendingProofs.take(2).map((proof) {
+                            ..._pendingProofs.take(2).map<Widget>((proof) {
                               final String heroTag =
                                   "proof_${proof['task_id']}_pending";
                               final deadline = proof['deadline'];
@@ -785,6 +820,7 @@ class _FacultyPageState extends State<FacultyPage> {
                                   : "N/A";
 
                               return TaskCard(
+                                key: ValueKey(heroTag),
                                 title: proof['title'] ?? 'Proof Task',
                                 sub:
                                     proof['description'] ??
@@ -818,7 +854,7 @@ class _FacultyPageState extends State<FacultyPage> {
                                   ),
                                 ),
                               );
-                            }),
+                            }).toList(),
 
                           const SizedBox(height: 32),
                         ]),

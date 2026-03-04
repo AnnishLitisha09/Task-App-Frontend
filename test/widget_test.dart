@@ -12,7 +12,13 @@ import 'package:task_app/main.dart';
 void main() {
   testWidgets('App launches and shows login page', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const TaskApp());
+    await tester.pumpWidget(
+      const TaskApp(
+        isLoggedIn: false,
+        hasAcknowledgedToday: false,
+        userRole: 'student',
+      ),
+    );
 
     // Verify that login page is shown.
     expect(find.text('Login'), findsOneWidget);

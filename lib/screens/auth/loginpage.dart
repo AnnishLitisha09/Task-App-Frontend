@@ -67,12 +67,20 @@ class _LoginPageState extends State<LoginPage> {
       String category = role.toUpperCase();
       String scope = 'none';
 
+      // Parse all_roles into a comma separated string to store locally
+      String allRolesSaved = '';
+      if (user['all_roles'] != null && user['all_roles'] is List) {
+        allRolesSaved = (user['all_roles'] as List)
+            .map((e) => e.toString().trim())
+            .join(',');
+      }
+
+      String scopeDetailsSaved = user['scope_details']?.toString() ?? 'none';
+
       if (role == 'role-user') {
         category = (user['specific_role'] ?? 'User').toString();
         // Map scope_details to internal scope values
-        String rawScope = (user['scope_details'] ?? 'none')
-            .toString()
-            .toLowerCase();
+        String rawScope = scopeDetailsSaved.toLowerCase();
         if (rawScope.contains('department')) {
           scope = 'department';
         } else if (rawScope.contains('institution'))
@@ -91,6 +99,8 @@ class _LoginPageState extends State<LoginPage> {
         scope: scope,
         name: name,
         token: result['token']?.toString(),
+        allRoles: allRolesSaved,
+        scopeDetails: scopeDetailsSaved,
       );
       debugPrint('Login success and session saved');
     } catch (e) {
@@ -112,6 +122,8 @@ class _LoginPageState extends State<LoginPage> {
     String scope = 'none',
     String name = '',
     String? token,
+    String allRoles = '',
+    String scopeDetails = 'none',
   }) async {
     await prefs.setBool('isLoggedIn', true);
     await prefs.setString('userEmail', email);
@@ -121,6 +133,12 @@ class _LoginPageState extends State<LoginPage> {
       category,
     ); // Visual title (HOD/Principal)
     await prefs.setString('userScope', scope); // Filtering logic (Dept/Inst)
+
+    if (allRoles.isNotEmpty) {
+      await prefs.setString('allRoles', allRoles);
+    }
+    await prefs.setString('scopeDetails', scopeDetails);
+
     if (name.isNotEmpty) {
       await prefs.setString('userName', name);
     }
@@ -156,12 +174,20 @@ class _LoginPageState extends State<LoginPage> {
       String category = role.toUpperCase();
       String scope = 'none';
 
+      // Parse all_roles into a comma separated string to store locally
+      String allRolesSaved = '';
+      if (user['all_roles'] != null && user['all_roles'] is List) {
+        allRolesSaved = (user['all_roles'] as List)
+            .map((e) => e.toString().trim())
+            .join(',');
+      }
+
+      String scopeDetailsSaved = user['scope_details']?.toString() ?? 'none';
+
       if (role == 'role-user') {
         category = (user['specific_role'] ?? 'User').toString();
         // Map scope_details to internal scope values
-        String rawScope = (user['scope_details'] ?? 'none')
-            .toString()
-            .toLowerCase();
+        String rawScope = scopeDetailsSaved.toLowerCase();
         if (rawScope.contains('department')) {
           scope = 'department';
         } else if (rawScope.contains('institution'))
@@ -180,6 +206,8 @@ class _LoginPageState extends State<LoginPage> {
         scope: scope,
         name: name,
         token: result['token']?.toString(),
+        allRoles: allRolesSaved,
+        scopeDetails: scopeDetailsSaved,
       );
       debugPrint('Google Sign-In success and session saved');
     } catch (e) {
@@ -375,13 +403,12 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ),
         child: _isGoogleSignInLoading
-            ? SizedBox(
+            ? const SizedBox(
                 height: 24,
                 width: 24,
-                child: Image.network(
-                  'https://i.gifer.com/ZKZg.gif', // generic nice loading GIF
-                  color: Colors.white, // tinted to white for Main Button
-                  fit: BoxFit.contain,
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  strokeWidth: 2.5,
                 ),
               )
             : const Text(
@@ -479,11 +506,9 @@ class _LoginPageState extends State<LoginPage> {
             ? SizedBox(
                 height: 24,
                 width: 24,
-                child: Image.network(
-                  'https://i.gifer.com/ZKZg.gif', // generic nice loading GIF
-                  color:
-                      primaryColor, // tinted to primary color for Google Button
-                  fit: BoxFit.contain,
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                  strokeWidth: 2.5,
                 ),
               )
             : Row(

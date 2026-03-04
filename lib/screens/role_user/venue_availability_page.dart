@@ -357,10 +357,16 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
                                     style: AppTheme.overline,
                                   ),
                                   const SizedBox(height: 16),
-                                  ...((_statusHistory[venue.venueId] ??
-                                          _statusHistory[4]!)
-                                      .map((h) => _buildHistoryTimelineItem(h))
-                                      .toList()),
+                                  if (_statusHistory.containsKey(
+                                        venue.venueId,
+                                      ) ||
+                                      _statusHistory.containsKey(4))
+                                    ...((_statusHistory[venue.venueId] ??
+                                            _statusHistory[4]!)
+                                        .map(
+                                          (h) => _buildHistoryTimelineItem(h),
+                                        )
+                                        .toList()),
                                 ],
                               ),
                             ),

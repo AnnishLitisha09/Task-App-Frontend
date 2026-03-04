@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 import '../../components/skeleton_loader.dart';
+import '../../models/activity_history_model.dart';
+import '../../models/staff_dashboard_model.dart';
+import '../../services/user_service.dart';
 import 'all_staff_schedule_page.dart';
+import 'staff_history_page.dart';
 
 class StaffPage extends StatefulWidget {
   const StaffPage({super.key});
@@ -23,6 +27,9 @@ class _StaffPageState extends State<StaffPage> {
   final Color destructive = const Color(0xFFF43F5E);
 
   bool _isLoading = true;
+  String? _error;
+  List<ActivityItem> _recentActivities = [];
+  StaffDashboardResponse? _staffDashboard;
 
   List<Map<String, dynamic>> todayTasks = [
     {
@@ -72,9 +79,41 @@ class _StaffPageState extends State<StaffPage> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 900), () {
-      if (mounted) setState(() => _isLoading = false);
-    });
+    _fetchDashboardData();
+  }
+
+  Future<void> _fetchDashboardData() async {
+    setState(() => _isLoading = true);
+    try {
+      final userService = UserService();
+      // Fetch both simultaneously
+      final results = await Future.wait([
+        userService.getActivityHistory(),
+        userService.getStaffDashboard(),
+      ]);
+
+      final history = results[0] as ActivityHistoryResponse;
+      final staffData = results[1] as StaffDashboardResponse;
+
+      if (mounted) {
+        setState(() {
+          _staffDashboard = staffData;
+          _recentActivities = [
+            ...history.history.today,
+            ...history.history.yesterday,
+          ];
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching staff dashboard data: $e");
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -94,97 +133,141 @@ class _StaffPageState extends State<StaffPage> {
             ),
           ),
           SafeArea(
-            child: CustomScrollView(
-              physics: const BouncingScrollPhysics(),
-              slivers: [
-                _buildHeader(formattedDate),
-                if (_isLoading)
-                  const SliverToBoxAdapter(child: DashboardSkeleton())
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-                    sliver: SliverList(
-                      delegate: SliverChildListDelegate([
-                        _buildStatsGrid(),
-                        const SizedBox(height: 32),
+            child: RefreshIndicator(
+              onRefresh: _fetchDashboardData,
+              color: brandAccent,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                slivers: [
+                  _buildHeader(formattedDate),
+                  if (_isLoading)
+                    const SliverToBoxAdapter(child: DashboardSkeleton())
+                  else if (_error != null)
+                    SliverToBoxAdapter(child: _buildErrorState())
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
+                      sliver: SliverList(
+                        delegate: SliverChildListDelegate([
+                          _buildStatsGrid(),
+                          const SizedBox(height: 32),
 
-                        // --- Today's Schedule (max 2) ---
-                        _buildSectionHeader(
-                          "Today's Schedule",
-                          onViewAll: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const AllStaffSchedulePage(),
+                          // --- Today's Schedule (max 2) ---
+                          _buildSectionHeader(
+                            "Today's Schedule",
+                            onViewAll: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const AllStaffSchedulePage(),
+                              ),
                             ),
                           ),
-                        ),
-                        ...todayTasks
-                            .take(2)
-                            .map(
+                          if (_staffDashboard?.todaysSchedule.isEmpty ?? true)
+                            Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 20,
+                                ),
+                                child: Text(
+                                  "No tasks for today",
+                                  style: TextStyle(color: textSub),
+                                ),
+                              ),
+                            )
+                          else
+                            ...(_staffDashboard!.todaysSchedule.take(2)).map(
                               (task) => _taskCard(
-                                task['title'] as String,
-                                task['time'] as String,
-                                task['color'] as Color,
-                                task['icon'] as IconData,
+                                task.title,
+                                task.timing,
+                                _getActivityColor(task.title, null),
+                                _getActivityIcon(task.title, null),
                               ),
                             ),
 
-                        const SizedBox(height: 32),
+                          const SizedBox(height: 32),
 
-                        // --- Recent Activity (max 2) ---
-                        _buildSectionHeader(
-                          "Recent Activity",
-                          onViewAll: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const AllStaffSchedulePage(),
-                            ),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(28),
-                            border: Border.all(
-                              color: brandPrimary.withOpacity(0.05),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: brandPrimary.withOpacity(0.03),
-                                blurRadius: 20,
-                                offset: const Offset(0, 10),
+                          // --- Recent Activity (max 2) ---
+                          _buildSectionHeader(
+                            "Recent Activity",
+                            onViewAll: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const StaffHistoryPage(),
                               ),
-                            ],
+                            ),
                           ),
-                          child: Column(
-                            children: recentActivity
-                                .take(2)
-                                .toList()
-                                .asMap()
-                                .entries
-                                .map((entry) {
-                                  final idx = entry.key;
-                                  final item = entry.value;
-                                  final isFirst = idx == 0;
-                                  final isLast =
-                                      idx == recentActivity.take(2).length - 1;
-                                  return _enhancedHistoryTile(
-                                    item['title'] as String,
-                                    item['time'] as String,
-                                    item['color'] as Color,
-                                    item['icon'] as IconData,
-                                    isFirst: isFirst,
-                                    isLast: isLast,
-                                  );
-                                })
-                                .toList(),
-                          ),
-                        ).animate().fadeIn(duration: 500.ms),
-                      ]),
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(28),
+                              border: Border.all(
+                                color: brandPrimary.withOpacity(0.05),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: brandPrimary.withOpacity(0.03),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 10),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: _recentActivities.isEmpty
+                                  ? [
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 20,
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            "No recent activities",
+                                            style: TextStyle(
+                                              color: textSub,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ]
+                                  : _recentActivities
+                                        .take(2)
+                                        .toList()
+                                        .asMap()
+                                        .entries
+                                        .map((entry) {
+                                          final idx = entry.key;
+                                          final item = entry.value;
+                                          final isFirst = idx == 0;
+                                          final isLast =
+                                              idx ==
+                                              _recentActivities.take(2).length -
+                                                  1;
+                                          return _enhancedHistoryTile(
+                                            item.title,
+                                            item.time,
+                                            _getActivityColor(
+                                              item.title,
+                                              item.category,
+                                            ),
+                                            _getActivityIcon(
+                                              item.title,
+                                              item.category,
+                                            ),
+                                            isFirst: isFirst,
+                                            isLast: isLast,
+                                          );
+                                        })
+                                        .toList(),
+                            ),
+                          ).animate().fadeIn(duration: 500.ms),
+                        ]),
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -219,7 +302,7 @@ class _StaffPageState extends State<StaffPage> {
                   ),
                 ),
                 Text(
-                  "Manager View",
+                  _staffDashboard?.profile.name ?? "Manager View",
                   style: TextStyle(
                     color: textMain,
                     fontSize: 18,
@@ -247,20 +330,25 @@ class _StaffPageState extends State<StaffPage> {
       children: [
         _statTile(
           "Total Tasks",
-          totalTasksCompleted.toString(),
+          (_staffDashboard?.stats.totalTasks ?? 0).toString(),
           Icons.assignment_turned_in_rounded,
           successColor,
         ),
-        _statTile("Pending", "01", Icons.pending_actions_rounded, warningColor),
+        _statTile(
+          "Pending",
+          (_staffDashboard?.stats.pendingTasks ?? 0).toString().padLeft(2, '0'),
+          Icons.pending_actions_rounded,
+          warningColor,
+        ),
         _statTile(
           "Employees",
-          activeEmployees.toString(),
+          (_staffDashboard?.stats.managedEmployeesCount ?? 0).toString(),
           Icons.people_alt_rounded,
           brandAccent,
         ),
         _statTile(
           "Efficiency",
-          "94%",
+          _staffDashboard?.stats.efficiency ?? "0%",
           Icons.bolt_rounded,
           const Color(0xFF8B5CF6),
         ),
@@ -485,6 +573,52 @@ class _StaffPageState extends State<StaffPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  IconData _getActivityIcon(String title, String? category) {
+    String t = title.toLowerCase();
+    if (t.contains('waste')) return Icons.recycling_rounded;
+    if (t.contains('meeting')) return Icons.groups_rounded;
+    if (t.contains('inspect')) return Icons.fact_check_outlined;
+    if (t.contains('shift')) return Icons.login_rounded;
+    return Icons.history_rounded;
+  }
+
+  Color _getActivityColor(String title, String? category) {
+    String t = title.toLowerCase();
+    if (t.contains('waste')) return successColor;
+    if (t.contains('meeting')) return Colors.purple;
+    if (t.contains('inspect')) return brandAccent;
+    if (t.contains('shift')) return Colors.blueGrey;
+    return brandAccent;
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+        child: Column(
+          children: [
+            Icon(Icons.error_outline_rounded, color: destructive, size: 40),
+            const SizedBox(height: 16),
+            Text(
+              "Failed to load recent activity",
+              style: TextStyle(color: textMain, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _error ?? "Unknown error",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: textSub, fontSize: 13),
+            ),
+            TextButton(
+              onPressed: _fetchDashboardData,
+              child: Text("Retry", style: TextStyle(color: brandAccent)),
+            ),
+          ],
+        ),
       ),
     );
   }

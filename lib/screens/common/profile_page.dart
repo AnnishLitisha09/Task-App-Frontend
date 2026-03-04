@@ -3,7 +3,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:task_app/screens/student/leave_application_page.dart';
 import '../../models/user_profile_model.dart';
+import '../../models/department_users_model.dart';
 import '../../services/user_service.dart';
+import '../../root_wrapper.dart';
 import '../faculty/student_aproval_page.dart';
 import '../faculty/students_page.dart';
 import '../role_user/all_department_page.dart';
@@ -11,6 +13,7 @@ import '../role_user/all_faculty_page.dart';
 import '../role_user/dept_directory_page.dart';
 import '../role_user/view_dept_tasks.dart';
 import '../student/on_duty_wallet_page.dart';
+import '../student/self_log_history_page.dart';
 import '../role_user/venue_availability_page.dart';
 import '../role_user/resource_availability_page.dart';
 import '../role_user/maintenance_logs_page.dart';
@@ -28,6 +31,9 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   UserProfile? _userProfile;
+  List<String> _availableRoles = [];
+  String _currentScopeDetails = 'none';
+  DepartmentUsersResponse? _hodData;
 
   final Color brandAccent = const Color(0xFF6366F1);
   final Color slate900 = const Color(0xFF0F172A);
@@ -42,14 +48,42 @@ class _ProfilePageState extends State<ProfilePage> {
     _fetchUserProfile();
   }
 
+  Future<void> _fetchHodStats() async {
+    try {
+      final data = await UserService().getHODDepartmentUsers();
+      if (mounted) {
+        setState(() {
+          _hodData = data;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching HOD stats: $e");
+    }
+  }
+
   Future<void> _fetchUserProfile() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final allRolesString = prefs.getString('allRoles') ?? '';
+      _currentScopeDetails = prefs.getString('scopeDetails') ?? 'none';
+
+      final roles = allRolesString
+          .split(',')
+          .where((e) => e.isNotEmpty)
+          .toList();
+
       final service = UserService();
       final profile = await service.getUserProfile();
       if (mounted) {
         setState(() {
           _userProfile = profile;
+          _availableRoles = roles;
         });
+
+        // If HOD, fetch department users for stats
+        if (widget.role == 'role-user' && widget.scope == 'department') {
+          _fetchHodStats();
+        }
       }
     } catch (e) {
       // Handle error cleanly or show snackbar
@@ -60,17 +94,14 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     // If profile is loaded, use its role, otherwise fallback to widget.role
-    final String currentRole = _userProfile?.displayRole ?? widget.role;
 
-    // Helper booleans based on API data or fallback
-    final bool isFaculty = currentRole == 'faculty';
-    final bool isStudent = currentRole == 'student';
+    // Helper booleans MUST be based on the injected routing role (widget.role), NOT the base API profile role,
+    // otherwise settings blocks will bleed across different role dashboards when a user switches roles.
+    final bool isFaculty = widget.role == 'faculty';
+    final bool isStudent = widget.role == 'student';
     final bool isAuthority =
-        currentRole.startsWith('role-user') ||
-        currentRole == 'HOD' ||
-        currentRole == 'Adviser' ||
-        currentRole == 'Principal';
-    final bool isStaff = currentRole == 'staff';
+        widget.role == 'role-user' || widget.role == 'admin';
+    final bool isStaff = widget.role == 'staff';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -87,6 +118,14 @@ class _ProfilePageState extends State<ProfilePage> {
             fontSize: 18,
           ),
         ),
+        actions: [
+          if (_availableRoles.length > 1)
+            IconButton(
+              onPressed: () => _showRoleSwitcher(context),
+              icon: Icon(Icons.switch_account_rounded, color: brandAccent),
+              tooltip: "Switch Role",
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
@@ -135,8 +174,8 @@ class _ProfilePageState extends State<ProfilePage> {
               _buildSettingsGroup("Departmental Control", [
                 _settingsTile(
                   Icons.groups_outlined,
-                  "Student Roster",
-                  "Manage students in your department",
+                  "Department Roster",
+                  "View and manage students & faculty",
                   onTap: () {
                     Navigator.push(
                       context,
@@ -235,11 +274,10 @@ class _ProfilePageState extends State<ProfilePage> {
                   "Self Log",
                   "Record personal learning activities",
                   onTap: () {
-                    // Navigate to Self Log Page (or Directives)
-                    // Assuming similar structure or placeholder for now
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("Self Log feature coming soon!"),
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const SelfLogHistoryPage(),
                       ),
                     );
                   },
@@ -390,20 +428,19 @@ class _ProfilePageState extends State<ProfilePage> {
         ];
       } else {
         // Department / Institution Stats
-        // User asked for: Student, Faculty, "Department displayed also"
-        // And for Faculty: Score, Penalty, Student
+        int studentCount =
+            _hodData?.counts.totalStudents ??
+            int.tryParse(statData['total_students']?.toString() ?? '0') ??
+            0;
+        int facultyCount =
+            _hodData?.counts.totalFaculty ??
+            int.tryParse(statData['total_faculty']?.toString() ?? '0') ??
+            0;
+
         stats = [
-          _performanceStat(
-            "${statData['total_students'] ?? 0}",
-            "Students",
-            successGreen,
-          ),
+          _performanceStat("$studentCount", "Students", successGreen),
           _vDivider(),
-          _performanceStat(
-            "${statData['total_faculty'] ?? 0}",
-            "Faculty",
-            brandAccent,
-          ),
+          _performanceStat("$facultyCount", "Faculty", brandAccent),
           _vDivider(),
         ];
       }
@@ -621,5 +658,189 @@ class _ProfilePageState extends State<ProfilePage> {
         ],
       ),
     );
+  }
+
+  void _showRoleSwitcher(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (BuildContext context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Switch Role",
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: slate900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "Select a role to view the corresponding dashboard.",
+                style: TextStyle(fontSize: 14, color: slate500),
+              ),
+              const SizedBox(height: 24),
+              ..._availableRoles.map<Widget>((roleStr) {
+                // Determine display names and icons
+                String displayName = roleStr;
+                IconData icon = Icons.person_rounded;
+                Color color = brandAccent;
+
+                if (displayName.toLowerCase() == 'faculty') {
+                  icon = Icons.school_rounded;
+                  color = Colors.blue;
+                } else if (displayName.toLowerCase() == 'incharge') {
+                  displayName = 'Venue Incharge';
+                  icon = Icons.meeting_room_rounded;
+                  color = Colors.orange;
+                } else if (displayName.toLowerCase() == 'hod') {
+                  displayName = 'Head of Department';
+                  icon = Icons.account_balance_rounded;
+                  color = Colors.purple;
+                }
+
+                // Highlight currently active role
+                bool isActive = false;
+                if (displayName.toLowerCase() == 'faculty' &&
+                    widget.role == 'faculty') {
+                  isActive = true;
+                } else if (widget.title != null &&
+                    widget.title!.toLowerCase().contains(
+                      displayName.toLowerCase().replaceAll(' ', ''),
+                    )) {
+                  isActive = true;
+                } else if (displayName.toLowerCase() == 'hod' &&
+                    widget.title == 'HEAD OF DEPARTMENT') {
+                  isActive = true;
+                } else if (displayName.toLowerCase() == 'venue incharge' &&
+                    widget.title == 'VENUE INCHARGE') {
+                  isActive = true;
+                }
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.pop(context);
+                      Future.delayed(const Duration(milliseconds: 300), () {
+                        _switchRole(roleStr);
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: isActive ? color : slate500.withOpacity(0.2),
+                          width: isActive ? 2 : 1,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        color: isActive
+                            ? color.withOpacity(0.05)
+                            : Colors.transparent,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: color.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(icon, color: color, size: 24),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Text(
+                              displayName,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: isActive
+                                    ? FontWeight.bold
+                                    : FontWeight.w600,
+                                color: slate900,
+                              ),
+                            ),
+                          ),
+                          if (isActive)
+                            Icon(Icons.check_circle_rounded, color: color),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _switchRole(String targetRoleStr) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    String newRole = 'student';
+    String newTitle = '';
+    String newScope = 'none';
+
+    final targetLower = targetRoleStr.toLowerCase();
+
+    if (targetLower == 'faculty') {
+      newRole = 'faculty';
+    } else if (targetLower == 'student') {
+      newRole = 'student';
+    } else if (targetLower == 'incharge') {
+      newRole = 'role-user';
+      newTitle = 'VENUE INCHARGE';
+      newScope = 'infrastructure'; // Fallback
+      if (_currentScopeDetails.toLowerCase().contains('infrastructure')) {
+        newScope = 'infrastructure';
+      }
+    } else if (targetLower == 'hod') {
+      newRole = 'role-user';
+      newTitle = 'HEAD OF DEPARTMENT';
+      newScope = 'department'; // Fallback
+      if (_currentScopeDetails.toLowerCase().contains('department')) {
+        newScope = 'department';
+      }
+    } else if (targetLower == 'principal') {
+      newRole = 'role-user';
+      newTitle = 'PRINCIPAL';
+      newScope = 'institution'; // Fallback
+      if (_currentScopeDetails.toLowerCase().contains('institution')) {
+        newScope = 'institution';
+      }
+    } // New fallback below just in case.
+
+    await prefs.setString('userRole', newRole);
+    if (newTitle.isNotEmpty) {
+      await prefs.setString('userTitle', newTitle);
+      await prefs.setString('userScope', newScope);
+    }
+
+    if (mounted) {
+      // Force app restart directly into RootWrapper with the newly switched state
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => RootWrapper(
+            initialLogin: true,
+            initialAck: true,
+            initialRole: newRole,
+          ),
+        ),
+        (route) => false,
+      );
+    }
   }
 }

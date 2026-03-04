@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../components/skeleton_loader.dart';
+import '../../models/staff_dashboard_model.dart';
+import '../../services/user_service.dart';
 
 class AllStaffSchedulePage extends StatefulWidget {
   const AllStaffSchedulePage({super.key});
@@ -9,50 +12,76 @@ class AllStaffSchedulePage extends StatefulWidget {
 }
 
 class _AllStaffSchedulePageState extends State<AllStaffSchedulePage> {
-  // Mock data – replace with real API when available
-  final List<Map<String, dynamic>> _tasks = [
-    {
-      'title': 'Regular Site Inspection',
-      'time': '09:00 AM - 11:00 AM',
-      'color': const Color(0xFF6366F1),
-      'icon': Icons.visibility_rounded,
-    },
-    {
-      'title': 'Staff Briefing',
-      'time': '01:00 PM - 01:30 PM',
-      'color': Colors.purple,
-      'icon': Icons.groups_rounded,
-    },
-    {
-      'title': 'Waste Management Review',
-      'time': '03:00 PM - 04:00 PM',
-      'color': const Color(0xFF10B981),
-      'icon': Icons.recycling_rounded,
-    },
-    {
-      'title': 'Security Round',
-      'time': '05:00 PM - 05:30 PM',
-      'color': const Color(0xFFF59E0B),
-      'icon': Icons.security_rounded,
-    },
-  ];
+  final Color textMain = const Color(0xFF1E293B);
+  final Color textSub = const Color(0xFF64748B);
+  final Color brandPrimary = const Color(0xFF0F172A);
+  final Color brandAccent = const Color(0xFF6366F1);
+  final Color successColor = const Color(0xFF10B981);
+  final Color warningColor = const Color(0xFFF59E0B);
 
+  List<StaffScheduleTask> _tasks = [];
   bool _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (mounted) setState(() => _isLoading = false);
-    });
+    _fetchSchedule();
+  }
+
+  Future<void> _fetchSchedule() async {
+    setState(() => _isLoading = true);
+    try {
+      final dashboard = await UserService().getStaffDashboard();
+      if (mounted) {
+        setState(() {
+          _tasks = dashboard.todaysSchedule;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Color _getTaskColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'accepted':
+        return successColor;
+      case 'pending':
+        return warningColor;
+      case 'completed':
+        return successColor;
+      case 'rejected':
+        return const Color(0xFFF43F5E);
+      default:
+        return brandAccent;
+    }
+  }
+
+  IconData _getTaskIcon(String title) {
+    final t = title.toLowerCase();
+    if (t.contains('inspect')) return Icons.fact_check_outlined;
+    if (t.contains('brief') || t.contains('meeting'))
+      return Icons.groups_rounded;
+    if (t.contains('waste') || t.contains('recycl'))
+      return Icons.recycling_rounded;
+    if (t.contains('security') || t.contains('round'))
+      return Icons.security_rounded;
+    if (t.contains('exam') || t.contains('invigilat'))
+      return Icons.school_rounded;
+    if (t.contains('practical') || t.contains('lab'))
+      return Icons.science_rounded;
+    return Icons.task_alt_rounded;
   }
 
   @override
   Widget build(BuildContext context) {
-    final textMain = const Color(0xFF1E293B);
-    final textSub = const Color(0xFF64748B);
-    final brandPrimary = const Color(0xFF0F172A);
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -74,82 +103,161 @@ class _AllStaffSchedulePageState extends State<AllStaffSchedulePage> {
           ),
         ),
       ),
-      body: _isLoading
-          ? const Padding(
-              padding: EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  SkeletonTaskCard(),
-                  SkeletonTaskCard(),
-                  SkeletonTaskCard(),
-                  SkeletonTaskCard(),
-                ],
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(24),
-              itemCount: _tasks.length,
-              itemBuilder: (context, index) {
-                final task = _tasks[index];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: brandPrimary.withOpacity(0.04),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
+      body: RefreshIndicator(
+        onRefresh: _fetchSchedule,
+        color: brandAccent,
+        child: _isLoading
+            ? const Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    SkeletonTaskCard(),
+                    SkeletonTaskCard(),
+                    SkeletonTaskCard(),
+                    SkeletonTaskCard(),
+                  ],
+                ),
+              )
+            : _error != null
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.error_outline_rounded,
+                        color: const Color(0xFFF43F5E),
+                        size: 40,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        "Failed to load schedule",
+                        style: TextStyle(
+                          color: textMain,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: _fetchSchedule,
+                        child: Text(
+                          "Retry",
+                          style: TextStyle(color: brandAccent),
+                        ),
                       ),
                     ],
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        height: 48,
-                        width: 48,
-                        decoration: BoxDecoration(
-                          color: (task['color'] as Color).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Icon(
-                          task['icon'] as IconData,
-                          color: task['color'] as Color,
-                          size: 22,
-                        ),
+                ),
+              )
+            : _tasks.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.event_available_rounded,
+                      size: 60,
+                      color: textSub.withOpacity(0.4),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      "No tasks scheduled for today",
+                      style: TextStyle(
+                        color: textSub,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              task['title'] as String,
-                              style: TextStyle(
-                                color: textMain,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            Text(
-                              task['time'] as String,
-                              style: TextStyle(color: textSub, fontSize: 12),
+                    ),
+                  ],
+                ),
+              )
+            : ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: const EdgeInsets.all(24),
+                itemCount: _tasks.length,
+                itemBuilder: (context, index) {
+                  final task = _tasks[index];
+                  final color = _getTaskColor(task.status);
+                  final icon = _getTaskIcon(task.title);
+                  return Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: brandPrimary.withOpacity(0.04),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
                             ),
                           ],
                         ),
-                      ),
-                      Icon(
-                        Icons.arrow_forward_ios_rounded,
-                        size: 14,
-                        color: textSub.withOpacity(0.3),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                        child: Row(
+                          children: [
+                            Container(
+                              height: 48,
+                              width: 48,
+                              decoration: BoxDecoration(
+                                color: color.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Icon(icon, color: color, size: 22),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    task.title,
+                                    style: TextStyle(
+                                      color: textMain,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    task.timing,
+                                    style: TextStyle(
+                                      color: textSub,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: color.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                task.status.toUpperCase(),
+                                style: TextStyle(
+                                  color: color,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                      .animate()
+                      .fadeIn(delay: (60 * index).ms)
+                      .slideX(begin: 0.05, end: 0);
+                },
+              ),
+      ),
     );
   }
 }

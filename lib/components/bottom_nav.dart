@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:task_app/screens/faculty/faculty_page.dart';
-import 'package:task_app/screens/role_user/all_department_page.dart';
 import 'package:task_app/screens/role_user/role_user_page.dart';
 import 'package:task_app/screens/staff/staff_history_page.dart';
 import 'package:task_app/screens/staff/staff_page.dart';
@@ -93,7 +92,7 @@ class _MainWrapperState extends State<MainWrapper> {
         RoleUserPage(title: _userTitle, scope: _scopeType), // Index 0: Hub
         const PersonalCalendarPage(), // Index 2: Calendar
         _scopeType == 'institution'
-            ? const AllDepartmentPage()
+            ? const TaskManagementPage()
             : (_scopeType == 'infrastructure'
                   ? const VenueDetailsPage() // Create this screen later
                   : const TaskManagementPage()), // Department level

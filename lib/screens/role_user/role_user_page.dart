@@ -10,7 +10,10 @@ import '../../components/skeleton_loader.dart';
 import '../../services/task_service.dart';
 import '../../models/venue_dashboard_model.dart';
 import '../../models/venue_history_model.dart';
+import '../../models/institutional_dashboard_model.dart';
 import '../common/task_detail_page.dart';
+import '../../services/user_service.dart';
+import '../../models/departmental_dashboard_model.dart';
 import './venue_history_page.dart';
 import './venue_approvals_page.dart';
 import './venue_schedule_page.dart';
@@ -27,8 +30,12 @@ class RoleUserPage extends StatefulWidget {
 
 class _RoleUserPageState extends State<RoleUserPage> {
   final TaskService _taskService = TaskService();
+  final UserService _userService = UserService();
   VenueDetailsResponse? _venueDetails;
   VenueHistoryResponse? _globalHistory;
+  DepartmentalDashboard? _deptDetails;
+  InstitutionalDashboard? _institutionDashboard;
+  List<dynamic> _escalations = [];
   VenueDetailItem? _selectedRoleVenue;
   bool _isLoading = false;
   bool _isHistoryLoading = false;
@@ -37,8 +44,56 @@ class _RoleUserPageState extends State<RoleUserPage> {
   @override
   void initState() {
     super.initState();
-    if (widget.scope.toLowerCase() == 'infrastructure') {
+    final String scope = widget.scope.toLowerCase();
+    if (scope == 'infrastructure') {
       _fetchVenueDashboard();
+    } else if (scope == 'department') {
+      _fetchDepartmentalDashboard();
+    } else if (scope == 'institution') {
+      _fetchInstitutionalDashboard();
+    }
+  }
+
+  Future<void> _fetchDepartmentalDashboard() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final data = await _userService.getDepartmentalDashboard();
+      setState(() {
+        _deptDetails = data;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _fetchInstitutionalDashboard() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final results = await Future.wait([
+        _userService.getInstitutionalDashboard(),
+        _taskService.getEscalations(unread: true),
+      ]);
+      setState(() {
+        _institutionDashboard = results[0] as InstitutionalDashboard;
+        _escalations = results[1] as List<dynamic>;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
     }
   }
 
@@ -88,6 +143,13 @@ class _RoleUserPageState extends State<RoleUserPage> {
     }
   }
 
+  Future<void> _refresh() {
+    final scope = widget.scope.toLowerCase();
+    if (scope == 'institution') return _fetchInstitutionalDashboard();
+    if (scope == 'department') return _fetchDepartmentalDashboard();
+    return _fetchVenueDashboard();
+  }
+
   @override
   Widget build(BuildContext context) {
     String formattedDate = DateFormat('EEEE, MMM dd').format(DateTime.now());
@@ -105,80 +167,86 @@ class _RoleUserPageState extends State<RoleUserPage> {
             ),
           ),
           SafeArea(
-            child: CustomScrollView(
-              physics: const BouncingScrollPhysics(),
-              slivers: [
-                CustomAppBar(
-                  title: widget.title,
-                  date: formattedDate,
-                  notificationCount: 1,
+            child: RefreshIndicator(
+              onRefresh: _refresh,
+              color: AppTheme.brandAccent,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
                 ),
-                if (_isLoading)
-                  const SliverToBoxAdapter(child: DashboardSkeleton())
-                else if (_error != null)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.error_outline_rounded,
-                              color: AppTheme.danger.withOpacity(0.5),
-                              size: 48,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Failed to load dashboard',
-                              style: AppTheme.h2,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _error!,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: AppTheme.textSub),
-                            ),
-                            const SizedBox(height: 24),
-                            ElevatedButton.icon(
-                              onPressed: _fetchVenueDashboard,
-                              icon: const Icon(Icons.refresh_rounded),
-                              label: const Text("Retry"),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.brandPrimary,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 24,
-                                  vertical: 12,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                slivers: [
+                  CustomAppBar(
+                    title: widget.title,
+                    date: formattedDate,
+                    notificationCount: _escalations.length,
+                  ),
+                  if (_isLoading)
+                    const SliverToBoxAdapter(child: DashboardSkeleton())
+                  else if (_error != null)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.error_outline_rounded,
+                                color: AppTheme.danger.withOpacity(0.5),
+                                size: 48,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Failed to load dashboard',
+                                style: AppTheme.h2,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _error!,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: AppTheme.textSub),
+                              ),
+                              const SizedBox(height: 24),
+                              ElevatedButton.icon(
+                                onPressed: _refresh,
+                                icon: const Icon(Icons.refresh_rounded),
+                                label: const Text("Retry"),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.brandPrimary,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      sliver: SliverList(
+                        delegate: SliverChildListDelegate([
+                          const SizedBox(height: 12),
+                          _buildScopeDynamicMetrics(),
+                          const SizedBox(height: 32),
+                          ..._buildLogicDrivenTasks(),
+                          const SizedBox(height: 100),
+                        ]),
+                      ),
                     ),
-                  )
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    sliver: SliverList(
-                      delegate: SliverChildListDelegate([
-                        const SizedBox(height: 12),
-                        _buildScopeDynamicMetrics(),
-                        const SizedBox(height: 32),
-                        ..._buildLogicDrivenTasks(),
-                        const SizedBox(height: 100),
-                      ]),
-                    ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -189,41 +257,102 @@ class _RoleUserPageState extends State<RoleUserPage> {
   Widget _buildScopeDynamicMetrics() {
     switch (widget.scope.toLowerCase()) {
       case 'institution':
-        return Row(
+        final stats = _institutionDashboard?.institutionalStats;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            StatCard(
-              label: "Active Depts",
-              value: "12",
-              icon: Icons.account_balance_rounded,
-              color: AppTheme.brandAccent,
+            // Role badge
+            if (_institutionDashboard?.role.isNotEmpty ?? false)
+              Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.brandAccent.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  _institutionDashboard!.role,
+                  style: AppTheme.caption.copyWith(
+                    color: AppTheme.brandAccent,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            Row(
+              children: [
+                Expanded(
+                  child: StatCard(
+                    label: "Departments",
+                    value: (stats?.totalDepartments ?? 0).toString(),
+                    icon: Icons.account_balance_rounded,
+                    color: AppTheme.brandAccent,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: StatCard(
+                    label: "Faculty",
+                    value: (stats?.totalFaculty ?? 0).toString(),
+                    icon: Icons.assignment_ind_rounded,
+                    color: AppTheme.warning,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            StatCard(
-              label: "Core Faculty",
-              value: "148",
-              icon: Icons.assignment_ind_rounded,
-              color: AppTheme.warning,
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: StatCard(
+                    label: "Students",
+                    value: (stats?.totalStudents ?? 0).toString(),
+                    icon: Icons.school_rounded,
+                    color: AppTheme.success,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: StatCard(
+                    label: "Pending Approvals",
+                    value:
+                        (_institutionDashboard
+                                    ?.personalActions
+                                    .pendingMyApprovalCount ??
+                                0)
+                            .toString(),
+                    icon: Icons.pending_actions_rounded,
+                    color: AppTheme.danger,
+                  ),
+                ),
+              ],
             ),
           ],
         );
       case 'department':
         return Column(
           children: [
-            _featuredDeptCard("Computer Science", "HOD Dashboard"),
+            _featuredDeptCard(
+              _deptDetails?.department.name ?? "Department",
+              "HOD Dashboard",
+            ),
             const SizedBox(height: 12),
             Row(
               children: [
                 _bentoMetricTile(
-                  "840",
+                  (_deptDetails?.stats.totalStudents ?? 0).toString(),
                   "Students",
                   Icons.school_rounded,
                   AppTheme.success,
                 ),
                 const SizedBox(width: 12),
                 _bentoMetricTile(
-                  "92%",
-                  "Avg. Attendance",
-                  Icons.analytics_rounded,
+                  (_deptDetails?.stats.totalFaculty ?? 0).toString(),
+                  "Faculty",
+                  Icons.people_alt_rounded,
                   AppTheme.brandAccent,
                 ),
               ],
@@ -344,98 +473,198 @@ class _RoleUserPageState extends State<RoleUserPage> {
     final String scope = widget.scope.toLowerCase();
 
     if (scope == 'institution') {
-      // --- Today's Schedule (max 2) ---
-      sections.add(SectionHeader(title: "Today's Schedule", onViewAll: () {}));
+      // --- Today's Schedule ---
+      final schedule = _institutionDashboard?.todaysSchedule ?? [];
       sections.add(
-        const TaskCard(
-          title: "Board of Governors",
-          sub: "Conference Hall • 11:00 AM",
-          accent: AppTheme.brandAccent,
-          icon: Icons.groups_rounded,
+        SectionHeader(
+          title: "Today's Schedule",
+          count: schedule.length,
+          onViewAll: () {},
         ),
       );
+      if (schedule.isEmpty) {
+        sections.add(
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: Text(
+                "No schedule for today",
+                style: TextStyle(color: AppTheme.textSub),
+              ),
+            ),
+          ),
+        );
+      } else {
+        for (final task in schedule.take(2)) {
+          sections.add(
+            TaskCard(
+              title: task['title']?.toString() ?? 'Task',
+              sub: task['timing']?.toString() ?? task['time']?.toString() ?? '',
+              accent: AppTheme.brandAccent,
+              icon: Icons.event_rounded,
+              onTap: () {},
+            ),
+          );
+        }
+      }
 
       sections.add(const SizedBox(height: 24));
-      // --- Pending Approvals (max 2) ---
-      sections.add(SectionHeader(title: "Pending Approvals", onViewAll: () {}));
+
+      // --- Pending Approvals ---
+      final approvalList =
+          _institutionDashboard?.personalActions.pendingMyApprovalList ?? [];
+      final approvalCount =
+          _institutionDashboard?.personalActions.pendingMyApprovalCount ?? 0;
       sections.add(
-        const TaskCard(
-          title: "FY26 Budget Draft",
-          sub: "Dept: Mechanical • \$45,000",
-          accent: AppTheme.warning,
-          icon: Icons.account_balance_wallet_outlined,
-          isApproval: true,
+        SectionHeader(
+          title: "Pending Approvals",
+          count: approvalCount,
+          isStatus: approvalCount > 0,
+          onViewAll: () {},
         ),
       );
-      sections.add(
-        const TaskCard(
-          title: "New Faculty Hire",
-          sub: "Dr. Sarah Smith • Computer Science",
-          accent: AppTheme.success,
-          icon: Icons.person_add_rounded,
-          isApproval: true,
-        ),
-      );
+      if (approvalList.isEmpty) {
+        sections.add(
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: Text(
+                "No pending approvals",
+                style: TextStyle(color: AppTheme.textSub),
+              ),
+            ),
+          ),
+        );
+      } else {
+        for (final task in approvalList.take(2)) {
+          sections.add(
+            TaskCard(
+              title: task['title']?.toString() ?? 'Approval Request',
+              sub: task['description']?.toString() ?? '',
+              accent: AppTheme.warning,
+              icon: Icons.assignment_ind_rounded,
+              isApproval: true,
+              onTap: () {},
+            ),
+          );
+        }
+      }
 
       sections.add(const SizedBox(height: 24));
-      // --- Escalated Tasks (max 2) ---
-      sections.add(SectionHeader(title: "Escalated Tasks", onViewAll: () {}));
+
+      // --- Escalated Tasks ---
       sections.add(
-        const TaskCard(
-          title: "Campus Infrastructure Delay",
-          sub: "Escalated from Dept. Maintenance • Critical",
-          accent: AppTheme.danger,
-          icon: Icons.priority_high_rounded,
-          onTap: null,
+        SectionHeader(
+          title: "Escalated Tasks",
+          count: _escalations.length,
+          isStatus: _escalations.isNotEmpty,
+          onViewAll: () {},
         ),
       );
+      if (_escalations.isEmpty) {
+        sections.add(
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: Text(
+                "No escalated tasks",
+                style: TextStyle(color: AppTheme.textSub),
+              ),
+            ),
+          ),
+        );
+      } else {
+        for (final esc in _escalations.take(2)) {
+          final taskId = esc['task_id'] ?? esc['id'];
+          sections.add(
+            TaskCard(
+              title: esc['title']?.toString() ?? 'Escalated Task',
+              sub:
+                  esc['description']?.toString() ??
+                  esc['reason']?.toString() ??
+                  'Escalated • Requires attention',
+              accent: AppTheme.danger,
+              icon: Icons.priority_high_rounded,
+              onTap: taskId != null
+                  ? () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailsPage(
+                          taskData: {'task_id': taskId, 'title': esc['title']},
+                          viewMode: 'incharge',
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+          );
+        }
+      }
     } else if (scope == 'department') {
-      // --- Dept. Priorities (max 2) ---
-      sections.add(SectionHeader(title: "Dept. Priorities", onViewAll: () {}));
+      // --- Pending Approvals (max 2) ---
       sections.add(
-        const TaskCard(
-          title: "Mid-Term Grading",
-          sub: "Pending for 3 courses",
-          accent: AppTheme.warning,
-          icon: Icons.grade_rounded,
+        SectionHeader(
+          title: "Pending Approvals",
+          count: _deptDetails?.pendingApprovalsCount ?? 0,
+          onViewAll: () {},
         ),
       );
-
-      sections.add(SectionHeader(title: "Today's Schedule", onViewAll: () {}));
-      sections.add(
-        const TaskCard(
-          title: "Board of Governors",
-          sub: "Conference Hall • 11:00 AM",
-          accent: AppTheme.brandAccent,
-          icon: Icons.groups_rounded,
-        ),
-      );
-
-      sections.add(const SizedBox(height: 24));
-      // --- Quick Approvals (max 2) ---
-      sections.add(SectionHeader(title: "Quick Approvals", onViewAll: () {}));
-      sections.add(
-        const TaskCard(
-          title: "Student Leave: Mark V.",
-          sub: "Sick Leave • 2 Days",
-          accent: AppTheme.brandAccent,
-          icon: Icons.event_available_rounded,
-          isApproval: true,
-        ),
-      );
+      if (_deptDetails?.pendingApprovals.isEmpty ?? true) {
+        sections.add(
+          const Center(
+            child: Text(
+              "No pending approvals",
+              style: TextStyle(color: AppTheme.textSub),
+            ),
+          ),
+        );
+      } else {
+        sections.addAll(
+          (_deptDetails!.pendingApprovals.take(2)).map((task) {
+            return TaskCard(
+              title: task['title'] ?? "Approval Request",
+              sub: "Faculty: ${task['faculty_name'] ?? 'N/A'}",
+              accent: AppTheme.warning,
+              icon: Icons.assignment_ind_rounded,
+              isApproval: true,
+              onTap: () {},
+            );
+          }),
+        );
+      }
 
       sections.add(const SizedBox(height: 24));
-      // --- Escalated Tasks (max 2) ---
-      sections.add(SectionHeader(title: "Escalated Tasks", onViewAll: () {}));
+
+      // --- Department Tasks (max 2) ---
       sections.add(
-        const TaskCard(
-          title: "Lab Equipment Procurement",
-          sub: "Escalated from Lab Assistant • Urgent",
-          accent: AppTheme.danger,
-          icon: Icons.priority_high_rounded,
-          onTap: null,
+        SectionHeader(
+          title: "Department Tasks",
+          count: _deptDetails?.departmentTasksCount ?? 0,
+          onViewAll: () {},
         ),
       );
+      if (_deptDetails?.departmentTasks.isEmpty ?? true) {
+        sections.add(
+          const Center(
+            child: Text(
+              "No department tasks",
+              style: TextStyle(color: AppTheme.textSub),
+            ),
+          ),
+        );
+      } else {
+        sections.addAll(
+          (_deptDetails!.departmentTasks.take(2)).map((task) {
+            return TaskCard(
+              title: task['title'] ?? "Dept Task",
+              sub: task['description'] ?? "No description",
+              accent: AppTheme.brandAccent,
+              icon: Icons.task_alt_rounded,
+              onTap: () {},
+            );
+          }),
+        );
+      }
     } else if (scope == 'infrastructure') {
       if (_venueDetails == null || _venueDetails!.venues.isEmpty) {
         sections.add(const Center(child: Text("No venue data available.")));

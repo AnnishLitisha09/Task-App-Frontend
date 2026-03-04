@@ -77,55 +77,75 @@ class _AllEscalationsPageState extends State<AllEscalationsPage> {
                 ],
               ),
             )
-          : _escalations.isEmpty
-          ? const Center(
-              child: Text(
-                'No escalated tasks',
-                style: TextStyle(color: AppTheme.textSub),
-              ),
-            )
           : RefreshIndicator(
               onRefresh: _fetch,
               color: AppTheme.brandAccent,
-              child: ListView.builder(
-                padding: const EdgeInsets.all(24),
-                itemCount: _escalations.length,
-                itemBuilder: (context, index) {
-                  final e = _escalations[index];
-                  final heroTag = 'escalation_all_${e['task_id']}_$index';
-                  return TaskCard(
-                    title: e['title'] ?? 'Escalated Task',
-                    sub:
-                        e['escalated_reason'] ??
-                        e['description'] ??
-                        'High Priority',
-                    accent: AppTheme.danger,
-                    icon: Icons.priority_high_rounded,
-                    heroTag: heroTag,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => TaskDetailsPage(
-                          taskData: {
-                            'task_id': e['task_id'],
-                            'title': e['title'],
-                            'sub': e['description'],
-                            'accent': AppTheme.danger,
-                            'icon': Icons.priority_high_rounded,
-                            'heroTag': heroTag,
-                            'startDate': e['start_date'] ?? 'N/A',
-                            'deadline': e['end_date'] ?? 'N/A',
-                            'completionType': e['type'] ?? 'INFO',
-                            'isRequest': false,
-                            'authority': 'Administration',
-                            'userRole': widget.userRole,
-                          },
+              child: _escalations.isEmpty
+                  ? ListView(
+                      children: const [
+                        SizedBox(height: 200),
+                        Center(
+                          child: Text(
+                            'No escalated tasks',
+                            style: TextStyle(color: AppTheme.textSub),
+                          ),
                         ),
+                      ],
+                    )
+                  : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
                       ),
+                      padding: const EdgeInsets.all(24),
+                      itemCount: _escalations.length,
+                      itemBuilder: (context, index) {
+                        final e = _escalations[index];
+                        final heroTag =
+                            'escalation_all_${e['task_id'] ?? e['id']}_$index';
+                        final String title =
+                            e['task_title']?.toString() ??
+                            e['title']?.toString() ??
+                            'Escalated Task';
+                        final String sub =
+                            e['reason']?.toString() ??
+                            e['message']?.toString() ??
+                            e['escalated_reason']?.toString() ??
+                            'Requires attention';
+                        final String dateStr = e['created_at'] != null
+                            ? e['created_at'].toString().split('T').first
+                            : 'N/A';
+                        final String statusStr =
+                            e['status']?.toString().toUpperCase() ?? 'PENDING';
+                        return TaskCard(
+                          title: title,
+                          sub: '$sub • $dateStr',
+                          accent: AppTheme.danger,
+                          icon: Icons.priority_high_rounded,
+                          heroTag: heroTag,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => TaskDetailsPage(
+                                taskData: {
+                                  'task_id': e['task_id'],
+                                  'title': title,
+                                  'sub': sub,
+                                  'accent': AppTheme.danger,
+                                  'icon': Icons.priority_high_rounded,
+                                  'heroTag': heroTag,
+                                  'startDate': dateStr,
+                                  'deadline': e['end_date'] ?? 'N/A',
+                                  'completionType': statusStr,
+                                  'isRequest': false,
+                                  'authority': 'Administration',
+                                  'userRole': widget.userRole,
+                                },
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
     );
   }
