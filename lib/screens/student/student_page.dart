@@ -394,55 +394,70 @@ class _StudentPageState extends State<StudentPage> {
 
                           const SizedBox(height: 32),
 
-                          // --- New Task Requests (max 2) ---
-                          if (_dashboard?.pendingForApproval.isNotEmpty ??
-                              false) ...[
-                            SectionHeader(
-                              title: "New Task Requests",
-                              isStatus: true,
-                              onViewAll: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => AllNewTasksPage(
-                                    onAccept: (task) => _handleAcceptTask(task),
-                                    initialTasks:
-                                        _dashboard?.pendingForApproval,
+                          // --- New Task Requests ---
+                          // Non-escalated pending tasks: student can Accept/Reject
+                          Builder(
+                            builder: (context) {
+                              final newRequests =
+                                  _dashboard?.pendingForApproval
+                                      .where((t) => !t.isEscalated)
+                                      .toList() ??
+                                  [];
+                              if (newRequests.isEmpty) return const SizedBox();
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SectionHeader(
+                                    title: "New Task Requests",
+                                    isStatus: true,
+                                    count: newRequests.length,
+                                    onViewAll: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => AllNewTasksPage(
+                                          onAccept: (task) =>
+                                              _handleAcceptTask(task),
+                                          initialTasks: newRequests,
+                                        ),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                            ),
-                            ..._dashboard!.pendingForApproval
-                                .take(2)
-                                .toList()
-                                .asMap()
-                                .entries
-                                .map((entry) {
-                                  int idx = entry.key;
-                                  var task = entry.value;
-                                  final String heroTag =
-                                      "task_req_${task.taskId}_$idx";
-                                  return TaskCard(
-                                    title: task.title,
-                                    sub:
-                                        "${task.date} • ${task.timing} • ${task.category}",
-                                    accent: AppTheme.warning,
-                                    icon: Icons.assignment_late_outlined,
-                                    heroTag: heroTag,
-                                    isRequest: true,
-                                    onAccept: widget.isBlocked
-                                        ? null
-                                        : () => _handleApprove(idx),
-                                    onReject: widget.isBlocked
-                                        ? null
-                                        : () => _showRejectDialog(
-                                            task.taskId,
-                                            task.title,
-                                          ),
-                                    onTap: () {},
-                                  );
-                                }),
-                            const SizedBox(height: 32),
-                          ],
+                                  ...newRequests.take(2).toList().asMap().entries.map((
+                                    entry,
+                                  ) {
+                                    final idx = entry.key;
+                                    final task = entry.value;
+                                    // Find the real index in the full list for _handleApprove
+                                    final realIdx = _dashboard!
+                                        .pendingForApproval
+                                        .indexOf(task);
+                                    final String heroTag =
+                                        "task_req_${task.taskId}_$idx";
+                                    return TaskCard(
+                                      title: task.title,
+                                      sub:
+                                          "${task.date} • ${task.timing} • ${task.category}",
+                                      accent: AppTheme.warning,
+                                      icon: Icons.assignment_late_outlined,
+                                      heroTag: heroTag,
+                                      isRequest: true,
+                                      onAccept: widget.isBlocked
+                                          ? null
+                                          : () => _handleApprove(realIdx),
+                                      onReject: widget.isBlocked
+                                          ? null
+                                          : () => _showRejectDialog(
+                                              task.taskId,
+                                              task.title,
+                                            ),
+                                      onTap: () {},
+                                    );
+                                  }),
+                                  const SizedBox(height: 32),
+                                ],
+                              );
+                            },
+                          ),
 
                           // --- Overdue Tasks (max 2 items shown) ---
                           SectionHeader(
@@ -480,58 +495,60 @@ class _StudentPageState extends State<StudentPage> {
 
                           const SizedBox(height: 32),
 
-                          // --- Directives Pending ---
-                          SectionHeader(
-                            title: "Directives Pending",
-                            onViewAll: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => StudentTasksListPage(
-                                  title: "Directives Pending",
-                                  tasks: _dashboard?.pendingForApproval ?? [],
-                                  mode: 'pending',
-                                  onAccept: (task) => _handleAcceptTask(task),
-                                  onReject: (id, name) =>
-                                      _showRejectDialog(id, name),
-                                ),
-                              ),
-                            ),
-                          ),
-                          if (_dashboard?.pendingForApproval.isEmpty ?? true)
-                            const Center(
-                              child: Text(
-                                "No pending requests",
-                                style: TextStyle(color: AppTheme.textSub),
-                              ),
-                            )
-                          else
-                            ...(_dashboard!.pendingForApproval.take(
-                              2,
-                            )).toList().asMap().entries.map((entry) {
-                              int idx = entry.key;
-                              var task = entry.value;
-                              final String heroTag =
-                                  "dir_pending_${task.taskId}_$idx";
-                              return TaskCard(
-                                title: task.title,
-                                sub:
-                                    "${task.date} • ${task.timing} • ${task.category}",
-                                accent: AppTheme.warning,
-                                icon: Icons.hourglass_empty_rounded,
-                                heroTag: heroTag,
-                                isRequest: true,
-                                onAccept: widget.isBlocked
-                                    ? null
-                                    : () => _handleApprove(idx),
-                                onReject: widget.isBlocked
-                                    ? null
-                                    : () => _showRejectDialog(
-                                        task.taskId,
-                                        task.title,
+                          // --- Directives Pending (ESCALATED ONLY) ---
+                          // Student missed the response window → authority notified
+                          // Student can only VIEW — no Accept/Reject
+                          Builder(
+                            builder: (context) {
+                              final escalated =
+                                  _dashboard?.pendingForApproval
+                                      .where((t) => t.isEscalated)
+                                      .toList() ??
+                                  [];
+                              if (escalated.isEmpty) return const SizedBox();
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SectionHeader(
+                                    title: "Directives Pending",
+                                    color: AppTheme.danger,
+                                    count: escalated.length,
+                                    onViewAll: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            StudentTasksListPage(
+                                              title: "Directives Pending",
+                                              tasks: escalated,
+                                              mode: 'pending',
+                                            ),
                                       ),
-                                onTap: () {},
+                                    ),
+                                  ),
+                                  ...escalated
+                                      .take(2)
+                                      .toList()
+                                      .asMap()
+                                      .entries
+                                      .map((entry) {
+                                        final idx = entry.key;
+                                        final task = entry.value;
+                                        final String heroTag =
+                                            "dir_esc_${task.taskId}_$idx";
+                                        return TaskCard(
+                                          title: task.title,
+                                          sub:
+                                              "🚨 Escalated • ${task.date} • ${task.timing}",
+                                          accent: AppTheme.danger,
+                                          icon: Icons.warning_amber_rounded,
+                                          heroTag: heroTag,
+                                          onTap: () {},
+                                        );
+                                      }),
+                                ],
                               );
-                            }),
+                            },
+                          ),
                         ]),
                       ),
                     ),

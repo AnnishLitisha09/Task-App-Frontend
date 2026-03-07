@@ -159,6 +159,7 @@ class PendingForApproval {
   final String priority;
   final String date;
   final String timing;
+  final bool isEscalated;
 
   PendingForApproval({
     required this.taskId,
@@ -167,6 +168,7 @@ class PendingForApproval {
     required this.priority,
     required this.date,
     required this.timing,
+    this.isEscalated = false,
   });
 
   factory PendingForApproval.fromJson(Map<String, dynamic> json) {
@@ -177,6 +179,7 @@ class PendingForApproval {
       priority: json['priority'] ?? '',
       date: json['date'] ?? json['start_date']?.split('T')[0] ?? '',
       timing: _parseTimingString(json),
+      isEscalated: json['is_escalate'] == true || json['isEscalate'] == true,
     );
   }
 }

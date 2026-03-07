@@ -191,6 +191,7 @@ class _StudentTasksListPageState extends State<StudentTasksListPage> {
     String sub = '';
     int taskId = 0;
     IconData icon = Icons.task_alt_rounded;
+    bool isEscalated = false;
 
     if (task is TodayTask) {
       taskTitle = task.title;
@@ -203,9 +204,15 @@ class _StudentTasksListPageState extends State<StudentTasksListPage> {
       icon = Icons.warning_amber_rounded;
     } else if (task is PendingForApproval) {
       taskTitle = task.title;
-      sub = "${task.date} • ${task.timing} • ${task.category}";
+      isEscalated = task.isEscalated;
+      if (isEscalated) {
+        sub = "🚨 Escalated • ${task.date} • ${task.timing}";
+        icon = Icons.warning_amber_rounded;
+      } else {
+        sub = "${task.date} • ${task.timing} • ${task.category}";
+        icon = Icons.hourglass_empty_rounded;
+      }
       taskId = task.taskId;
-      icon = Icons.hourglass_empty_rounded;
     } else if (task is Map) {
       taskTitle = (task['title'] ?? task['name'] ?? 'Task').toString();
       final tDate =
@@ -229,13 +236,17 @@ class _StudentTasksListPageState extends State<StudentTasksListPage> {
       child: TaskCard(
         title: taskTitle,
         sub: sub,
-        accent: widget.mode == 'overdue'
+        accent: (widget.mode == 'overdue' || isEscalated)
             ? AppTheme.danger
             : AppTheme.brandAccent,
         icon: icon,
         heroTag: heroTag,
-        isRequest: widget.mode == 'pending',
-        onAccept: (widget.mode == 'pending' && widget.onAccept != null)
+        // Escalated tasks: read-only — no action buttons
+        isRequest: widget.mode == 'pending' && !isEscalated,
+        onAccept:
+            (widget.mode == 'pending' &&
+                !isEscalated &&
+                widget.onAccept != null)
             ? () {
                 if (task is PendingForApproval) {
                   widget.onAccept!({
@@ -249,7 +260,10 @@ class _StudentTasksListPageState extends State<StudentTasksListPage> {
                 _refresh();
               }
             : null,
-        onReject: (widget.mode == 'pending' && widget.onReject != null)
+        onReject:
+            (widget.mode == 'pending' &&
+                !isEscalated &&
+                widget.onReject != null)
             ? () {
                 if (task is PendingForApproval) {
                   widget.onReject!(task.taskId, task.title);

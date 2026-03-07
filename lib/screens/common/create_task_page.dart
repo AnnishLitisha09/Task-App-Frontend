@@ -57,8 +57,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'ownerId': 'Admin User',
       'assigneeIds': <String>[],
       'targetType': 'Individual',
-      'locationId': '',
+      'locationId': 'None',
       'venue_id': null,
+      'recurrenceType': 'Daily',
       'resources': <String>[],
       'score': 100,
       'penaltyRule': {'penaltyValue': 5},
@@ -88,6 +89,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'selectedDocuments': <String>[],
       'is_document': true,
       'closure_ids': [1],
+      // Bidding task specific
+      'maxAcceptances': 3,
     };
 
     // 1. Start with template defaults
@@ -160,10 +163,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       setState(() {
         _venues = venues;
         _isLoadingVenues = false;
-        if (_taskData['locationId'].isEmpty && _venues.isNotEmpty) {
-          _taskData['locationId'] = _venues.first['name'];
-          _taskData['venue_id'] = _venues.first['venue_id'];
-        }
+        // Default stays 'None' — only set a venue if user explicitly picks one
       });
     } catch (e) {
       setState(() => _isLoadingVenues = false);
@@ -414,33 +414,14 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           _documentAttachmentSection(),
         ],
       ] else ...[
-        Row(
-          children: [
-            Expanded(
-              child: _modernDropdown(
-                "CATEGORY",
-                ["Academic", "Administrative", "Compliance", "Assessment"],
-                _taskData['category'],
-                (v) => _taskData['category'] = v,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _modernDropdown(
-                "PRIORITY",
-                ["Low", "Medium", "High", "Critical"],
-                _taskData['priority'],
-                (v) => setState(() => _taskData['priority'] = v),
-              ),
-            ),
-          ],
+        _modernDropdown(
+          "PRIORITY",
+          ["Low", "Medium", "High", "Critical"],
+          _taskData['priority'],
+          (v) => setState(() => _taskData['priority'] = v),
         ),
         const SizedBox(height: 16),
-        _modernToggle(
-          "IS PACKAGE TASK",
-          _taskData['isPackageTask'],
-          (v) => setState(() => _taskData['isPackageTask'] = v),
-        ),
+        /* Removed IS PACKAGE TASK toggle */
       ],
     ];
   }
@@ -471,6 +452,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
   // --- SECTION 2: TIME, VENUE & PAUSE ---
   List<Widget> _buildSection2() {
+    final List<String> venueOptions = [
+      'None',
+      ..._venues.map((v) => v['name'].toString()),
+    ];
+
     return [
       _modernDropdown(
         "TASK TYPE",
@@ -481,16 +467,20 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       const SizedBox(height: 24),
       _modernDropdown(
         "VENUE / LOCATION",
-        _venues.map((v) => v['name'].toString()).toList(),
+        venueOptions,
         _taskData['locationId'],
         (v) {
-          final selectedVenue = _venues.firstWhere(
-            (venue) => venue['name'] == v,
-            orElse: () => {},
-          );
           setState(() {
             _taskData['locationId'] = v;
-            _taskData['venue_id'] = selectedVenue['venue_id'];
+            if (v == 'None') {
+              _taskData['venue_id'] = null;
+            } else {
+              final selectedVenue = _venues.firstWhere(
+                (venue) => venue['name'] == v,
+                orElse: () => {},
+              );
+              _taskData['venue_id'] = selectedVenue['venue_id'];
+            }
           });
         },
       ),
@@ -526,6 +516,50 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               ),
             ),
           ],
+        ),
+      ] else if (_taskData['taskType'] == "Recurring Task") ...[
+        _modernDropdown(
+          "RECURRENCE",
+          ["Daily", "Weekly", "Monthly"],
+          _taskData['recurrenceType'],
+          (v) => setState(() => _taskData['recurrenceType'] = v),
+        ),
+        const SizedBox(height: 16),
+        _dateTile("VALID FROM", 'startDate'),
+        const SizedBox(height: 16),
+        _dateTile("VALID UNTIL", 'endDate'),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _timePicker(
+                label: "START TIME",
+                time: _taskData['startTime'],
+                onTimePicked: (v) => setState(() => _taskData['startTime'] = v),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _timePicker(
+                label: "END TIME",
+                time: _taskData['endTime'],
+                onTimePicked: (v) => setState(() => _taskData['endTime'] = v),
+              ),
+            ),
+          ],
+        ),
+      ] else if (_taskData['taskType'] == "Bidding Task") ...[
+        _dateTile("VALID FROM", 'startDate'),
+        const SizedBox(height: 16),
+        _dateTile("VALID UNTIL", 'endDate'),
+        const SizedBox(height: 16),
+        _modernField(
+          label: "MAX ACCEPTANCES",
+          hint: "e.g. 3",
+          icon: Icons.people_alt_outlined,
+          isNumber: true,
+          initialValue: _taskData['maxAcceptances']?.toString() ?? '3',
+          onChanged: (v) => _taskData['maxAcceptances'] = int.tryParse(v) ?? 3,
         ),
       ] else ...[
         _dateTile("VALID FROM", 'startDate'),
@@ -641,7 +675,6 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         "OTP Verify",
         "Photo Upload",
         "QR Scan",
-        "Doc Upload",
       ], 'completionMethods'),
       const SizedBox(height: 24),
       Text(
@@ -662,12 +695,6 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         "IS MANDATORY TASK?",
         _taskData['is_mandatory_flag'] ?? false,
         (v) => setState(() => _taskData['is_mandatory_flag'] = v),
-      ),
-      const SizedBox(height: 16),
-      _modernToggle(
-        "IS PACKAGE TASK?",
-        _taskData['isPackageTask'],
-        (v) => setState(() => _taskData['isPackageTask'] = v),
       ),
     ];
   }
@@ -1598,14 +1625,19 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     for (var method in methods) {
       if (method == 'OTP Verify') closureIds.add(1);
       if (method == 'Photo Upload') closureIds.add(2);
+      if (method == 'QR Scan') closureIds.add(3);
     }
+    // Default to [1] if none selected
+    if (closureIds.isEmpty) closureIds = [1];
 
     // Build task_type_data
     Map<String, dynamic> taskTypeData = {};
     if (_taskData['taskType'] == 'Recurring Task') {
+      final recurrence = (_taskData['recurrenceType'] as String? ?? 'Daily')
+          .toLowerCase();
       taskTypeData = {
         'task_name': 'Recurring Task',
-        'recurrence': 'daily', // Default, could be made configurable
+        'recurrence': recurrence,
         'start_date': DateFormat('yyyy-MM-dd').format(_taskData['startDate']),
         'end_date': DateFormat('yyyy-MM-dd').format(_taskData['endDate']),
         'start_time': _taskData['startTime'] != null
@@ -1634,6 +1666,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         'task_name': 'Bidding Task',
         'start_date': DateFormat('yyyy-MM-dd').format(_taskData['startDate']),
         'end_date': DateFormat('yyyy-MM-dd').format(_taskData['endDate']),
+        'max_acceptances': _taskData['maxAcceptances'] ?? 3,
       };
     } else {
       // Default for Long Task and others
@@ -1644,8 +1677,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       };
     }
 
-    // Use venue_id from state
-    final venueId = _taskData['venue_id'] ?? 1;
+    // Only include venue_id if a real venue is selected (not 'None')
+    final venueId =
+        (_taskData['locationId'] == 'None' || _taskData['venue_id'] == null)
+        ? null
+        : _taskData['venue_id'];
 
     // Extract assignee IDs
     final List<Map<String, dynamic>> selected = List<Map<String, dynamic>>.from(
@@ -1662,23 +1698,54 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         .toList();
 
     final bool isMandatory = _taskData['is_mandatory_flag'] ?? false;
+    final bool isBidding = _taskData['taskType'] == 'Bidding Task';
+
+    // For bidding: build assign__groups from dept/role type assignees
+    // For others: use individual assignee_ids
+    List<Map<String, dynamic>> assignGroups = [];
+    if (isBidding) {
+      for (final a in selected) {
+        if (a['type'] == 'dept' || a['type'] == 'role') {
+          assignGroups.add({
+            'role': (a['role'] ?? 'STUDENT').toString().toUpperCase(),
+            if (a['department_id'] != null) 'department_id': a['department_id'],
+          });
+        } else {
+          // Individual in a bidding task — wrap as group with just role
+          assignGroups.add({
+            'role': (a['role'] ?? 'STUDENT').toString().toUpperCase(),
+          });
+        }
+      }
+    }
 
     // Build the full payload matching the unified-create API
-    final payload = {
-      'task_title_id': _taskData['task_title_id'], // Added task_title_id
+    final payload = <String, dynamic>{
+      'task_title_id': _taskData['task_title_id'],
       'description': _taskData['description'] ?? '',
       'category': _taskData['category'],
       'priority': (_taskData['priority'] as String).toLowerCase(),
       'origin_type': 'directive',
-      'venue_id': venueId,
       'score': _taskData['score'],
       'is_mandatory': isMandatory,
       'is_package': _taskData['isPackageTask'],
       'is_document': _taskData['is_document'] ?? true,
-      'closure_ids': _taskData['closure_ids'] ?? [1],
+      'is_pause_allowed': _taskData['allowPause'],
+      'closure_ids': closureIds,
       'task_type_data': taskTypeData,
-      'assignee_ids': assigneeIds,
     };
+
+    // Only attach venue_id when user selected a real venue
+    if (venueId != null) {
+      payload['venue_id'] = venueId;
+    }
+
+    // Bidding tasks use group assignment, others use individual IDs
+    if (isBidding) {
+      payload['assign__groups'] = assignGroups;
+    } else {
+      payload['assignee_ids'] = assigneeIds;
+    }
 
     try {
       final taskService = TaskService();
