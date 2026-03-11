@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/task_detail_model.dart';
 import '../../services/task_service.dart';
+import '../../services/user_service.dart';
 import 'task_closure_page.dart' show TaskClosurePage;
+import 'task_otp_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Activity Lifecycle Status
 enum ActivityStatus { NOT_STARTED, IN_PROGRESS, PAUSED, COMPLETED }
@@ -39,6 +42,8 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
 
   TaskDetailModel? _taskDetail;
   bool _isLoading = true;
+  int? _currentUserId;
+  String? _currentUserRole;
 
   @override
   void initState() {
@@ -55,9 +60,29 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       final service = TaskService();
       final detail = await service.getTaskDetail(taskId);
       if (mounted) {
+        final prefs = await SharedPreferences.getInstance();
+        int? uid = prefs.getInt('userId');
+        String? urole = prefs.getString('userRole');
+
+        // Fallback: If missing from prefs, fetch from profile
+        if (uid == null || urole == null) {
+          try {
+            final profile = await UserService().getUserProfile();
+            uid = profile.profileData.id;
+            urole = profile.role;
+            // Save them for next time too
+            await prefs.setInt('userId', uid);
+            await prefs.setString('userRole', urole);
+          } catch (e) {
+            debugPrint("Could not fetch fallback profile: $e");
+          }
+        }
+
         setState(() {
           _taskDetail = detail;
           _isLoading = false;
+          _currentUserId = uid;
+          _currentUserRole = urole;
         });
       }
     } catch (e) {
@@ -379,69 +404,184 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   Widget _buildFloatingBottomAction(bool isApproval) {
     return Align(
       alignment: Alignment.bottomCenter,
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.white.withOpacity(0), Colors.white],
+      child: _buildBottomContent(isApproval),
+    );
+  }
+
+  Widget _buildBottomContent(bool isApproval) {
+    if (isApproval) return _buildApprovalActions();
+
+    // Simplified Check: If user is the Creator or the designated "Faculty In-Charge", they generate.
+    // ALSO: If they carry the GLOBAL role of 'Faculty' and are assigned to this task, they generate.
+    final List<TaskAssignee> assignees = _taskDetail?.assignees ?? [];
+    bool isAssignedToMe = assignees.any(
+      (TaskAssignee a) => a.userId == _currentUserId,
+    );
+
+    final bool canGenerate =
+        _currentUserId != null &&
+        (_currentUserId == _taskDetail?.creatorId ||
+            (_taskDetail?.facultyId != null &&
+                _currentUserId == _taskDetail?.facultyId) ||
+            (_currentUserRole?.toLowerCase() == 'faculty' && isAssignedToMe));
+
+    if (canGenerate && _activityStatus != ActivityStatus.COMPLETED) {
+      return _buildGeneratorActions();
+    }
+
+    return _buildStandardAction();
+  }
+
+  Widget _buildGeneratorActions() {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildSingleButton(
+            label: "START OTP",
+            icon: Icons.qr_code_rounded,
+            color: brandAccent,
+            onPressed: () =>
+                _openOtpPage(OtpPageMode.generate, overrideOtpType: 'START'),
           ),
         ),
-        child: isApproval
-            ? _buildApprovalActions() // New Accept/Reject Layout
-            : _buildStandardAction(), // Original End Activity Layout
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildSingleButton(
+            label: "END OTP",
+            icon: Icons.qr_code_rounded,
+            color: brandAccent,
+            onPressed: () =>
+                _openOtpPage(OtpPageMode.generate, overrideOtpType: 'END'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<bool?> _openOtpPage(
+    OtpPageMode mode, {
+    String? overrideOtpType,
+  }) async {
+    final taskId =
+        _taskDetail?.taskId ??
+        int.tryParse(
+          widget.taskData['id']?.toString() ??
+              widget.taskData['task_id']?.toString() ??
+              "0",
+        ) ??
+        0;
+
+    int? assignmentId;
+    if (mode == OtpPageMode.verify) {
+      final List<TaskAssignee> assignees = _taskDetail?.assignees ?? [];
+      if (assignees.isNotEmpty) {
+        final myAssignee = assignees.firstWhere(
+          (TaskAssignee a) => a.userId == _currentUserId,
+          orElse: () => assignees.first,
+        );
+        assignmentId = myAssignee.assignmentId;
+      }
+
+      if (assignmentId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("No assignment found for this task.")),
+        );
+        return false;
+      }
+    }
+
+    final String otpType =
+        overrideOtpType ??
+        (_activityStatus == ActivityStatus.NOT_STARTED ? 'START' : 'END');
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskOtpPage(
+          taskId: taskId,
+          assignmentId: assignmentId,
+          mode: mode,
+          otpType: otpType,
+          taskTitle: _taskDetail?.title ?? "",
+        ),
       ),
     );
+
+    if (result == true) {
+      // Update local state for both Generator and Verifier on success
+      if (otpType == 'START') {
+        setState(() {
+          _activityStatus = ActivityStatus.IN_PROGRESS;
+          _activityStartTime = DateTime.now();
+        });
+      } else {
+        // Ending activity
+        _finalizeCompletionLocally();
+      }
+    }
+    return result;
+  }
+
+  void _finalizeCompletionLocally() {
+    setState(() {
+      _activityStatus = ActivityStatus.COMPLETED;
+    });
+    // In End Activity flow, the student might also need to upload proof if required.
+    // verifyOTP in END type already marks backend as completed, scores etc.
   }
 
   // Layout for Approval Tasks (Accept / Reject)
   Widget _buildApprovalActions() {
-    return Row(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        // Reject Button
-        Expanded(
-          flex: 1,
-          child: ElevatedButton(
-            onPressed: () => _handleApprovalAction(false),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: destructive.withOpacity(0.9),
-              foregroundColor: destructive,
-              elevation: 0,
-              minimumSize: const Size(double.infinity, 64),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(color: destructive.withOpacity(0.2)),
+        Row(
+          children: [
+            // Reject Button
+            Expanded(
+              flex: 1,
+              child: ElevatedButton(
+                onPressed: () => _handleApprovalAction(false),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: destructive.withOpacity(0.9),
+                  foregroundColor: destructive,
+                  elevation: 0,
+                  minimumSize: const Size(double.infinity, 64),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: BorderSide(color: destructive.withOpacity(0.2)),
+                  ),
+                ),
+                child: const Text(
+                  "Reject",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
-            child: const Text(
-              "Reject",
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
+            const SizedBox(width: 12),
+            // Accept Button
+            Expanded(
+              flex: 2,
+              child: ElevatedButton(
+                onPressed: () => _handleApprovalAction(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: successColor,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 64),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+                child: const Text(
+                  "Accept Request",
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
               ),
             ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        // Accept Button
-        Expanded(
-          flex: 2,
-          child: ElevatedButton(
-            onPressed: () => _handleApprovalAction(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: successColor,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 64),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-            child: const Text(
-              "Accept Request",
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-          ),
+          ],
         ),
       ],
     );
@@ -488,7 +628,37 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
 
   // Dynamic Layout Based on Activity Status
   Widget _buildStandardAction() {
-    // Determine button layout based on activity status
+    // Fallback or additional actions like "Can't Finish?"
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_activityStatus == ActivityStatus.IN_PROGRESS ||
+            _activityStatus == ActivityStatus.PAUSED)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: TextButton.icon(
+              onPressed: _rejectTaskByUser,
+              icon: Icon(
+                Icons.report_problem_outlined,
+                size: 16,
+                color: destructive,
+              ),
+              label: Text(
+                "CANNOT COMPLETE TASK",
+                style: TextStyle(
+                  color: destructive,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        _buildActualActionButtons(),
+      ],
+    );
+  }
+
+  Widget _buildActualActionButtons() {
     switch (_activityStatus) {
       case ActivityStatus.NOT_STARTED:
         return _buildSingleButton(
@@ -582,6 +752,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           ),
         );
     }
+    return const SizedBox.shrink();
   }
 
   // Helper to build a single button
@@ -990,37 +1161,8 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     List<String> rules = _taskDetail?.closureRules ?? [];
 
     if (rules.contains('otp')) {
-      // Navigate to OTP page to verify before starting
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => TaskClosurePage(
-            taskData: {
-              ...widget.taskData,
-              'closureType': 'otp',
-              'actionType': 'start', // Indicate this is for starting
-            },
-          ),
-        ),
-      );
-
-      // Only start if OTP was verified successfully
-      if (result == true) {
-        setState(() {
-          _activityStatus = ActivityStatus.IN_PROGRESS;
-          _activityStartTime = DateTime.now();
-        });
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Activity started successfully!'),
-              backgroundColor: successColor,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      }
+      // Use the new TaskOtpPage for Start Activity Verification
+      await _openOtpPage(OtpPageMode.verify);
     } else {
       // No OTP required, start directly
       setState(() {
@@ -1074,52 +1216,138 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   }
 
   Future<void> _endActivity() async {
-    // Navigate to closure page based on closure rules
     List<String> rules = _taskDetail?.closureRules ?? [];
     if (rules.isEmpty) rules = ["otp"];
 
-    // Determine which closure page to show
-    String closureType = 'otp'; // Default
-    if (rules.contains('photo_upload') && !rules.contains('otp')) {
-      closureType = 'photo_upload';
-    } else if (rules.contains('photo_upload') && rules.contains('otp')) {
-      closureType = 'both';
+    // STEP 1: Verify OTP if required
+    if (rules.contains('otp')) {
+      final verified = await _openOtpPage(OtpPageMode.verify);
+      if (verified != true) return; // Stop if OTP failed
     }
 
-    // Navigate to closure page
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TaskClosurePage(
-          taskData: {
-            ...widget.taskData,
-            'closureType': closureType,
-            'actionType': 'end', // Indicate this is for ending
-          },
+    // STEP 2: Proof Upload if required (Case 2)
+    if (rules.contains('photo_upload')) {
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => TaskClosurePage(
+            taskData: {
+              ...widget.taskData,
+              'closureType': 'photo_upload',
+              'actionType': 'end',
+            },
+          ),
         ),
+      );
+
+      if (result == true) {
+        _finalizeCompletionLocally();
+      }
+    } else {
+      // If no photo upload, just finalize (OTP verify already handled backend)
+      _finalizeCompletionLocally();
+    }
+  }
+
+  Future<void> _rejectTaskByUser() async {
+    final TextEditingController reasonController = TextEditingController();
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          "Cannot Finish?",
+          style: TextStyle(color: textMain, fontWeight: FontWeight.w900),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Please state the reason for rejecting/halting this task.",
+              style: TextStyle(color: textSub, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: reasonController,
+              autofocus: true,
+              maxLines: 3,
+              style: TextStyle(
+                fontSize: 14,
+                color: textMain,
+                fontWeight: FontWeight.w600,
+              ),
+              decoration: InputDecoration(
+                hintText: "Reason (e.g., Equipment damaged...)",
+                hintStyle: TextStyle(color: textSub.withOpacity(0.5)),
+                filled: true,
+                fillColor: surfaceColor,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text("Cancel", style: TextStyle(color: textSub)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: destructive,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              "Submit",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
       ),
     );
 
-    // If closure was successful, mark as completed
-    if (result == true) {
-      setState(() {
-        _activityStatus = ActivityStatus.COMPLETED;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Task completed successfully!'),
-            backgroundColor: successColor,
-            behavior: SnackBarBehavior.floating,
-          ),
+    if (confirmed == true && reasonController.text.isNotEmpty) {
+      setState(() => _isLoading = true);
+      try {
+        final taskId =
+            int.tryParse(
+              widget.taskData['task_id']?.toString() ??
+                  widget.taskData['id']?.toString() ??
+                  "",
+            ) ??
+            0;
+        await TaskService().closeTask(
+          taskId,
+          isCompleted: false,
+          reason: reasonController.text,
         );
-
-        // Navigate back to dashboard
-        Navigator.pop(context);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Task marked as failed/rejected"),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          Navigator.pop(context, "rejected");
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error: $e"), backgroundColor: destructive),
+          );
+        }
       }
     }
-
-    // TODO: Call API to end activity
   }
 }

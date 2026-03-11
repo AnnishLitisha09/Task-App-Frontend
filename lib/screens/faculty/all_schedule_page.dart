@@ -1,8 +1,5 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../../services/task_service.dart';
 import '../../theme/app_theme.dart';
 import '../../components/task_card.dart';
 import '../../components/skeleton_loader.dart';
@@ -35,10 +32,10 @@ class _AllSchedulePageState extends State<AllSchedulePage> {
 
     // Sort by start_time
     tasks.sort((a, b) {
-      final aType = a['task_type'] as Map<String, dynamic>? ?? {};
-      final bType = b['task_type'] as Map<String, dynamic>? ?? {};
-      String tA = aType['start_time'] ?? '23:59';
-      String tB = bType['start_time'] ?? '23:59';
+      final aTiming = a['timing'] as Map<String, dynamic>? ?? {};
+      final bTiming = b['timing'] as Map<String, dynamic>? ?? {};
+      String tA = aTiming['start_time'] ?? '23:59';
+      String tB = bTiming['start_time'] ?? '23:59';
       return tA.compareTo(tB);
     });
 
@@ -46,9 +43,9 @@ class _AllSchedulePageState extends State<AllSchedulePage> {
     String currentHeader = '';
 
     for (var t in tasks) {
-      final tType = t['task_type'] as Map<String, dynamic>? ?? {};
-      String start = tType['start_time'] ?? 'Time TBD';
-      String end = tType['end_time'] ?? '';
+      final timing = t['timing'] as Map<String, dynamic>? ?? {};
+      String start = timing['start_time'] ?? 'Time TBD';
+      String end = timing['end_time'] ?? '';
 
       if (start.length > 5) start = start.substring(0, 5);
       if (end.length > 5) end = end.substring(0, 5);
@@ -65,35 +62,30 @@ class _AllSchedulePageState extends State<AllSchedulePage> {
   }
 
   Future<void> _fetch() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('authToken');
-      final backendUrl =
-          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+      final TaskService taskService = TaskService();
+      final dynamic response = await taskService.getFacultyDashboardStats();
+      debugPrint("AllSchedulePage: Received response: $response");
 
-      final response = await http.get(
-        Uri.parse('${backendUrl}users/faculty/stats/daily'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final parsed = data is List ? data[0] : data;
-        if (mounted) {
-          setState(() {
-            List<dynamic> rawTasks = (parsed['all_tasks_today'] as List?) ?? [];
-            _processTasks(rawTasks);
-            _isLoading = false;
-          });
-        }
-      } else {
-        if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          List<dynamic> raw = [];
+          final data = response is List ? response[0] : response;
+          if (data is Map) {
+            raw =
+                (data['todays_schedule'] as List?) ??
+                (data['all_tasks_today'] as List?) ??
+                (data['tasks'] as List?) ??
+                [];
+          }
+          _processTasks(raw);
+          _isLoading = false;
+        });
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint("AllSchedulePage Error: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -168,6 +160,11 @@ class _AllSchedulePageState extends State<AllSchedulePage> {
 
                   final data = item as Map<String, dynamic>;
                   final heroTag = 'schedule_all_${data['task_id']}_$index';
+                  final timing =
+                      data['timing'] as Map<String, dynamic>? ??
+                      (data['task_type'] is Map
+                          ? data['task_type'] as Map<String, dynamic>
+                          : {});
                   return TaskCard(
                     title: data['title'] ?? 'Task',
                     sub: data['status'] ?? 'Scheduled',
@@ -185,11 +182,8 @@ class _AllSchedulePageState extends State<AllSchedulePage> {
                             'accent': AppTheme.success,
                             'icon': Icons.calendar_today_rounded,
                             'heroTag': heroTag,
-                            'startDate':
-                                (data['task_type'] ?? {})['start_date'] ??
-                                'N/A',
-                            'deadline':
-                                (data['task_type'] ?? {})['end_date'] ?? 'N/A',
+                            'startDate': timing['start_date'] ?? 'N/A',
+                            'deadline': timing['end_date'] ?? 'N/A',
                             'completionType': 'INFO',
                             'isRequest': false,
                             'userRole': widget.userRole,

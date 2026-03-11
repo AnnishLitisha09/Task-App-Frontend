@@ -20,7 +20,7 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 20, left: 4),
+      padding: const EdgeInsets.only(bottom: 14, left: 4),
       child: Row(
         children: [
           Text(title, style: AppTheme.h2.copyWith(color: color)),

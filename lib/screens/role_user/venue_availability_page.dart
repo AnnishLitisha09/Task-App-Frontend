@@ -56,11 +56,13 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
 
   Color _getStatusColor(String status) {
     status = status.toLowerCase();
-    if (status.contains('available') || status.contains('free'))
+    if (status.contains('available') || status.contains('free')) {
       return AppTheme.success;
+    }
     if (status.contains('maintenance')) return AppTheme.danger;
-    if (status.contains('not in use') || status.contains('closed'))
+    if (status.contains('not in use') || status.contains('closed')) {
       return Colors.grey;
+    }
     return AppTheme.warning; // Booked
   }
 
@@ -224,7 +226,7 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: items.contains(current) ? current : items.first,
+          initialValue: items.contains(current) ? current : items.first,
           items: items
               .map(
                 (e) => DropdownMenuItem(

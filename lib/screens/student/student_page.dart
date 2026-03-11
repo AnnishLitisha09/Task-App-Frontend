@@ -14,6 +14,7 @@ import '../../models/student_dashboard_model.dart';
 import 'on_duty_wallet_page.dart';
 import 'student_tasks_list_page.dart';
 import 'all_new_task_page.dart';
+import '../common/task_detail_page.dart';
 
 class StudentPage extends StatefulWidget {
   final Function(Map<String, dynamic>) onAcceptTask;
@@ -388,7 +389,25 @@ class _StudentPageState extends State<StudentPage> {
                                 accent: AppTheme.brandAccent,
                                 icon: Icons.calendar_today,
                                 heroTag: heroTag,
-                                onTap: () {},
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => TaskDetailsPage(
+                                        taskData: {
+                                          'task_id': task.taskId,
+                                          'title': task.title,
+                                          'category': task.category,
+                                          'timing': task.timing,
+                                          'heroTag': heroTag,
+                                          'status': task.status,
+                                          'accent': AppTheme.brandAccent,
+                                          'icon': Icons.calendar_today,
+                                        },
+                                      ),
+                                    ),
+                                  );
+                                },
                               );
                             }),
 
@@ -441,19 +460,34 @@ class _StudentPageState extends State<StudentPage> {
                                       icon: Icons.assignment_late_outlined,
                                       heroTag: heroTag,
                                       isRequest: true,
-                                      onAccept: widget.isBlocked
-                                          ? null
-                                          : () => _handleApprove(realIdx),
-                                      onReject: widget.isBlocked
-                                          ? null
-                                          : () => _showRejectDialog(
-                                              task.taskId,
-                                              task.title,
+                                      onAccept: () => _handleApprove(realIdx),
+                                      onReject: () => _showRejectDialog(
+                                        task.taskId,
+                                        task.title,
+                                      ),
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => TaskDetailsPage(
+                                              taskData: {
+                                                'task_id': task.taskId,
+                                                'title': task.title,
+                                                'category': task.category,
+                                                'timing': task.timing,
+                                                'heroTag': heroTag,
+                                                'status': 'PENDING',
+                                                'accent': AppTheme.warning,
+                                                'icon': Icons
+                                                    .assignment_late_outlined,
+                                              },
                                             ),
-                                      onTap: () {},
+                                          ),
+                                        );
+                                      },
                                     );
                                   }),
-                                  const SizedBox(height: 32),
+                                  const SizedBox(height: 20),
                                 ],
                               );
                             },
@@ -489,7 +523,25 @@ class _StudentPageState extends State<StudentPage> {
                                 sub: "Deadline: ${task.date} • ${task.timing}",
                                 accent: AppTheme.danger,
                                 icon: Icons.priority_high_rounded,
-                                onTap: () {},
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => TaskDetailsPage(
+                                        taskData: {
+                                          'task_id': task.taskId,
+                                          'assignment_id': task.assignmentId,
+                                          'title': task.title,
+                                          'category': task.category,
+                                          'timing': task.timing,
+                                          'status': task.status,
+                                          'accent': AppTheme.danger,
+                                          'icon': Icons.priority_high_rounded,
+                                        },
+                                      ),
+                                    ),
+                                  );
+                                },
                               );
                             }),
 
@@ -521,30 +573,61 @@ class _StudentPageState extends State<StudentPage> {
                                               title: "Directives Pending",
                                               tasks: escalated,
                                               mode: 'pending',
+                                              onAccept: (task) =>
+                                                  _handleAcceptTask(task),
+                                              onReject: (id, title) =>
+                                                  _handleReject(id, "Declined"),
                                             ),
                                       ),
                                     ),
                                   ),
-                                  ...escalated
-                                      .take(2)
-                                      .toList()
-                                      .asMap()
-                                      .entries
-                                      .map((entry) {
-                                        final idx = entry.key;
-                                        final task = entry.value;
-                                        final String heroTag =
-                                            "dir_esc_${task.taskId}_$idx";
-                                        return TaskCard(
-                                          title: task.title,
-                                          sub:
-                                              "🚨 Escalated • ${task.date} • ${task.timing}",
-                                          accent: AppTheme.danger,
-                                          icon: Icons.warning_amber_rounded,
-                                          heroTag: heroTag,
-                                          onTap: () {},
+                                  ...escalated.take(2).toList().asMap().entries.map((
+                                    entry,
+                                  ) {
+                                    final idx = entry.key;
+                                    final task = entry.value;
+                                    final String heroTag =
+                                        "dir_esc_${task.taskId}_$idx";
+                                    return TaskCard(
+                                      title: task.title,
+                                      sub:
+                                          "🚨 Escalated • ${task.date} • ${task.timing}",
+                                      accent: AppTheme.danger,
+                                      icon: Icons.warning_amber_rounded,
+                                      heroTag: heroTag,
+                                      isRequest: true,
+                                      onAccept: () => _handleApprove(
+                                        _dashboard!.pendingForApproval.indexOf(
+                                          task,
+                                        ),
+                                      ),
+                                      onReject: () => _showRejectDialog(
+                                        task.taskId,
+                                        task.title,
+                                      ),
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                TaskDetailsPage(
+                                                  taskData: {
+                                                    'task_id': task.taskId,
+                                                    'title': task.title,
+                                                    'category': task.category,
+                                                    'timing': task.timing,
+                                                    'heroTag': heroTag,
+                                                    'status': 'ESCALATED',
+                                                    'accent': AppTheme.danger,
+                                                    'icon': Icons
+                                                        .warning_amber_rounded,
+                                                  },
+                                                ),
+                                          ),
                                         );
-                                      }),
+                                      },
+                                    );
+                                  }),
                                 ],
                               );
                             },

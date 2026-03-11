@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../services/user_service.dart';
+import '../../models/department_wise_users_model.dart';
+import 'department_profile_page.dart';
 
 class AllDepartmentPage extends StatefulWidget {
   const AllDepartmentPage({super.key});
@@ -19,14 +22,46 @@ class _AllDepartmentPageState extends State<AllDepartmentPage> {
 
   final TextEditingController _searchController = TextEditingController();
 
-  // Data updated: Removed 'code', added 'faculties'
-  final List<Map<String, dynamic>> departments = [
-    {"name": "Computer Science", "faculties": "24", "students": "842"},
-    {"name": "Business Finance", "faculties": "18", "students": "920"},
-    {"name": "Architecture", "faculties": "12", "students": "315"},
-    {"name": "IT Systems", "faculties": "15", "students": "524"},
-    {"name": "Applied Arts", "faculties": "09", "students": "210"},
-  ];
+  bool _isLoading = true;
+  String? _error;
+  DepartmentWiseUsers? _data;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchData();
+  }
+
+  Future<void> _fetchData() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final data = await UserService().getDepartmentWiseUsers();
+      if (mounted) {
+        setState(() {
+          _data = data;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  List<MapEntry<String, DepartmentDetails>> get _filteredDepartments {
+    if (_data == null) return [];
+    final entries = _data!.departments.entries.toList();
+    String query = _searchController.text.toLowerCase();
+    if (query.isEmpty) return entries;
+    return entries.where((e) => e.key.toLowerCase().contains(query)).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,18 +84,73 @@ class _AllDepartmentPageState extends State<AllDepartmentPage> {
                 _buildHeader(),
                 _buildSearchBar(),
                 Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-                    physics: const BouncingScrollPhysics(),
-                    itemCount: departments.length,
-                    itemBuilder: (context, index) =>
-                        _buildDeptItem(departments[index]),
-                  ),
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _error != null
+                      ? _buildErrorState()
+                      : _buildList(),
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildList() {
+    final list = _filteredDepartments;
+    if (list.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off_rounded, size: 48, color: dividerColor),
+            const SizedBox(height: 16),
+            Text("No departments found", style: TextStyle(color: textSub)),
+          ],
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
+      physics: const BouncingScrollPhysics(),
+      itemCount: list.length,
+      itemBuilder: (context, index) =>
+          _buildDeptItem(list[index].key, list[index].value),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline_rounded, color: Colors.red, size: 48),
+            const SizedBox(height: 16),
+            const Text(
+              "Failed to load departments",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _error ?? "Unknown error",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: textSub, fontSize: 13),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _fetchData,
+              style: ElevatedButton.styleFrom(backgroundColor: brandAccent),
+              child: const Text(
+                "Try Again",
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -109,6 +199,7 @@ class _AllDepartmentPageState extends State<AllDepartmentPage> {
                   Expanded(
                     child: TextField(
                       controller: _searchController,
+                      onChanged: (v) => setState(() {}),
                       style: TextStyle(
                         color: textMain,
                         fontSize: 14,
@@ -128,86 +219,82 @@ class _AllDepartmentPageState extends State<AllDepartmentPage> {
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          // Filter Icon Button
-          Container(
-            height: 54,
-            width: 54,
-            decoration: BoxDecoration(
-              color: brandAccent,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: const Icon(
-              Icons.tune_rounded,
-              color: Colors.white,
-              size: 20,
-            ),
-          ),
         ],
       ),
     ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.1, end: 0);
   }
 
-  Widget _buildDeptItem(Map<String, dynamic> dept) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: dividerColor.withOpacity(0.5)),
-        boxShadow: [
-          BoxShadow(
-            color: brandPrimary.withOpacity(0.03),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+  Widget _buildDeptItem(String name, DepartmentDetails details) {
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                DepartmentProfilePage(departmentName: name, details: details),
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Icon Container
-          Container(
-            height: 52,
-            width: 52,
-            decoration: BoxDecoration(
-              color: brandAccent.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(16),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: dividerColor.withOpacity(0.5)),
+          boxShadow: [
+            BoxShadow(
+              color: brandPrimary.withOpacity(0.03),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
             ),
-            child: Icon(Icons.terminal_rounded, color: brandAccent, size: 24),
-          ),
-          const SizedBox(width: 16),
-          // Text Content
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  dept['name'],
-                  style: TextStyle(
-                    color: textMain,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
+          ],
+        ),
+        child: Row(
+          children: [
+            // Icon Container
+            Container(
+              height: 52,
+              width: 52,
+              decoration: BoxDecoration(
+                color: brandAccent.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(Icons.terminal_rounded, color: brandAccent, size: 24),
+            ),
+            const SizedBox(width: 16),
+            // Text Content
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: TextStyle(
+                      color: textMain,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    _buildMiniBadge(
-                      Icons.people_outline_rounded,
-                      "${dept['faculties']} Faculty",
-                    ),
-                    const SizedBox(width: 12),
-                    _buildMiniBadge(
-                      Icons.school_outlined,
-                      "${dept['students']} Students",
-                    ),
-                  ],
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      _buildMiniBadge(
+                        Icons.people_outline_rounded,
+                        "${details.faculty.length} Faculty",
+                      ),
+                      const SizedBox(width: 12),
+                      _buildMiniBadge(
+                        Icons.school_outlined,
+                        "${details.students.length} Students",
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     ).animate().fadeIn().slideX(begin: 0.05, end: 0);
   }

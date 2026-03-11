@@ -67,16 +67,21 @@ class _AllStaffSchedulePageState extends State<AllStaffSchedulePage> {
   IconData _getTaskIcon(String title) {
     final t = title.toLowerCase();
     if (t.contains('inspect')) return Icons.fact_check_outlined;
-    if (t.contains('brief') || t.contains('meeting'))
+    if (t.contains('brief') || t.contains('meeting')) {
       return Icons.groups_rounded;
-    if (t.contains('waste') || t.contains('recycl'))
+    }
+    if (t.contains('waste') || t.contains('recycl')) {
       return Icons.recycling_rounded;
-    if (t.contains('security') || t.contains('round'))
+    }
+    if (t.contains('security') || t.contains('round')) {
       return Icons.security_rounded;
-    if (t.contains('exam') || t.contains('invigilat'))
+    }
+    if (t.contains('exam') || t.contains('invigilat')) {
       return Icons.school_rounded;
-    if (t.contains('practical') || t.contains('lab'))
+    }
+    if (t.contains('practical') || t.contains('lab')) {
       return Icons.science_rounded;
+    }
     return Icons.task_alt_rounded;
   }
 

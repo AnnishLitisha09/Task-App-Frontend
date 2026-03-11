@@ -97,9 +97,9 @@ class _AllProofsPageState extends State<AllProofsPage> {
                 itemBuilder: (context, index) {
                   final proof = _proofs[index];
                   final heroTag = 'proof_all_${proof['task_id']}_$index';
-                  final deadline = proof['deadline'];
-                  final deadlineStr = deadline != null
-                      ? '${deadline['end_date'] ?? 'N/A'} ${deadline['end_time'] ?? ''}'
+                  final timing = proof['timing'] ?? proof['deadline'];
+                  final deadlineStr = timing != null
+                      ? '${timing['end_date'] ?? 'N/A'} ${timing['end_time'] ?? ''}'
                       : 'N/A';
                   return TaskCard(
                     title: proof['title'] ?? 'Proof Task',

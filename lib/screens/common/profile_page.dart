@@ -11,6 +11,7 @@ import '../faculty/students_page.dart';
 import '../role_user/all_department_page.dart';
 import '../role_user/all_faculty_page.dart';
 import '../role_user/dept_directory_page.dart';
+import '../role_user/department_profile_page.dart';
 import '../role_user/view_dept_tasks.dart';
 import '../student/on_duty_wallet_page.dart';
 import '../student/self_log_history_page.dart';
@@ -156,9 +157,9 @@ class _ProfilePageState extends State<ProfilePage> {
                     },
                   ),
                   _settingsTile(
-                    Icons.analytics_outlined,
-                    "Faculty Analytics",
-                    "View overall performance metrics",
+                    Icons.insights_rounded,
+                    "Institutional Insights",
+                    "Real-time governance and task monitoring",
                     onTap: () {
                       Navigator.push(
                         context,
@@ -170,7 +171,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ]),
 
-            if (widget.scope == 'department')
+            if (widget.role == 'role-user' && widget.scope == 'department')
               _buildSettingsGroup("Departmental Control", [
                 _settingsTile(
                   Icons.groups_outlined,
@@ -187,7 +188,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 _settingsTile(
                   Icons.assignment_turned_in_outlined,
-                  "Departmental Tasks",
+                  "Departmental Directives",
                   "View all tasks assigned to this dept",
                   onTap: () {
                     Navigator.push(
@@ -779,7 +780,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                 );
-              }).toList(),
+              }),
             ],
           ),
         );

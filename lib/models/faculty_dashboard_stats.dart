@@ -5,45 +5,52 @@ class FacultyDashboardStats {
   final DailyStats dailyStats;
   List<dynamic> allTasksToday;
   List<dynamic> pendingTasks;
+  List<dynamic> pendingProofs;
+  List<dynamic> escalatedTasks;
 
   FacultyDashboardStats({
     required this.facultyInfo,
     required this.dailyStats,
     required this.allTasksToday,
     required this.pendingTasks,
+    required this.pendingProofs,
+    required this.escalatedTasks,
   });
 
   factory FacultyDashboardStats.fromJson(Map<String, dynamic> json) {
     return FacultyDashboardStats(
-      facultyInfo: FacultyInfo.fromJson(json['faculty_info'] ?? {}),
-      dailyStats: DailyStats.fromJson(json['daily_stats'] ?? {}),
-      allTasksToday: json['all_tasks_today'] ?? [],
-      pendingTasks: json['pending_tasks'] ?? [],
+      facultyInfo: FacultyInfo.fromJson(json['faculty_details'] ?? {}),
+      dailyStats: DailyStats.fromJson(json['counts'] ?? {}),
+      allTasksToday: json['todays_schedule'] ?? [],
+      pendingTasks: json['pending_approvals'] ?? [],
+      pendingProofs: json['pending_proof'] ?? [],
+      escalatedTasks: json['escalated_tasks'] ?? [],
     );
   }
 }
 
 class DailyStats {
-  final String date;
   int totalTasksAssignedToday;
   int pendingTasksCount;
-  final int menteeStudentsCount;
+  int pendingProofCount;
+  int escalatedTasksCount;
 
   DailyStats({
-    required this.date,
     required this.totalTasksAssignedToday,
     required this.pendingTasksCount,
-    required this.menteeStudentsCount,
+    required this.pendingProofCount,
+    required this.escalatedTasksCount,
   });
 
   factory DailyStats.fromJson(Map<String, dynamic> json) {
     return DailyStats(
-      date: json['date'] ?? '',
       totalTasksAssignedToday:
-          (json['total_tasks_assigned_today'] as num?)?.toInt() ?? 0,
-      pendingTasksCount: (json['pending_tasks_count'] as num?)?.toInt() ?? 0,
-      menteeStudentsCount:
-          (json['mentee_students_count'] as num?)?.toInt() ?? 0,
+          (json['today_schedule_count'] as num?)?.toInt() ?? 0,
+      pendingTasksCount:
+          (json['pending_approvals_count'] as num?)?.toInt() ?? 0,
+      pendingProofCount: (json['pending_proof_count'] as num?)?.toInt() ?? 0,
+      escalatedTasksCount:
+          (json['escalated_tasks_count'] as num?)?.toInt() ?? 0,
     );
   }
 }

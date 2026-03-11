@@ -17,6 +17,7 @@ import '../../models/departmental_dashboard_model.dart';
 import './venue_history_page.dart';
 import './venue_approvals_page.dart';
 import './venue_schedule_page.dart';
+import '../common/generic_view_all_page.dart';
 
 class RoleUserPage extends StatefulWidget {
   final String title;
@@ -333,27 +334,33 @@ class _RoleUserPageState extends State<RoleUserPage> {
           ],
         );
       case 'department':
+        final deptStats = _deptDetails?.stats;
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _featuredDeptCard(
               _deptDetails?.department.name ?? "Department",
               "HOD Dashboard",
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Row(
               children: [
-                _bentoMetricTile(
-                  (_deptDetails?.stats.totalStudents ?? 0).toString(),
-                  "Students",
-                  Icons.school_rounded,
-                  AppTheme.success,
+                Expanded(
+                  child: StatCard(
+                    label: "Students",
+                    value: (deptStats?.totalStudents ?? 0).toString(),
+                    icon: Icons.school_rounded,
+                    color: AppTheme.success,
+                  ),
                 ),
                 const SizedBox(width: 12),
-                _bentoMetricTile(
-                  (_deptDetails?.stats.totalFaculty ?? 0).toString(),
-                  "Faculty",
-                  Icons.people_alt_rounded,
-                  AppTheme.brandAccent,
+                Expanded(
+                  child: StatCard(
+                    label: "Faculty",
+                    value: (deptStats?.totalFaculty ?? 0).toString(),
+                    icon: Icons.people_alt_rounded,
+                    color: AppTheme.brandAccent,
+                  ),
                 ),
               ],
             ),
@@ -468,6 +475,36 @@ class _RoleUserPageState extends State<RoleUserPage> {
     }
   }
 
+  Future<void> _handleGeneralTaskAction(int taskId, bool approve) async {
+    try {
+      if (approve) {
+        await _taskService.acceptTask(taskId);
+      } else {
+        await _taskService.rejectTask(taskId, "Action by manager");
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(approve ? "Task Approved" : "Task Rejected"),
+            backgroundColor: approve ? AppTheme.success : AppTheme.danger,
+          ),
+        );
+        _refresh();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error: $e"),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+        _refresh(); // Re-sync state
+      }
+    }
+  }
+
   List<Widget> _buildLogicDrivenTasks() {
     List<Widget> sections = [];
     final String scope = widget.scope.toLowerCase();
@@ -537,6 +574,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
         );
       } else {
         for (final task in approvalList.take(2)) {
+          final taskId = task['task_id'] ?? task['id'];
           sections.add(
             TaskCard(
               title: task['title']?.toString() ?? 'Approval Request',
@@ -544,7 +582,23 @@ class _RoleUserPageState extends State<RoleUserPage> {
               accent: AppTheme.warning,
               icon: Icons.assignment_ind_rounded,
               isApproval: true,
-              onTap: () {},
+              onAccept: taskId != null
+                  ? () => _handleGeneralTaskAction(taskId, true)
+                  : null,
+              onReject: taskId != null
+                  ? () => _handleGeneralTaskAction(taskId, false)
+                  : null,
+              onTap: taskId != null
+                  ? () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailsPage(
+                          taskData: {'task_id': taskId, 'title': task['title']},
+                          viewMode: 'approver',
+                        ),
+                      ),
+                    )
+                  : null,
             ),
           );
         }
@@ -601,49 +655,210 @@ class _RoleUserPageState extends State<RoleUserPage> {
         }
       }
     } else if (scope == 'department') {
-      // --- Pending Approvals (max 2) ---
+      // --- Today's Schedule ---
+      final schedule = _deptDetails?.todaysSchedule ?? [];
       sections.add(
         SectionHeader(
-          title: "Pending Approvals",
-          count: _deptDetails?.pendingApprovalsCount ?? 0,
-          onViewAll: () {},
+          title: "Today's Schedule",
+          count: _deptDetails?.todaysScheduleCount ?? 0,
+          onViewAll: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => GenericViewAllPage(
+                title: "Today's Schedule",
+                tasks: _deptDetails?.todaysSchedule ?? [],
+                viewMode: 'viewonly',
+                accentColor: AppTheme.brandAccent,
+              ),
+            ),
+          ),
         ),
       );
-      if (_deptDetails?.pendingApprovals.isEmpty ?? true) {
+      if (schedule.isEmpty) {
         sections.add(
-          const Center(
-            child: Text(
-              "No pending approvals",
-              style: TextStyle(color: AppTheme.textSub),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: Text(
+                "No schedule for today",
+                style: TextStyle(color: AppTheme.textSub),
+              ),
             ),
           ),
         );
       } else {
-        sections.addAll(
-          (_deptDetails!.pendingApprovals.take(2)).map((task) {
-            return TaskCard(
-              title: task['title'] ?? "Approval Request",
-              sub: "Faculty: ${task['faculty_name'] ?? 'N/A'}",
-              accent: AppTheme.warning,
-              icon: Icons.assignment_ind_rounded,
-              isApproval: true,
-              onTap: () {},
-            );
-          }),
-        );
+        for (final task in schedule.take(2)) {
+          final taskId = task['task_id'] ?? task['id'];
+          sections.add(
+            TaskCard(
+              title: task['title']?.toString() ?? 'Task',
+              sub: task['timing']?.toString() ?? task['time']?.toString() ?? '',
+              accent: AppTheme.brandAccent,
+              icon: Icons.event_rounded,
+              onTap: taskId != null
+                  ? () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailsPage(
+                          taskData: {'task_id': taskId, 'title': task['title']},
+                          viewMode: 'viewonly',
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+          );
+        }
       }
 
       sections.add(const SizedBox(height: 24));
 
-      // --- Department Tasks (max 2) ---
+      // --- Pending Approvals ---
+      final approvals = _deptDetails?.pendingApprovals ?? [];
+      sections.add(
+        SectionHeader(
+          title: "Pending Approvals",
+          count: _deptDetails?.pendingApprovalsCount ?? 0,
+          isStatus: (_deptDetails?.pendingApprovalsCount ?? 0) > 0,
+          onViewAll: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => GenericViewAllPage(
+                title: "Pending Approvals",
+                tasks: _deptDetails?.pendingApprovals ?? [],
+                viewMode: 'approver',
+                accentColor: AppTheme.warning,
+                onTaskAction: _handleGeneralTaskAction,
+              ),
+            ),
+          ),
+        ),
+      );
+      if (approvals.isEmpty) {
+        sections.add(
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: Text(
+                "No pending approvals",
+                style: TextStyle(color: AppTheme.textSub),
+              ),
+            ),
+          ),
+        );
+      } else {
+        for (final task in approvals.take(2)) {
+          final taskId = task['task_id'] ?? task['id'];
+          sections.add(
+            TaskCard(
+              title: task['title']?.toString() ?? "Approval Request",
+              sub: "Requested by: ${task['requested_by'] ?? 'N/A'}",
+              accent: AppTheme.warning,
+              icon: Icons.assignment_ind_rounded,
+              isApproval: true,
+              onAccept: taskId != null
+                  ? () => _handleGeneralTaskAction(taskId, true)
+                  : null,
+              onReject: taskId != null
+                  ? () => _handleGeneralTaskAction(taskId, false)
+                  : null,
+              onTap: taskId != null
+                  ? () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailsPage(
+                          taskData: {'task_id': taskId, 'title': task['title']},
+                          viewMode: 'approver',
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+          );
+        }
+      }
+
+      sections.add(const SizedBox(height: 24));
+
+      // --- Escalated Tasks ---
+      final escalated = _deptDetails?.escalatedTasks ?? [];
+      sections.add(
+        SectionHeader(
+          title: "Escalated Tasks",
+          count: _deptDetails?.escalatedTasksCount ?? 0,
+          isStatus: (_deptDetails?.escalatedTasksCount ?? 0) > 0,
+          onViewAll: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => GenericViewAllPage(
+                title: "Escalated Tasks",
+                tasks: _deptDetails?.escalatedTasks ?? [],
+                viewMode: 'incharge',
+                accentColor: AppTheme.danger,
+              ),
+            ),
+          ),
+        ),
+      );
+      if (escalated.isEmpty) {
+        sections.add(
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: Text(
+                "No escalated tasks",
+                style: TextStyle(color: AppTheme.textSub),
+              ),
+            ),
+          ),
+        );
+      } else {
+        for (final task in escalated.take(2)) {
+          final taskId = task['task_id'] ?? task['id'];
+          sections.add(
+            TaskCard(
+              title: task['title']?.toString() ?? 'Escalated Task',
+              sub: "Assignee: ${task['assignee_name'] ?? 'N/A'}",
+              accent: AppTheme.danger,
+              icon: Icons.priority_high_rounded,
+              onTap: taskId != null
+                  ? () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailsPage(
+                          taskData: {'task_id': taskId, 'title': task['title']},
+                          viewMode: 'incharge',
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+          );
+        }
+      }
+
+      sections.add(const SizedBox(height: 24));
+
+      // --- Department Tasks ---
+      final deptTasks = _deptDetails?.departmentTasks ?? [];
       sections.add(
         SectionHeader(
           title: "Department Tasks",
           count: _deptDetails?.departmentTasksCount ?? 0,
-          onViewAll: () {},
+          onViewAll: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => GenericViewAllPage(
+                title: "Department Tasks",
+                tasks: _deptDetails?.departmentTasks ?? [],
+                viewMode: 'viewonly',
+                accentColor: AppTheme.brandAccent,
+              ),
+            ),
+          ),
         ),
       );
-      if (_deptDetails?.departmentTasks.isEmpty ?? true) {
+      if (deptTasks.isEmpty) {
         sections.add(
           const Center(
             child: Text(
@@ -653,17 +868,28 @@ class _RoleUserPageState extends State<RoleUserPage> {
           ),
         );
       } else {
-        sections.addAll(
-          (_deptDetails!.departmentTasks.take(2)).map((task) {
-            return TaskCard(
-              title: task['title'] ?? "Dept Task",
-              sub: task['description'] ?? "No description",
+        for (final task in deptTasks.take(2)) {
+          final taskId = task['task_id'] ?? task['id'];
+          sections.add(
+            TaskCard(
+              title: task['title']?.toString() ?? "Dept Task",
+              sub: task['description']?.toString() ?? "No description",
               accent: AppTheme.brandAccent,
               icon: Icons.task_alt_rounded,
-              onTap: () {},
-            );
-          }),
-        );
+              onTap: taskId != null
+                  ? () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailsPage(
+                          taskData: {'task_id': taskId, 'title': task['title']},
+                          viewMode: 'viewonly',
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+          );
+        }
       }
     } else if (scope == 'infrastructure') {
       if (_venueDetails == null || _venueDetails!.venues.isEmpty) {
@@ -965,38 +1191,6 @@ class _RoleUserPageState extends State<RoleUserPage> {
         ],
       ),
     ).animate().fadeIn().slideY(begin: 0.2);
-  }
-
-  Widget _bentoMetricTile(String val, String label, IconData icon, Color col) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-        decoration: AppTheme.bentoDecoration(col),
-        child: Row(
-          children: [
-            Icon(icon, color: col, size: 20),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  val,
-                  style: AppTheme.h1.copyWith(fontSize: 20, height: 1.1),
-                ),
-                Text(
-                  label,
-                  style: AppTheme.caption.copyWith(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    ).animate().fadeIn().slideX(begin: 0.2);
   }
 
   Widget _buildVenueDropdown() {

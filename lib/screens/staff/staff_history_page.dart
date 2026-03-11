@@ -58,16 +58,20 @@ class _StaffHistoryPageState extends State<StaffHistoryPage> {
     String t = title.toLowerCase();
     String? c = category?.toLowerCase();
 
-    if (t.contains('waste') || c == 'sanitation')
+    if (t.contains('waste') || c == 'sanitation') {
       return Icons.delete_outline_rounded;
+    }
     if (t.contains('meeting') || c == 'meeting') return Icons.groups_rounded;
-    if (t.contains('maintenance') || c == 'maintenance')
+    if (t.contains('maintenance') || c == 'maintenance') {
       return Icons.settings_outlined;
-    if (t.contains('leak') || t.contains('plumb'))
+    }
+    if (t.contains('leak') || t.contains('plumb')) {
       return Icons.plumbing_rounded;
+    }
     if (t.contains('electric') || t.contains('bolt')) return Icons.bolt_rounded;
-    if (t.contains('inspect') || c == 'inspection')
+    if (t.contains('inspect') || c == 'inspection') {
       return Icons.fact_check_outlined;
+    }
 
     return Icons.history_rounded;
   }

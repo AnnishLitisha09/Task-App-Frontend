@@ -233,7 +233,7 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: current,
+          initialValue: current,
           items: items
               .map(
                 (e) => DropdownMenuItem(

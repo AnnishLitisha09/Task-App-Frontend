@@ -67,12 +67,18 @@ class TaskDetailModel {
   });
 
   factory TaskDetailModel.fromJson(Map<String, dynamic> json) {
+    // Robustly extract facultyId from root or nested object
+    int? fId = int.tryParse(json['faculty_id']?.toString() ?? '');
+    if (fId == null && json['faculty'] is Map) {
+      fId = int.tryParse(json['faculty']['user_id']?.toString() ?? '');
+    }
+
     return TaskDetailModel(
       taskId: json['task_id'] ?? 0,
       title: json['title'] ?? '',
       description: json['description'] ?? '',
       category: json['category'] ?? '',
-      priority: json['priority'] ?? '',
+      priority: (json['priority'] ?? '').toString(),
       status: json['status'] ?? '',
       score: json['score'] ?? 0,
       penaltyPerHour: json['penalty_per_hour'] ?? 0,
@@ -86,9 +92,9 @@ class TaskDetailModel {
       isEscalate: json['is_escalate'] ?? false,
       venueId: json['venue_id'],
       resourceId: json['resource_id'],
-      creatorId: json['creator_id'] ?? 0,
-      approverId: json['approver_id'],
-      facultyId: json['faculty_id'],
+      creatorId: int.tryParse(json['creator_id']?.toString() ?? '') ?? 0,
+      approverId: int.tryParse(json['approver_id']?.toString() ?? ''),
+      facultyId: fId,
       creator: TaskCreator.fromJson(json['creator'] ?? {}),
       approver: json['approver'],
       faculty: json['faculty'],

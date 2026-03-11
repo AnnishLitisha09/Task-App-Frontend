@@ -101,6 +101,55 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
       });
     }
 
+    // --- OVERLAP CALCULATION ---
+    events.sort(
+      (a, b) => (a['start'] as double).compareTo(b['start'] as double),
+    );
+
+    List<List<Map<String, dynamic>>> groups = [];
+    for (var event in events) {
+      if (groups.isEmpty) {
+        groups.add([event]);
+        continue;
+      }
+      var currentGroup = groups.last;
+      double groupMaxEnd = 0;
+      for (var e in currentGroup) {
+        double end = e['start'] + e['dur'] / 60;
+        if (end > groupMaxEnd) groupMaxEnd = end;
+      }
+      if (event['start'] < groupMaxEnd) {
+        currentGroup.add(event);
+      } else {
+        groups.add([event]);
+      }
+    }
+
+    for (var group in groups) {
+      List<List<Map<String, dynamic>>> cols = [];
+      for (var event in group) {
+        bool placed = false;
+        for (var c in cols) {
+          double lastEnd = c.last['start'] + c.last['dur'] / 60;
+          if (lastEnd <= event['start']) {
+            c.add(event);
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          cols.add([event]);
+        }
+      }
+      double totalCols = cols.length.toDouble();
+      for (int i = 0; i < cols.length; i++) {
+        for (var event in cols[i]) {
+          event['colIndex'] = i;
+          event['totalCols'] = totalCols;
+        }
+      }
+    }
+
     return events;
   }
 
@@ -127,14 +176,21 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
                   children: [
                     _buildTimeColumn(),
                     Expanded(
-                      child: Stack(
-                        children: [
-                          _buildRefinedGrid(),
-                          ..._calendarEvents.map(
-                            (task) => _buildLightEventCard(task),
-                          ),
-                          _buildModernTimeIndicator(),
-                        ],
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          return Stack(
+                            children: [
+                              _buildRefinedGrid(),
+                              ..._calendarEvents.map(
+                                (task) => _buildLightEventCard(
+                                  task,
+                                  constraints.maxWidth,
+                                ),
+                              ),
+                              _buildModernTimeIndicator(),
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ],
@@ -245,15 +301,23 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
     }
   }
 
-  Widget _buildLightEventCard(Map<String, dynamic> task) {
+  Widget _buildLightEventCard(Map<String, dynamic> task, double maxWidth) {
     double start = (task['start'] as num).toDouble();
     double duration = (task['dur'] as num).toDouble() / 60;
     Color taskColor = task['color'] ?? brandAccent;
 
+    int colIndex = task['colIndex'] ?? 0;
+    double totalCols = task['totalCols']?.toDouble() ?? 1.0;
+
+    double horizontalPadding = 22.0; // 10 left + 12 right padding total
+    double availableWidth = maxWidth - horizontalPadding;
+    double cardWidth = availableWidth / totalCols;
+    double left = 10 + (colIndex * cardWidth);
+
     return Positioned(
       top: start * hourHeight + 4,
-      left: 10,
-      right: 12,
+      left: left,
+      width: cardWidth,
       height: (duration * hourHeight) - 8,
       child: Container(
         decoration: BoxDecoration(

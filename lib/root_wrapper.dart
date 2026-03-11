@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'components/bottom_nav.dart';
 import 'screens/auth/loginpage.dart';
 import 'screens/common/acknowledgement_page.dart';
+import 'services/task_service.dart';
 
 class RootWrapper extends StatefulWidget {
   final bool initialLogin;
@@ -46,6 +47,11 @@ class _RootWrapperState extends State<RootWrapper> {
   }
 
   void _handleAcknowledge() async {
+    try {
+      await TaskService().acknowledgeGeneral();
+    } catch (e) {
+      print("Acknowledge API Error: $e");
+    }
     final prefs = await SharedPreferences.getInstance();
     String todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
     await prefs.setBool('ack_$todayKey', true);

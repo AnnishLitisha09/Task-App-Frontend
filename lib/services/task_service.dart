@@ -52,7 +52,7 @@ class TaskService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data; // Return the raw response (can be Map or List)
+        return data;
       } else {
         throw Exception(
           'Failed to load pending proofs: ${response.statusCode}',
@@ -60,6 +60,31 @@ class TaskService {
       }
     } catch (e) {
       throw Exception('Error fetching pending proofs: $e');
+    }
+  }
+
+  Future<dynamic> getFacultyDashboardStats() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}users/faculty/stats/daily'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to load faculty stats: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching faculty stats: $e');
     }
   }
 
@@ -321,6 +346,41 @@ class TaskService {
     }
   }
 
+  Future<void> closeTask(
+    int taskId, {
+    required bool isCompleted,
+    int? closureId,
+    String? proof,
+    String? reason,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final Map<String, dynamic> payload = {'is_completed': isCompleted};
+      if (closureId != null) payload['closure_id'] = closureId;
+      if (proof != null) payload['proof'] = proof;
+      if (reason != null) payload['reason'] = reason;
+
+      final response = await http.post(
+        Uri.parse('${backendUrl}tasks/$taskId/close'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(payload),
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception('Failed to close task: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error closing task: $e');
+    }
+  }
+
   Future<dynamic> getPendingTasks() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -441,6 +501,95 @@ class TaskService {
       }
     } catch (e) {
       throw Exception('Error fetching venue history: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> generateOTP(int taskId, String type) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.post(
+        Uri.parse('${backendUrl}tasks/otp/generate'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'task_id': taskId, 'type': type}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        // Handle variations in key names
+        if (!data.containsKey('otp_code') && data.containsKey('data')) {
+          if (data['data'] is Map && data['data'].containsKey('otp_code')) {
+            return data['data'];
+          }
+        }
+        return data;
+      } else {
+        throw Exception('Failed to generate: ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Error generating OTP: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> verifyOTP(
+    int assignmentId,
+    String otpCode,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.post(
+        Uri.parse('${backendUrl}tasks/otp/verify'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'assignment_id': assignmentId,
+          'otp_code': otpCode.trim(),
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body);
+      } else {
+        final errBody = jsonDecode(response.body);
+        throw Exception(errBody['message'] ?? 'Verification failed');
+      }
+    } catch (e) {
+      throw Exception('OTP Verification Error: $e');
+    }
+  }
+
+  Future<void> acknowledgeGeneral() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.post(
+        Uri.parse('${backendUrl}tasks/acknowledge-general'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception('Failed to acknowledge: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error acknowledging: $e');
     }
   }
 }

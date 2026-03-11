@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import '../../services/task_service.dart';
 
 class TaskClosurePage extends StatefulWidget {
   final Map<String, dynamic> taskData;
@@ -27,6 +28,7 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
     (_) => TextEditingController(),
   );
   PlatformFile? _pickedFile;
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -118,6 +120,55 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
       setState(() => _activeStep = 1);
     } else {
       Navigator.pop(context);
+    }
+  }
+
+  Future<void> _handleFinalSubmit() async {
+    final taskId =
+        int.tryParse(
+          widget.taskData['task_id']?.toString() ??
+              widget.taskData['id']?.toString() ??
+              "",
+        ) ??
+        0;
+
+    if (taskId == 0) return;
+
+    setState(() => _isSubmitting = true);
+    try {
+      final service = TaskService();
+
+      // Prepare closure parameters
+      bool isCompleted = true; // For Success cases
+      String? proofUrl;
+
+      // If there's a file, we "pretend" to upload it (get a mock URL or just send the name for now)
+      // Real implementation would use an upload service
+      if (_pickedFile != null) {
+        proofUrl = "https://storage.link/proof/${_pickedFile!.name}";
+      }
+
+      await service.closeTask(
+        taskId,
+        isCompleted: isCompleted,
+        closureId: requiresProof ? 2 : null, // Mock ID for proof closure type
+        proof: proofUrl,
+      );
+
+      if (mounted) {
+        _showSuccessDialog();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error closing task: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -410,16 +461,17 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(28, 0, 28, 40),
       child: ElevatedButton(
-        onPressed: ready
+        onPressed: (ready && !_isSubmitting)
             ? () {
                 if (_activeStep == 1 && requiresOtp) {
                   setState(() => _activeStep = 2);
                 } else {
-                  if (actionType == 'start' || actionType == 'end') {
-                    // Return true to indicate success
+                  if (actionType == 'start') {
+                    // For starting, we just verify (OTP) then return true to parent
                     Navigator.pop(context, true);
                   } else {
-                    _showSuccessDialog();
+                    // For 'end' or default 'closure', we call the API to close task
+                    _handleFinalSubmit();
                   }
                 }
               }
@@ -433,14 +485,23 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
           ),
           elevation: 0,
         ),
-        child: Text(
-          buttonLabel,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-            letterSpacing: 1.2,
-          ),
-        ),
+        child: _isSubmitting
+            ? const SizedBox(
+                height: 24,
+                width: 24,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 3,
+                ),
+              )
+            : Text(
+                buttonLabel,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 1.2,
+                ),
+              ),
       ),
     );
   }

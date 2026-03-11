@@ -55,7 +55,7 @@ class StatCard extends StatelessWidget {
                 children: [
                   _AnimatedCounter(
                     value: value,
-                    style: AppTheme.h1.copyWith(fontSize: 20, height: 1.1),
+                    style: AppTheme.h1.copyWith(fontSize: 18, height: 1.1),
                   ),
                   Text(
                     label,

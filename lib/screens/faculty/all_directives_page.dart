@@ -1,12 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../../services/task_service.dart';
 import '../../theme/app_theme.dart';
 import '../../components/task_card.dart';
 import '../../components/skeleton_loader.dart';
-import '../../services/task_service.dart';
 import '../../components/unified_reject_dialog.dart';
 import '../common/task_detail_page.dart';
 import '../common/user_selection_page.dart';
@@ -46,10 +42,10 @@ class _AllDirectivesPageState extends State<AllDirectivesPage> {
 
     // Sort by start_time from task_type array
     directives.sort((a, b) {
-      final aType = a['task_type'] as Map<String, dynamic>? ?? {};
-      final bType = b['task_type'] as Map<String, dynamic>? ?? {};
-      String tA = aType['start_time'] ?? '23:59';
-      String tB = bType['start_time'] ?? '23:59';
+      final aTiming = a['timing'] as Map<String, dynamic>? ?? {};
+      final bTiming = b['timing'] as Map<String, dynamic>? ?? {};
+      String tA = aTiming['start_time'] ?? '23:59';
+      String tB = bTiming['start_time'] ?? '23:59';
       return tA.compareTo(tB);
     });
 
@@ -57,9 +53,9 @@ class _AllDirectivesPageState extends State<AllDirectivesPage> {
     String currentHeader = '';
 
     for (var d in directives) {
-      final tType = d['task_type'] as Map<String, dynamic>? ?? {};
-      String start = tType['start_time'] ?? 'Time TBD';
-      String end = tType['end_time'] ?? '';
+      final timing = d['timing'] as Map<String, dynamic>? ?? {};
+      String start = timing['start_time'] ?? 'Time TBD';
+      String end = timing['end_time'] ?? '';
 
       // Clean up seconds from hh:mm:ss if present
       if (start.length > 5) start = start.substring(0, 5);
@@ -77,36 +73,29 @@ class _AllDirectivesPageState extends State<AllDirectivesPage> {
   }
 
   Future<void> _fetch() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('authToken');
-      final backendUrl =
-          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+      final dynamic response = await _taskService.getFacultyDashboardStats();
+      debugPrint("AllDirectivesPage: Received response: $response");
 
-      final response = await http.get(
-        Uri.parse('${backendUrl}users/faculty/stats/daily'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final parsed = data is List ? data[0] : data;
-        if (mounted) {
-          setState(() {
-            List<dynamic> rawDirectives =
-                (parsed['pending_tasks'] as List?) ?? [];
-            _processDirectives(rawDirectives);
-            _isLoading = false;
-          });
-        }
-      } else {
-        if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          List<dynamic> raw = [];
+          final data = response is List ? response[0] : response;
+          if (data is Map) {
+            raw =
+                (data['pending_approvals'] as List?) ??
+                (data['pending_tasks'] as List?) ??
+                (data['tasks'] as List?) ??
+                [];
+          }
+          _processDirectives(raw);
+          _isLoading = false;
+        });
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint("AllDirectivesPage Error: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -264,11 +253,14 @@ class _AllDirectivesPageState extends State<AllDirectivesPage> {
                   final data = item as Map<dynamic, dynamic>;
                   final heroTag = 'directive_all_${data['task_id']}_$index';
 
-                  final taskType =
-                      data['task_type'] as Map<String, dynamic>? ?? {};
-                  final String dateStr = taskType['start_date'] ?? "";
-                  final String startTime = taskType['start_time'] ?? "";
-                  final String endTime = taskType['end_time'] ?? "";
+                  final timing =
+                      data['timing'] as Map<String, dynamic>? ??
+                      (data['task_type'] is Map
+                          ? data['task_type'] as Map<String, dynamic>
+                          : {});
+                  final String dateStr = timing['start_date'] ?? "";
+                  final String startTime = timing['start_time'] ?? "";
+                  final String endTime = timing['end_time'] ?? "";
                   String timeInfo = "";
                   if (startTime.isNotEmpty && endTime.isNotEmpty) {
                     timeInfo =
@@ -343,8 +335,8 @@ class _AllDirectivesPageState extends State<AllDirectivesPage> {
                             'accent': AppTheme.brandAccent,
                             'icon': Icons.assignment_turned_in_rounded,
                             'heroTag': heroTag,
-                            'startDate': taskType['start_date'] ?? 'N/A',
-                            'deadline': taskType['end_date'] ?? 'N/A',
+                            'startDate': timing['start_date'] ?? 'N/A',
+                            'deadline': timing['end_date'] ?? 'N/A',
                             'completionType': data['type'] ?? 'APPROVAL',
                             'isRequest': true,
                             'authority': 'Administration',

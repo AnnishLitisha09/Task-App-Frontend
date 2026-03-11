@@ -91,11 +91,18 @@ class _LoginPageState extends State<LoginPage> {
           scope = rawScope;
       }
 
+      final userId =
+          int.tryParse(
+            user['id']?.toString() ?? user['user_id']?.toString() ?? '0',
+          ) ??
+          0;
+
       await _saveUserSession(
         prefs,
         userEmail,
         role,
         category,
+        userId: userId,
         scope: scope,
         name: name,
         token: result['token']?.toString(),
@@ -119,6 +126,7 @@ class _LoginPageState extends State<LoginPage> {
     String email,
     String role,
     String category, {
+    int userId = 0,
     String scope = 'none',
     String name = '',
     String? token,
@@ -126,6 +134,7 @@ class _LoginPageState extends State<LoginPage> {
     String scopeDetails = 'none',
   }) async {
     await prefs.setBool('isLoggedIn', true);
+    await prefs.setInt('userId', userId);
     await prefs.setString('userEmail', email);
     await prefs.setString('userRole', role); // Primary role for MainWrapper
     await prefs.setString(
@@ -198,11 +207,18 @@ class _LoginPageState extends State<LoginPage> {
           scope = rawScope;
       }
 
+      final userId =
+          int.tryParse(
+            user['id']?.toString() ?? user['user_id']?.toString() ?? '0',
+          ) ??
+          0;
+
       await _saveUserSession(
         prefs,
         email,
         role,
         category,
+        userId: userId,
         scope: scope,
         name: name,
         token: result['token']?.toString(),

@@ -93,12 +93,19 @@ class _FacultyPageState extends State<FacultyPage> {
             _stats = data is List
                 ? FacultyDashboardStats.fromJson(data[0])
                 : FacultyDashboardStats.fromJson(data);
+
+            // Sync other lists if they are present in the response
+            if (_stats != null) {
+              _pendingProofs = _stats!.pendingProofs;
+              _escalations = _stats!.escalatedTasks;
+            }
           });
         }
       } else {
         throw Exception('Failed to load dashboard: ${response.statusCode}');
       }
     } catch (e) {
+      debugPrint("Error fetching faculty stats: $e");
       if (mounted) setState(() {});
     }
   }
@@ -438,8 +445,9 @@ class _FacultyPageState extends State<FacultyPage> {
                                   Expanded(
                                     child: StatCard(
                                       label: "Mentees",
-                                      value: (daily?.menteeStudentsCount ?? 0)
-                                          .toString(),
+                                      value:
+                                          (_stats?.facultyInfo.menteeCount ?? 0)
+                                              .toString(),
                                       icon: Icons.people_alt_rounded,
                                       color: AppTheme.warning,
                                     ),
@@ -447,10 +455,11 @@ class _FacultyPageState extends State<FacultyPage> {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: StatCard(
-                                      label: "Hours",
-                                      value: "0",
-                                      icon: Icons.access_time_filled_rounded,
-                                      color: Colors.teal,
+                                      label: "Penalty",
+                                      value:
+                                          "₹${_stats?.facultyInfo.penalty ?? '0.00'}",
+                                      icon: Icons.money_off_csred_rounded,
+                                      color: AppTheme.danger,
                                     ),
                                   ),
                                 ],
@@ -497,14 +506,16 @@ class _FacultyPageState extends State<FacultyPage> {
                               final String heroTag =
                                   "directive_${data['task_id']}_$idx";
 
-                              final taskType =
-                                  data['task_type'] as Map<String, dynamic>? ??
-                                  {};
-                              final String dateStr =
-                                  taskType['start_date'] ?? "";
+                              final timing =
+                                  data['timing'] as Map<String, dynamic>? ??
+                                  (data['task_type'] is Map
+                                      ? data['task_type']
+                                            as Map<String, dynamic>
+                                      : {});
+                              final String dateStr = timing['start_date'] ?? "";
                               final String startTime =
-                                  taskType['start_time'] ?? "";
-                              final String endTime = taskType['end_time'] ?? "";
+                                  timing['start_time'] ?? "";
+                              final String endTime = timing['end_time'] ?? "";
                               String timeInfo = "";
                               if (startTime.isNotEmpty && endTime.isNotEmpty) {
                                 timeInfo =
@@ -580,9 +591,8 @@ class _FacultyPageState extends State<FacultyPage> {
                                             Icons.assignment_turned_in_rounded,
                                         'heroTag': heroTag,
                                         'startDate':
-                                            taskType['start_date'] ?? "N/A",
-                                        'deadline':
-                                            taskType['end_date'] ?? "N/A",
+                                            timing['start_date'] ?? "N/A",
+                                        'deadline': timing['end_date'] ?? "N/A",
                                         'completionType':
                                             data['type'] ?? "APPROVAL",
                                         'isRequest': true,
@@ -593,7 +603,7 @@ class _FacultyPageState extends State<FacultyPage> {
                                   ),
                                 ),
                               );
-                            }).toList(),
+                            }),
 
                           const SizedBox(height: 32),
 
@@ -677,7 +687,7 @@ class _FacultyPageState extends State<FacultyPage> {
                                   ),
                                 ),
                               );
-                            }).toList(),
+                            }),
 
                           const SizedBox(height: 32),
 
@@ -713,14 +723,16 @@ class _FacultyPageState extends State<FacultyPage> {
                             ...allTasks.take(2).map<Widget>((item) {
                               final String heroTag =
                                   "task_${item['task_id']}_today";
-                              final taskType =
-                                  item['task_type'] as Map<String, dynamic>? ??
-                                  {};
-                              final String dateStr =
-                                  taskType['start_date'] ?? "";
+                              final timing =
+                                  item['timing'] as Map<String, dynamic>? ??
+                                  (item['task_type'] is Map
+                                      ? item['task_type']
+                                            as Map<String, dynamic>
+                                      : {});
+                              final String dateStr = timing['start_date'] ?? "";
                               final String startTime =
-                                  taskType['start_time'] ?? "";
-                              final String endTime = taskType['end_time'] ?? "";
+                                  timing['start_time'] ?? "";
+                              final String endTime = timing['end_time'] ?? "";
 
                               String timeInfo = "";
                               if (startTime.isNotEmpty && endTime.isNotEmpty) {
@@ -767,9 +779,8 @@ class _FacultyPageState extends State<FacultyPage> {
                                         'icon': Icons.calendar_today_rounded,
                                         'heroTag': heroTag,
                                         'startDate':
-                                            taskType['start_date'] ?? "N/A",
-                                        'deadline':
-                                            taskType['end_date'] ?? "N/A",
+                                            timing['start_date'] ?? "N/A",
+                                        'deadline': timing['end_date'] ?? "N/A",
                                         'completionType': "INFO",
                                         "isRequest": false,
                                         'userRole': 'Faculty',
@@ -778,7 +789,7 @@ class _FacultyPageState extends State<FacultyPage> {
                                   ),
                                 ),
                               );
-                            }).toList(),
+                            }),
 
                           const SizedBox(height: 32),
 
@@ -814,9 +825,10 @@ class _FacultyPageState extends State<FacultyPage> {
                             ..._pendingProofs.take(2).map<Widget>((proof) {
                               final String heroTag =
                                   "proof_${proof['task_id']}_pending";
-                              final deadline = proof['deadline'];
-                              final String deadlineStr = deadline != null
-                                  ? "${deadline['end_date'] ?? 'N/A'} ${deadline['end_time'] ?? ''}"
+                              final timing =
+                                  proof['timing'] ?? proof['deadline'];
+                              final String deadlineStr = timing != null
+                                  ? "${timing['end_date'] ?? 'N/A'} ${timing['end_time'] ?? ''}"
                                   : "N/A";
 
                               return TaskCard(
@@ -854,7 +866,7 @@ class _FacultyPageState extends State<FacultyPage> {
                                   ),
                                 ),
                               );
-                            }).toList(),
+                            }),
 
                           const SizedBox(height: 32),
                         ]),

@@ -5,6 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/user_profile_model.dart';
 import '../models/departmental_dashboard_model.dart';
 import '../models/department_users_model.dart';
+import '../models/department_wise_users_model.dart';
 
 import '../models/activity_history_model.dart';
 import '../models/staff_dashboard_model.dart';
@@ -195,6 +196,61 @@ class UserService {
       }
     } catch (e) {
       throw Exception('Error fetching institutional dashboard: $e');
+    }
+  }
+
+  Future<DepartmentWiseUsers> getDepartmentWiseUsers() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}users/fetch/department-wise'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return DepartmentWiseUsers.fromJson(data);
+      } else {
+        throw Exception(
+          'Failed to load department-wise users: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      throw Exception('Error fetching department-wise users: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> getDepartmentalTasks() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}users/dashboard/departmental-tasks'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception(
+          'Failed to load departmental tasks: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      throw Exception('Error fetching departmental tasks: $e');
     }
   }
 }

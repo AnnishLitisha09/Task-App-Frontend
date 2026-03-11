@@ -241,12 +241,9 @@ class _StudentTasksListPageState extends State<StudentTasksListPage> {
             : AppTheme.brandAccent,
         icon: icon,
         heroTag: heroTag,
-        // Escalated tasks: read-only — no action buttons
-        isRequest: widget.mode == 'pending' && !isEscalated,
-        onAccept:
-            (widget.mode == 'pending' &&
-                !isEscalated &&
-                widget.onAccept != null)
+        // Allow action buttons for all pending tasks including escalated ones
+        isRequest: widget.mode == 'pending',
+        onAccept: (widget.mode == 'pending' && widget.onAccept != null)
             ? () {
                 if (task is PendingForApproval) {
                   widget.onAccept!({
@@ -260,10 +257,7 @@ class _StudentTasksListPageState extends State<StudentTasksListPage> {
                 _refresh();
               }
             : null,
-        onReject:
-            (widget.mode == 'pending' &&
-                !isEscalated &&
-                widget.onReject != null)
+        onReject: (widget.mode == 'pending' && widget.onReject != null)
             ? () {
                 if (task is PendingForApproval) {
                   widget.onReject!(task.taskId, task.title);

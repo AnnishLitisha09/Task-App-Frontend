@@ -4,6 +4,7 @@ import 'user_selection_page.dart';
 import 'package:intl/intl.dart';
 import '../../services/task_service.dart';
 import '../../services/resource_service.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../services/user_service.dart';
 
 class CreateTaskPage extends StatefulWidget {
@@ -16,9 +17,6 @@ class CreateTaskPage extends StatefulWidget {
 }
 
 class _CreateTaskPageState extends State<CreateTaskPage> {
-  int _currentStep = 0;
-  final PageController _pageController = PageController();
-
   // Branding
   final Color accent = const Color(0xFF6366F1);
   final Color bodyBg = const Color(0xFFFBFBFE);
@@ -71,7 +69,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'allowPause': false,
       'delegationAllowed': false,
       'autoEscalation': true,
-      'mandatoryDocumentation': true,
+      'mandatoryDocumentation': false,
       'requiredDocuments': <String>[],
       'endDate': DateTime.now().add(const Duration(days: 7)),
       'selectedDate': DateTime.now(), // NEW: Initialize for Fixed Time Task
@@ -81,9 +79,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'selectedAssignees': <Map<String, dynamic>>[],
       // Self Log specific fields
       'activityDate': DateTime.now(),
-      'startTime': null,
-      'endTime': null,
-      'calculatedHours': 0.0,
+      'startTime': const TimeOfDay(hour: 8, minute: 30),
+      'endTime': const TimeOfDay(hour: 10, minute: 30),
+      'calculatedHours': 2.0,
       'activityTags': <String>[],
       'attachDocuments': false,
       'selectedDocuments': <String>[],
@@ -266,37 +264,38 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       appBar: _buildAppBar(),
       body: Column(
         children: [
-          if (!isSelfLog) _buildProgressBar(), // Only show for directive tasks
           Expanded(
-            child: PageView(
-              controller: _pageController,
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                _sectionWrapper(
-                  title: isSelfLog ? "Activity Log" : "Identity",
-                  subtitle: isSelfLog
-                      ? "Record your personal achievements"
-                      : "Basic details & Classification",
-                  children: _buildSection1(),
-                ),
-                if (!isSelfLog) ...[
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(vertical: 0),
+              child: Column(
+                children: [
+                  _buildWorkingHoursBanner(),
                   _sectionWrapper(
-                    title: "Time & Venue",
-                    subtitle: "Configuration & Location",
-                    children: _buildSection2(),
+                    title: isSelfLog ? "Activity Log" : "Identity",
+                    subtitle: isSelfLog
+                        ? "Record your personal achievements"
+                        : "Basic details & Classification",
+                    children: _buildSection1(),
                   ),
-                  _sectionWrapper(
-                    title: "Responsibility",
-                    subtitle: "Governance & Assignees",
-                    children: _buildSection3(),
-                  ),
-                  _sectionWrapper(
-                    title: "Closing Rules",
-                    subtitle: "Evaluation & Resources",
-                    children: _buildSection4(),
-                  ),
+                  if (!isSelfLog) ...[
+                    _sectionWrapper(
+                      title: "Time & Venue",
+                      subtitle: "Configuration & Location",
+                      children: _buildSection2(),
+                    ),
+                    _sectionWrapper(
+                      title: "Responsibility",
+                      subtitle: "Governance & Assignees",
+                      children: _buildSection3(),
+                    ),
+                    _sectionWrapper(
+                      title: "Closing Rules",
+                      subtitle: "Evaluation & Resources",
+                      children: _buildSection4(),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
           _buildBottomNavigation(),
@@ -320,15 +319,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             _taskData['taskCategory'],
             (v) => setState(() {
               _taskData['taskCategory'] = v;
-              _currentStep = 0;
-              if (_pageController.hasClients) {
-                _pageController.jumpToPage(0);
-              }
             }),
           ),
         ),
       ),
-      const SizedBox(height: 24),
+      const SizedBox(height: 14),
       if (_isLoadingTitles)
         const Center(child: CircularProgressIndicator())
       else
@@ -349,7 +344,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             });
           },
         ),
-      const SizedBox(height: 24),
+      const SizedBox(height: 14),
       _modernField(
         label: "DESCRIPTION",
         hint: "Details...",
@@ -358,10 +353,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         initialValue: _taskData['description'],
         onChanged: (v) => _taskData['description'] = v,
       ),
-      const SizedBox(height: 24),
+      const SizedBox(height: 14),
       if (isSelfLog) ...[
         _dateTile("ACTIVITY DATE", 'activityDate'),
-        const SizedBox(height: 24),
+        const SizedBox(height: 14),
         Text(
           "TIME DURATION",
           style: TextStyle(
@@ -403,7 +398,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         ),
         const SizedBox(height: 16),
         _durationIndicator(),
-        const SizedBox(height: 24),
+        const SizedBox(height: 14),
         _modernToggle(
           "ATTACH PROOF/DOCUMENTATION",
           _taskData['attachDocuments'],
@@ -662,20 +657,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           ),
         ],
       ),
-      const SizedBox(height: 24),
-      Text(
-        "COMPLETION METHODS",
-        style: TextStyle(
-          color: accent,
-          fontWeight: FontWeight.bold,
-          fontSize: 11,
-        ),
-      ),
-      _multiSelectChips([
-        "OTP Verify",
-        "Photo Upload",
-        "QR Scan",
-      ], 'completionMethods'),
+
       const SizedBox(height: 24),
       Text(
         "REQUIRED RESOURCES",
@@ -746,7 +728,15 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               initialTime: effectiveTime ?? TimeOfDay.now(),
             );
             if (picked != null) {
-              onTimePicked(picked);
+              final bool isDirective =
+                  _taskData['taskCategory'] == 'Directive Task';
+              if (isDirective || _isWithinWorkingHours(picked)) {
+                onTimePicked(picked);
+              } else {
+                _showErrorSnackBar(
+                  "You can only select time between 08:30 AM and 04:30 PM for self logs!",
+                );
+              }
             }
           },
           child: Container(
@@ -785,14 +775,21 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
-          onTap: () {
-            // TODO: Implement file picker
-            setState(() {
-              // Simulating file selection
-              _taskData['selectedDocuments'].add(
-                'Document_${documents.length + 1}.pdf',
-              );
-            });
+          onTap: () async {
+            final result = await FilePicker.platform.pickFiles(
+              allowMultiple: true,
+              type: FileType.any,
+            );
+
+            if (result != null && result.files.isNotEmpty) {
+              setState(() {
+                for (var file in result.files) {
+                  if (!_taskData['selectedDocuments'].contains(file.name)) {
+                    _taskData['selectedDocuments'].add(file.name);
+                  }
+                }
+              });
+            }
           },
           child: Container(
             padding: const EdgeInsets.all(16),
@@ -853,85 +850,6 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   }
 
   // --- UI COMPONENTS ---
-
-  Widget _buildProgressBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
-      child: Column(
-        children: [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              // Bottom Track Line (The background grey line)
-              Container(
-                height: 2,
-                margin: const EdgeInsets.symmetric(
-                  horizontal: 5,
-                ), // Half the dot width
-                color: Colors.grey[200],
-              ),
-
-              // The actual dots and active lines
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: List.generate(4, (index) {
-                  return Row(
-                    children: [
-                      // The Indicator Dot
-                      AnimatedContainer(
-                        duration: 300.ms,
-                        height: 12,
-                        width: 12,
-                        decoration: BoxDecoration(
-                          color: _currentStep >= index ? accent : Colors.white,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: _currentStep >= index
-                                ? accent
-                                : Colors.grey[300]!,
-                            width: 2,
-                          ),
-                          boxShadow: _currentStep == index
-                              ? [
-                                  BoxShadow(
-                                    color: accent.withOpacity(0.4),
-                                    blurRadius: 8,
-                                  ),
-                                ]
-                              : [],
-                        ),
-                      ),
-                    ],
-                  );
-                }),
-              ),
-
-              // The Active Progress Line (Green/Accent overlay)
-              // This sits between the background line and the dots
-              Positioned(
-                left: 6, // Radius of the dot
-                right: 6,
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: _currentStep,
-                      child: AnimatedContainer(
-                        duration: 300.ms,
-                        height: 2,
-                        color: accent,
-                      ),
-                    ),
-                    Expanded(flex: 3 - _currentStep, child: const SizedBox()),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
-    );
-  }
 
   Widget _dateTile(String label, String dataKey) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1170,6 +1088,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           keyboardType: isNumber ? TextInputType.number : TextInputType.text,
           style: const TextStyle(fontSize: 14),
           decoration: InputDecoration(
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
             hintText: hint,
             hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
             prefixIcon: icon != null
@@ -1332,9 +1255,13 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                     .toList(),
                 onChanged: onChanged,
                 decoration: InputDecoration(
+                  isDense: true,
                   filled: true,
                   fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                     borderSide: BorderSide(color: Colors.grey[200]!),
@@ -1349,38 +1276,13 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       SwitchListTile.adaptive(
         title: Text(
           label,
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
         ),
         value: val,
         onChanged: onChanged,
         activeColor: accent,
         contentPadding: EdgeInsets.zero,
       );
-
-  Widget _multiSelectChips(List<String> options, String stateKey) => Wrap(
-    spacing: 8,
-    children: options.map((e) {
-      final isSelected = (_taskData[stateKey] as List).contains(e);
-      return FilterChip(
-        label: Text(
-          e,
-          style: TextStyle(
-            fontSize: 12,
-            color: isSelected ? Colors.white : Colors.black87,
-          ),
-        ),
-        selected: isSelected,
-        onSelected: (selected) => setState(
-          () => selected
-              ? _taskData[stateKey].add(e)
-              : _taskData[stateKey].remove(e),
-        ),
-        selectedColor: accent,
-        checkmarkColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      );
-    }).toList(),
-  );
 
   Widget _userPickerTile({
     required String label,
@@ -1434,130 +1336,227 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
   // --- NAVIGATION SCAFFOLDING ---
 
-  PreferredSizeWidget _buildAppBar() => AppBar(
-    backgroundColor: bodyBg,
-    elevation: 0,
-    centerTitle: true,
-    title: const Text(
-      "Create Directive",
-      style: TextStyle(
-        color: Colors.black,
-        fontWeight: FontWeight.w900,
-        fontSize: 16,
+  PreferredSizeWidget _buildAppBar() {
+    final bool isDirective = _taskData['taskCategory'] == 'Directive Task';
+    final bool isOpen = _isSystemWithinWorkingHours() || isDirective;
+    return AppBar(
+      backgroundColor: bodyBg,
+      elevation: 0,
+      centerTitle: true,
+      title: Column(
+        children: [
+          const Text(
+            "Task Command",
+            style: TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.w900,
+              fontSize: 18,
+              letterSpacing: -0.5,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+            decoration: BoxDecoration(
+              color: (isOpen ? Colors.green : Colors.red).withOpacity(0.08),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: (isOpen ? Colors.green : Colors.red).withOpacity(0.2),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedContainer(
+                      duration: 1.seconds,
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: isOpen ? Colors.green : Colors.red,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: (isOpen ? Colors.green : Colors.red)
+                                .withOpacity(0.5),
+                            blurRadius: 4,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                    )
+                    .animate(onPlay: (c) => c.repeat())
+                    .scale(
+                      begin: const Offset(1, 1),
+                      end: const Offset(1.5, 1.5),
+                      duration: 1.seconds,
+                    )
+                    .fadeOut(duration: 1.seconds),
+                const SizedBox(width: 6),
+                Text(
+                  isOpen ? "SYSTEM ACTIVE" : "SYSTEM LOCKED",
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: isOpen ? Colors.green : Colors.red,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
-    ),
-    leading: const BackButton(color: Colors.black),
-  );
+      leading: IconButton(
+        icon: const Icon(
+          Icons.arrow_back_ios_new_rounded,
+          color: Colors.black,
+          size: 20,
+        ),
+        onPressed: () => Navigator.pop(context),
+      ),
+    );
+  }
+
+  Widget _buildWorkingHoursBanner() {
+    final bool isDirective = _taskData['taskCategory'] == 'Directive Task';
+    if (isDirective || _isSystemWithinWorkingHours()) return const SizedBox();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.red.withOpacity(0.1)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.lock_clock_rounded, color: Colors.red, size: 24),
+          const SizedBox(width: 16),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Creation Window Closed",
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+                ),
+                Text(
+                  "Official window: 08:30 AM - 04:30 PM",
+                  style: TextStyle(fontSize: 11, color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ).animate().slideY(begin: -0.2, end: 0).fadeIn();
+  }
+
+  bool _isWithinWorkingHours(TimeOfDay time) {
+    final int minutes = time.hour * 60 + time.minute;
+    const int startMinutes = 8 * 60 + 30; // 08:30
+    const int endMinutes = 16 * 60 + 30; // 16:30
+    return minutes >= startMinutes && minutes <= endMinutes;
+  }
+
+  bool _isSystemWithinWorkingHours() {
+    final now = DateTime.now();
+    return _isWithinWorkingHours(TimeOfDay.fromDateTime(now));
+  }
 
   Widget _sectionWrapper({
     required String title,
     required String subtitle,
     required List<Widget> children,
-  }) => SingleChildScrollView(
-    padding: const EdgeInsets.all(32),
+  }) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
           style: const TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
-            letterSpacing: -1,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+            letterSpacing: 0,
           ),
         ),
-        Text(subtitle, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
-        const SizedBox(height: 32),
+        Text(subtitle, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+        const SizedBox(height: 12),
         ...children,
+        const Divider(height: 32, thickness: 0.5),
       ],
     ),
   );
 
   Widget _buildBottomNavigation() {
     final bool isSelfLog = _taskData['taskCategory'] == 'Self Log';
+    final bool isOpen = _isSystemWithinWorkingHours();
+    // Directive tasks are always "open"
+    final bool isCreationAllowed = !isSelfLog || isOpen;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(32, 16, 32, 40),
       decoration: BoxDecoration(
         color: Colors.white,
+        border: Border(top: BorderSide(color: Colors.grey.withOpacity(0.1))),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
+          ),
         ],
       ),
-      child: isSelfLog
-          ? Center(
-              child: ElevatedButton(
-                onPressed: _submitSelfLog,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: accent,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 60,
-                    vertical: 18,
+      child: Center(
+        child: AnimatedContainer(
+          duration: 300.ms,
+          width: double.infinity,
+          height: 60,
+          child: ElevatedButton(
+            onPressed: isCreationAllowed
+                ? (isSelfLog ? _submitSelfLog : _finishTaskCreation)
+                : () => _showErrorSnackBar(
+                    "Self logs can only be created between 08:30 AM and 04:30 PM",
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-                child: const Text(
-                  "Submit Log",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isCreationAllowed ? accent : Colors.grey[100],
+              foregroundColor: isCreationAllowed
+                  ? Colors.white
+                  : Colors.grey[400],
+              elevation: isCreationAllowed ? 8 : 0,
+              shadowColor: accent.withOpacity(0.4),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
               ),
-            )
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                if (_currentStep > 0)
-                  TextButton(
-                    onPressed: () => _moveStep(-1),
-                    child: const Text(
-                      "Back",
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  )
-                else
-                  const SizedBox(),
-                ElevatedButton(
-                  onPressed: () =>
-                      _currentStep < 3 ? _moveStep(1) : _finishTaskCreation(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: accent,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 40,
-                      vertical: 18,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  child: Text(
-                    _currentStep == 3 ? "Complete" : "Continue",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
+                Icon(
+                  isCreationAllowed
+                      ? Icons.rocket_launch_rounded
+                      : Icons.lock_person_rounded,
+                  size: 20,
+                  color: isCreationAllowed ? Colors.white : Colors.grey[400],
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  isCreationAllowed
+                      ? (isSelfLog ? "Log Achievement" : "Create Directive")
+                      : "LOCKED: 08:30-16:30",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                    color: isCreationAllowed ? Colors.white : Colors.grey[400],
                   ),
                 ),
               ],
             ),
+          ),
+        ),
+      ),
     );
-  }
-
-  void _moveStep(int delta) {
-    setState(() {
-      _currentStep += delta;
-      _pageController.animateToPage(
-        _currentStep,
-        duration: 400.ms,
-        curve: Curves.easeInOutCubic,
-      );
-    });
   }
 
   List<String> _getAssigneeRoles() {
@@ -1630,8 +1629,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     // Default to [1] if none selected
     if (closureIds.isEmpty) closureIds = [1];
 
+    // Removed working hours check for directives (allowed 24/7)
+
     // Build task_type_data
     Map<String, dynamic> taskTypeData = {};
+
     if (_taskData['taskType'] == 'Recurring Task') {
       final recurrence = (_taskData['recurrenceType'] as String? ?? 'Daily')
           .toLowerCase();
@@ -1719,12 +1721,28 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       }
     }
 
+    // Priority Mapping Logic
+    int pVal = 2; // Default Medium
+    switch ((_taskData['priority'] as String).toLowerCase()) {
+      case 'critical':
+      case 'high':
+        pVal = 1;
+        break;
+      case 'medium':
+        pVal = 2;
+        break;
+      case 'low':
+        pVal = 3;
+        break;
+    }
+
     // Build the full payload matching the unified-create API
     final payload = <String, dynamic>{
       'task_title_id': _taskData['task_title_id'],
       'description': _taskData['description'] ?? '',
       'category': _taskData['category'],
-      'priority': (_taskData['priority'] as String).toLowerCase(),
+      'priority': _taskData['priority'], // Send exact string (e.g. "High")
+      'priority_level': pVal, // Also send integer level as requested
       'origin_type': 'directive',
       'score': _taskData['score'],
       'is_mandatory': isMandatory,
@@ -1740,6 +1758,21 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       payload['venue_id'] = venueId;
     }
 
+    // Add faculty information if present
+    if (_taskData['facultyInCharge'] != null) {
+      payload['is_faculty'] = true;
+      final fId =
+          _taskData['facultyInCharge']['id'] ??
+          _taskData['facultyInCharge']['user_id'];
+      if (fId is String) {
+        payload['faculty_id'] = int.tryParse(fId) ?? 0;
+      } else {
+        payload['faculty_id'] = fId as int? ?? 0;
+      }
+    } else {
+      payload['is_faculty'] = false;
+    }
+
     // Bidding tasks use group assignment, others use individual IDs
     if (isBidding) {
       payload['assign__groups'] = assignGroups;
@@ -1748,6 +1781,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     }
 
     try {
+      print("========== DIRECTIVE CREATE PAYLOAD ==========");
+      print(payload.toString());
+      print("==============================================");
       final taskService = TaskService();
       await taskService.createTaskUnified(payload);
 
@@ -1763,27 +1799,52 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to create task: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        _showErrorSnackBar('Failed to create task: $e');
       }
     }
   }
 
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ).animate().shake(hz: 8, curve: Curves.easeInOut),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
   void _submitSelfLog() async {
+    if (!_isSystemWithinWorkingHours()) {
+      _showErrorSnackBar(
+        'Task creation is only allowed between 08:45 AM and 04:30 PM!',
+      );
+      return;
+    }
+
     // Validate required fields
     if (_taskData['title'] == null || (_taskData['title'] as String).isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter an activity title'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      _showErrorSnackBar('Please enter an activity title');
+      return;
+    }
+
+    final TimeOfDay? st = _taskData['startTime'] is TimeOfDay
+        ? _taskData['startTime']
+        : null;
+    final TimeOfDay? et = _taskData['endTime'] is TimeOfDay
+        ? _taskData['endTime']
+        : null;
+
+    if (st == null || et == null) {
+      _showErrorSnackBar('Please select valid start and end times');
       return;
     }
 
@@ -1793,19 +1854,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     final dateStr = DateFormat('yyyy-MM-dd').format(activityDate);
 
     // Build time strings
-    final TimeOfDay? startTime = _taskData['startTime'] is TimeOfDay
-        ? _taskData['startTime'] as TimeOfDay
-        : null;
-    final TimeOfDay? endTime = _taskData['endTime'] is TimeOfDay
-        ? _taskData['endTime'] as TimeOfDay
-        : null;
-
-    final startTimeStr = startTime != null
-        ? '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}:00'
-        : '00:00:00';
-    final endTimeStr = endTime != null
-        ? '${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}:00'
-        : '00:00:00';
+    final startTimeStr =
+        '${st.hour.toString().padLeft(2, '0')}:${st.minute.toString().padLeft(2, '0')}:00';
+    final endTimeStr =
+        '${et.hour.toString().padLeft(2, '0')}:${et.minute.toString().padLeft(2, '0')}:00';
 
     final double hours =
         (_taskData['calculatedHours'] as num?)?.toDouble() ?? 0.0;
@@ -1815,7 +1867,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'task_title_id': _taskData['task_title_id'], // Added task_title_id
       'description': _taskData['description'] ?? '',
       'category': _taskData['category'] ?? 'Academic',
-      'priority': 'medium',
+      'priority': 'Medium',
+      'priority_level': 2,
       'origin_type': 'self-log',
       'is_document': _taskData['is_document'] ?? true,
       'closure_ids': _taskData['closure_ids'] ?? [1],
@@ -1829,6 +1882,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     };
 
     try {
+      print("========== SELF LOG CREATE PAYLOAD ==========");
+      print(payload.toString());
+      print("=============================================");
       final taskService = TaskService();
       await taskService.createTaskUnified(payload);
 
@@ -1844,13 +1900,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to submit log: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        _showErrorSnackBar('Failed to submit log: $e');
       }
     }
   }
