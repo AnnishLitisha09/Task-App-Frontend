@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../theme/app_theme.dart';
 import '../../services/task_service.dart';
+import '../../services/resource_service.dart';
 import '../../models/venue_dashboard_model.dart';
 import '../../components/skeleton_loader.dart';
 
@@ -14,25 +15,13 @@ class VenueAvailabilityPage extends StatefulWidget {
 
 class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
   final TaskService _taskService = TaskService();
+  final ResourceService _resourceService = ResourceService();
   bool _isLoading = true;
   VenueDetailsResponse? _data;
 
-  final Map<int, String> _localStatuses = {};
-
-  final Map<int, List<Map<String, String>>> _statusHistory = {
-    4: [
-      {
-        'status': 'Available',
-        'time': 'Feb 27, 09:00 AM',
-        'reason': 'Maintenance Completed',
-      },
-      {
-        'status': 'Under Maintenance',
-        'time': 'Feb 26, 02:00 PM',
-        'reason': 'AC Repair',
-      },
-    ],
-  };
+  // Real history mapping
+  final Map<int, List<Map<String, dynamic>>> _venueHistories = {};
+  final Map<int, bool> _historyLoading = {};
 
   @override
   void initState() {
@@ -48,27 +37,52 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
         _data = data;
         _isLoading = false;
       });
+      
+      // Fetch history for each venue
+      if (_data != null) {
+        for (var venue in _data!.venues) {
+          _fetchVenueHistory(venue.venueId);
+        }
+      }
     } catch (e) {
       debugPrint("Error: $e");
       setState(() => _isLoading = false);
     }
   }
 
+  Future<void> _fetchVenueHistory(int venueId) async {
+    setState(() => _historyLoading[venueId] = true);
+    try {
+      final history = await _resourceService.getVenueStatusHistory(venueId);
+      setState(() {
+        _venueHistories[venueId] = history;
+        _historyLoading[venueId] = false;
+      });
+    } catch (e) {
+      debugPrint("Error fetching history for venue $venueId: $e");
+      setState(() => _historyLoading[venueId] = false);
+    }
+  }
+
   Color _getStatusColor(String status) {
     status = status.toLowerCase();
-    if (status.contains('available') || status.contains('free')) {
+    if (status.contains('available') || status.contains('free') || status == 'open') {
       return AppTheme.success;
     }
-    if (status.contains('maintenance')) return AppTheme.danger;
-    if (status.contains('not in use') || status.contains('closed')) {
+    if (status.contains('maintenance') || status.contains('renovation')) {
+      return AppTheme.danger;
+    }
+    if (status.contains('closed') || status.contains('not in use')) {
       return Colors.grey;
     }
-    return AppTheme.warning; // Booked
+    if (status.contains('full day booked') || status.contains('fully booked')) {
+      return AppTheme.warning;
+    }
+    return AppTheme.brandAccent; // partially booked, etc.
   }
 
   void _showUpdateStatusPopup(VenueDetailItem venue) {
     String selectedStatus =
-        _localStatuses[venue.venueId] ??
         venue.currentStatus.replaceAll('_', ' ').toUpperCase();
     final reasonController = TextEditingController();
 
@@ -98,10 +112,10 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
                   "Set Status",
                   [
                     'OPEN',
-                    'TEMPORARILY_CLOSED',
+                    'TEMPORARILY CLOSED',
                     'UNDER MAINTENANCE',
                     'RENOVATION',
-                    'RESERVED',
+                    'FULL DAY BOOKED',
                   ],
                   (v) {
                     setDialogState(() => selectedStatus = v!);
@@ -132,21 +146,31 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
               ),
             ),
             ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _localStatuses[venue.venueId] = selectedStatus;
-                  if (!_statusHistory.containsKey(venue.venueId)) {
-                    _statusHistory[venue.venueId] = [];
-                  }
-                  _statusHistory[venue.venueId]!.insert(0, {
-                    'status': selectedStatus,
-                    'time': 'Just Now',
-                    'reason': reasonController.text.isEmpty
+              onPressed: () async {
+                try {
+                  await _taskService.updateVenueStatus(
+                    venue.venueId,
+                    selectedStatus,
+                    reasonController.text.isEmpty
                         ? 'Manual Update'
                         : reasonController.text,
-                  });
-                });
-                Navigator.pop(context);
+                  );
+                  Navigator.pop(context);
+                  _fetchData(); // Reload UI to fetch the latest genuine status
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('${venue.name} status updated.'),
+                      backgroundColor: AppTheme.success,
+                    ),
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to update status: $e'),
+                      backgroundColor: AppTheme.danger,
+                    ),
+                  );
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.brandPrimary,
@@ -288,7 +312,6 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
                 itemBuilder: (context, index) {
                   final venue = _data!.venues[index];
                   String displayStatus =
-                      _localStatuses[venue.venueId] ??
                       venue.currentStatus.replaceAll('_', ' ').toUpperCase();
                   final color = _getStatusColor(displayStatus);
 
@@ -359,16 +382,32 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
                                     style: AppTheme.overline,
                                   ),
                                   const SizedBox(height: 16),
-                                  if (_statusHistory.containsKey(
-                                        venue.venueId,
-                                      ) ||
-                                      _statusHistory.containsKey(4))
-                                    ...((_statusHistory[venue.venueId] ??
-                                            _statusHistory[4]!)
+                                  if (_historyLoading[venue.venueId] == true)
+                                    const Center(
+                                      child: Padding(
+                                        padding: EdgeInsets.all(12),
+                                        child: SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.brandAccent),
+                                        ),
+                                      ),
+                                    )
+                                    else if (_venueHistories[venue.venueId] != null && _venueHistories[venue.venueId]!.isNotEmpty)
+                                    ...(_venueHistories[venue.venueId]!
+                                        .take(5) // Show latest 5
                                         .map(
                                           (h) => _buildHistoryTimelineItem(h),
                                         )
-                                        .toList()),
+                                        .toList())
+                                  else
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 8),
+                                      child: Text(
+                                        "No status changes recorded yet.",
+                                        style: AppTheme.bodySub.copyWith(fontStyle: FontStyle.italic),
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
@@ -384,8 +423,21 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
     );
   }
 
-  Widget _buildHistoryTimelineItem(Map<String, String> history) {
-    final color = _getStatusColor(history['status']!);
+  Widget _buildHistoryTimelineItem(Map<String, dynamic> history) {
+    final status = history['status']?.toString().replaceAll('_', ' ') ?? 'UNKNOWN';
+    final color = _getStatusColor(status);
+    String timeStr = 'N/A';
+    try {
+      final rawTime = history['created_at'] ?? history['start_time'];
+      if (rawTime != null) {
+        timeStr = rawTime.toString().substring(0, 16).replaceAll('T', ' ');
+      }
+    } catch (e) {
+      debugPrint("Error formatting time: $e");
+    }
+    final category = history['category'] ?? 'General';
+    final isStatusChange = category == 'Status Change';
+        
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: Row(
@@ -394,22 +446,22 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
           Column(
             children: [
               Container(
-                width: 18,
-                height: 18,
+                width: 14,
+                height: 14,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.6),
+                  color: color.withOpacity(0.1),
                   shape: BoxShape.circle,
-                  border: Border.all(color: color, width: 2.5),
+                  border: Border.all(color: color, width: 2),
                 ),
               ),
               Container(
-                width: 2.0,
-                height: 50,
-                color: AppTheme.textSub.withOpacity(0.2),
+                width: 1.5,
+                height: 40,
+                color: AppTheme.dividerColor,
               ),
             ],
           ),
-          const SizedBox(width: 20),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -418,28 +470,52 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      history['status']!,
+                      isStatusChange ? "STATUS CHANGE" : category.toString().toUpperCase(),
                       style: AppTheme.bodyMain.copyWith(
-                        color: color,
+                        color: isStatusChange ? color : AppTheme.brandAccent,
                         fontWeight: FontWeight.w900,
-                        fontSize: 16,
+                        fontSize: 12,
                       ),
                     ),
                     Text(
-                      history['time']!,
-                      style: AppTheme.caption.copyWith(fontSize: 12),
+                      timeStr,
+                      style: AppTheme.caption.copyWith(fontSize: 10),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Text(
-                  history['reason']!,
-                  style: AppTheme.bodySub.copyWith(
-                    fontSize: 14,
-                    height: 1.5,
-                    color: AppTheme.textMain,
-                  ),
+                  history['issue_title'] ?? status.toUpperCase(),
+                  style: AppTheme.h2.copyWith(fontSize: 14),
                 ),
+                if (history['description'] != null || history['notes'] != null || history['reason'] != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    history['description'] ?? history['notes'] ?? history['reason'] ?? '',
+                    style: AppTheme.bodySub.copyWith(
+                      fontSize: 13,
+                      color: AppTheme.textSub,
+                    ),
+                  ),
+                ],
+                if (history['resource_name'] != null) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.brandPrimary.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      "Resource: ${history['resource_name']}",
+                      style: AppTheme.caption.copyWith(
+                        color: AppTheme.brandPrimary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

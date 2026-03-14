@@ -7,9 +7,10 @@ import '../models/daily_report_model.dart';
 import '../models/venue_dashboard_model.dart';
 import '../models/venue_history_model.dart';
 import '../models/managed_venues_model.dart';
+import '../models/exhaustive_task_model.dart';
 
 class TaskService {
-  Future<TaskDetailModel> getTaskDetail(String taskId) async {
+  Future<TaskDetailModel> getTaskDetail(dynamic taskId) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken') ?? '';
@@ -17,7 +18,7 @@ class TaskService {
           dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
       final response = await http.get(
-        Uri.parse('${backendUrl}tasks/$taskId/detail'),
+        Uri.parse('${backendUrl}tasks/${taskId.toString()}/detail'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -124,7 +125,6 @@ class TaskService {
       final backendUrl =
           dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
-      // Format date as YYYY-MM-DD
       final dateStr =
           '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
@@ -234,6 +234,34 @@ class TaskService {
     }
   }
 
+  Future<void> updateVenueStatus(
+    int venueId,
+    String status,
+    String reason,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.put(
+        Uri.parse('${backendUrl}tasks/venue/$venueId/status'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'status': status, 'reason': reason}),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to update venue status: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error updating venue status: $e');
+    }
+  }
+
   Future<ManagedVenuesResponse> getManagedVenues() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -329,8 +357,6 @@ class TaskService {
 
       final response = await http.put(
         Uri.parse('${backendUrl}tasks/$taskId/reject'),
-
-        // Uri.parse('${backendUrl}tasks/$taskId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -381,7 +407,7 @@ class TaskService {
     }
   }
 
-  Future<dynamic> getPendingTasks() async {
+  Future<ExhaustiveTaskModel> getExhaustiveTaskDetail(int taskId) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken') ?? '';
@@ -389,7 +415,35 @@ class TaskService {
           dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
       final response = await http.get(
-        Uri.parse('${backendUrl}tasks/pending'),
+        Uri.parse('${backendUrl}tasks/$taskId/exhaustive'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return ExhaustiveTaskModel.fromJson(data);
+      } else {
+        throw Exception(
+          'Failed to load exhaustive details: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      throw Exception('Error fetching exhaustive task details: $e');
+    }
+  }
+
+  Future<List<dynamic>> getUnacknowledgedTasks() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}tasks/today/unacknowledged'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -399,10 +453,36 @@ class TaskService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        throw Exception('Failed to load pending tasks: ${response.statusCode}');
+        throw Exception(
+          'Failed to load unacknowledged tasks: ${response.statusCode}',
+        );
       }
     } catch (e) {
-      throw Exception('Error fetching pending tasks: $e');
+      throw Exception('Error fetching unacknowledged tasks: $e');
+    }
+  }
+
+  Future<void> acknowledgeGeneral() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.post(
+        Uri.parse('${backendUrl}tasks/acknowledge-general'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({}),
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception('Failed to acknowledge: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error acknowledging: $e');
     }
   }
 
@@ -504,7 +584,7 @@ class TaskService {
     }
   }
 
-  Future<Map<String, dynamic>> generateOTP(int taskId, String type) async {
+  Future<Map<String, dynamic>> generateOTP(int taskId, String otpType) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken') ?? '';
@@ -517,17 +597,11 @@ class TaskService {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode({'task_id': taskId, 'type': type}),
+        body: jsonEncode({'task_id': taskId, 'type': otpType}),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
-        // Handle variations in key names
-        if (!data.containsKey('otp_code') && data.containsKey('data')) {
-          if (data['data'] is Map && data['data'].containsKey('otp_code')) {
-            return data['data'];
-          }
-        }
         return data;
       } else {
         throw Exception('Failed to generate: ${response.body}');
@@ -570,26 +644,28 @@ class TaskService {
     }
   }
 
-  Future<void> acknowledgeGeneral() async {
+  Future<dynamic> getPendingTasks() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken') ?? '';
       final backendUrl =
           dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
-      final response = await http.post(
-        Uri.parse('${backendUrl}tasks/acknowledge-general'),
+      final response = await http.get(
+        Uri.parse('${backendUrl}tasks/pending-upcoming'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
       );
 
-      if (response.statusCode != 200 && response.statusCode != 201) {
-        throw Exception('Failed to acknowledge: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed to load pending tasks: ${response.statusCode}');
       }
     } catch (e) {
-      throw Exception('Error acknowledging: $e');
+      throw Exception('Error fetching pending tasks: $e');
     }
   }
 }

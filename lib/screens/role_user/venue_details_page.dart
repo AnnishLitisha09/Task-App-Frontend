@@ -10,6 +10,10 @@ import '../common/task_detail_page.dart';
 import './venue_history_page.dart';
 import './venue_schedule_page.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../../services/resource_service.dart';
+import './resource_availability_page.dart';
+import './maintenance_logs_page.dart';
+import './venue_availability_page.dart';
 
 class VenueDetailsPage extends StatefulWidget {
   final int? venueId;
@@ -77,18 +81,28 @@ class _VenueDetailsPageState extends State<VenueDetailsPage> {
   }
 
   Future<void> _fetchHistory(int venueId) async {
-    setState(() => _isHistoryLoading = true);
+    setState(() {
+      _isHistoryLoading = true;
+      _venueResources = [];
+    });
     try {
-      final history = await _taskService.getVenueHistory(venueId: venueId);
+      final historyFuture = _taskService.getVenueHistory(venueId: venueId);
+      final resourcesFuture = ResourceService().getVenueResources(venueId);
+      
+      final results = await Future.wait([historyFuture, resourcesFuture]);
+      
       setState(() {
-        _historyData = history;
+        _historyData = results[0] as VenueHistoryResponse;
+        _venueResources = (results[1] as List).cast<Map<String, dynamic>>();
         _isHistoryLoading = false;
       });
     } catch (e) {
-      debugPrint("Error fetching venue history: $e");
+      debugPrint("Error fetching venue history or resources: $e");
       setState(() => _isHistoryLoading = false);
     }
   }
+
+  List<Map<String, dynamic>> _venueResources = [];
 
   @override
   Widget build(BuildContext context) {
@@ -180,6 +194,95 @@ class _VenueDetailsPageState extends State<VenueDetailsPage> {
                             },
                           );
                         }),
+                      const SizedBox(height: 24),
+                      _buildSectionHeader(
+                        "Deployed Resources",
+                        "Inventory",
+                        onAction: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ResourceAvailabilityPage(),
+                          ),
+                        ),
+                      ),
+                      if (_venueResources.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 10),
+                          child: Text("No physical assets deployed here.", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        )
+                      else
+                        SizedBox(
+                          height: 100,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _venueResources.length,
+                            itemBuilder: (context, i) {
+                              final res = _venueResources[i];
+                              return Container(
+                                width: 160,
+                                margin: const EdgeInsets.only(right: 12),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: surfaceColor,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: brandAccent.withOpacity(0.1)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(Icons.inventory_2_outlined, size: 16, color: brandAccent),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            res['name'] ?? 'Asset',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      "Qty: ${res['quantity'] ?? 0}",
+                                      style: TextStyle(color: textSub, fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      const SizedBox(height: 24),
+                      _buildSectionHeader(
+                        "Maintenance & Issues",
+                        "View Logs",
+                        onAction: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const MaintenanceLogsPage(),
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: surfaceColor,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.build_circle_outlined, color: Colors.orange),
+                            const SizedBox(width: 12),
+                            const Text("Reporting a new issue or view history", style: TextStyle(fontSize: 12)),
+                            const Spacer(),
+                            Icon(Icons.chevron_right, size: 16, color: textSub),
+                          ],
+                        ),
+                      ),
                       const SizedBox(height: 24),
                       _buildSectionHeader(
                         "Booking History",
@@ -387,6 +490,23 @@ class _VenueDetailsPageState extends State<VenueDetailsPage> {
               ],
             ),
           ],
+        ),
+        ElevatedButton.icon(
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const VenueAvailabilityPage()),
+          ),
+          icon: const Icon(Icons.settings_suggest_rounded, size: 18),
+          label: const Text("Manage Status"),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: brandAccent.withOpacity(0.1),
+            foregroundColor: brandAccent,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
         ),
       ],
     );

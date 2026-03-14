@@ -60,10 +60,10 @@ class _TaskManagementPageState extends State<TaskManagementPage>
                   'taskType': t.originType,
                   'locationId': t.venue ?? 'N/A',
                   'priority': t.priority,
-                  'completionMethods': t.isDocument
-                      ? ['Doc Upload']
-                      : ['Photo'],
-                  'selectedDate': DateTime.parse(t.time.startDate),
+                  'completionMethods': t.closureMethods,
+                  'selectedDate': t.time.startDate.isNotEmpty
+                      ? DateTime.parse(t.time.startDate)
+                      : DateTime.now(),
                   'description': t.description,
                   'status': t.status,
                 },
@@ -692,18 +692,14 @@ class _TaskManagementPageState extends State<TaskManagementPage>
                   // 1. TOP ROW: Category, Priority + THE NEW MENU
                   Row(
                     children: [
-                      _badge("Assessment", brandPrimary),
+                      _badge(
+                        taskData['category']?.toString() ?? "General",
+                        brandPrimary,
+                      ),
                       const SizedBox(width: 12),
                       _priorityIndicator(priority),
                       const Spacer(),
-                      _buildCardMenu(
-                        index: index,
-                        title: taskTitle,
-                        type: taskType,
-                        venue: venue,
-                        priority: priority,
-                        methods: methods,
-                      ),
+                      _buildCardMenu(index: index, taskData: taskData),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -773,7 +769,10 @@ class _TaskManagementPageState extends State<TaskManagementPage>
                             ),
                           ),
                           Text(
-                            "Feb 12, 2026",
+                            DateFormat('MMM dd, yyyy').format(
+                              (taskData['selectedDate'] as DateTime?) ??
+                                  DateTime.now(),
+                            ),
                             style: TextStyle(
                               color: textDark,
                               fontSize: 12,
@@ -796,11 +795,7 @@ class _TaskManagementPageState extends State<TaskManagementPage>
   // --- MENU HELPER ---
   Widget _buildCardMenu({
     required int index,
-    required String title,
-    required String type,
-    required String venue,
-    required String priority,
-    required List<String> methods,
+    required Map<String, dynamic> taskData,
   }) {
     return PopupMenuButton<String>(
       padding: EdgeInsets.zero,
@@ -809,12 +804,9 @@ class _TaskManagementPageState extends State<TaskManagementPage>
       onSelected: (value) {
         if (value == 'edit') {
           final Map<String, dynamic> dataToEdit = {
-            'title': title, // Now using the passed argument
-            'category': 'Assessment',
-            'taskType': type,
-            'locationId': venue,
-            'priority': priority,
-            'completionMethods': methods,
+            ...taskData,
+            'locationId': taskData['locationId'],
+            'completionMethods': taskData['completionMethods'],
           };
 
           Navigator.push(

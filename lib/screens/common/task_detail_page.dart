@@ -411,50 +411,208 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   Widget _buildBottomContent(bool isApproval) {
     if (isApproval) return _buildApprovalActions();
 
-    // Simplified Check: If user is the Creator or the designated "Faculty In-Charge", they generate.
-    // ALSO: If they carry the GLOBAL role of 'Faculty' and are assigned to this task, they generate.
     final List<TaskAssignee> assignees = _taskDetail?.assignees ?? [];
     bool isAssignedToMe = assignees.any(
       (TaskAssignee a) => a.userId == _currentUserId,
     );
 
-    final bool canGenerate =
+    bool isManager =
         _currentUserId != null &&
         (_currentUserId == _taskDetail?.creatorId ||
             (_taskDetail?.facultyId != null &&
-                _currentUserId == _taskDetail?.facultyId) ||
-            (_currentUserRole?.toLowerCase() == 'faculty' && isAssignedToMe));
+                _currentUserId == _taskDetail?.facultyId));
 
-    if (canGenerate && _activityStatus != ActivityStatus.COMPLETED) {
+    bool requiresOtp(String role) {
+      final r = role.toLowerCase();
+      return r == 'student' || r == 'students' || r == 'staff';
+    }
+
+    bool hasOtpUsersAssigned = assignees.any((a) => requiresOtp(a.role));
+
+    if (_activityStatus == ActivityStatus.COMPLETED) {
+      return _buildStandardAction();
+    }
+
+    // Determine what to show
+    bool canExecute = isAssignedToMe || isManager;
+    bool canShowOtpManager = isManager && hasOtpUsersAssigned;
+
+    if (canExecute) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(child: _buildStandardAction()),
+          if (canShowOtpManager) ...[
+            const SizedBox(width: 8),
+            _buildOtpManagementFloatingButton(),
+          ],
+        ],
+      );
+    } else if (canShowOtpManager) {
+      // Just a manager - show OTP generation as main primary action
       return _buildGeneratorActions();
     }
 
     return _buildStandardAction();
   }
 
+  Widget _buildOtpManagementFloatingButton() {
+    return Container(
+      height: 64,
+      width: 64,
+      decoration: BoxDecoration(
+        color: brandAccent,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: brandAccent.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: IconButton(
+        icon: const Icon(
+          Icons.qr_code_scanner_rounded,
+          color: Colors.white,
+          size: 28,
+        ),
+        onPressed: _showOtpGenerationModal,
+      ),
+    );
+  }
+
+  void _showOtpGenerationModal() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+          boxShadow: [
+            BoxShadow(color: Colors.black12, blurRadius: 20, spreadRadius: 5),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 24),
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: brandAccent.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.qr_code_scanner_rounded,
+                    color: brandAccent,
+                    size: 16,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  "GENERATE OTP CODES",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildModalActionButton(
+                    label: "START OTP",
+                    icon: Icons.vpn_key_rounded,
+                    color: brandAccent,
+                    onTap: () {
+                      Navigator.pop(context);
+                      _openOtpPage(
+                        OtpPageMode.generate,
+                        overrideOtpType: 'START',
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildModalActionButton(
+                    label: "END OTP",
+                    icon: Icons.verified_rounded,
+                    color: brandAccent,
+                    onTap: () {
+                      Navigator.pop(context);
+                      _openOtpPage(
+                        OtpPageMode.generate,
+                        overrideOtpType: 'END',
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModalActionButton({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withOpacity(0.15)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 28),
+            const SizedBox(height: 12),
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
+                color: color,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildGeneratorActions() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildSingleButton(
-            label: "START OTP",
-            icon: Icons.qr_code_rounded,
-            color: brandAccent,
-            onPressed: () =>
-                _openOtpPage(OtpPageMode.generate, overrideOtpType: 'START'),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _buildSingleButton(
-            label: "END OTP",
-            icon: Icons.qr_code_rounded,
-            color: brandAccent,
-            onPressed: () =>
-                _openOtpPage(OtpPageMode.generate, overrideOtpType: 'END'),
-          ),
-        ),
-      ],
+    return _buildSingleButton(
+      label: "GENERATE OTP CODES",
+      icon: Icons.qr_code_scanner_rounded,
+      color: brandAccent,
+      onPressed: _showOtpGenerationModal,
     );
   }
 
@@ -687,7 +845,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                 child: _buildSingleButton(
                   label: "End Activity",
                   icon: Icons.stop_rounded,
-                  color: destructive,
+                  color: brandAccent,
                   onPressed: _endActivity,
                 ),
               ),
@@ -697,7 +855,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           return _buildSingleButton(
             label: "End Activity",
             icon: Icons.stop_rounded,
-            color: destructive,
+            color: brandAccent,
             onPressed: _endActivity,
           );
         }
@@ -719,7 +877,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
               child: _buildSingleButton(
                 label: "End Activity",
                 icon: Icons.stop_rounded,
-                color: destructive,
+                color: brandAccent,
                 onPressed: _endActivity,
               ),
             ),
@@ -729,21 +887,31 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       case ActivityStatus.COMPLETED:
         // Task is completed, show completion message
         return Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(vertical: 20),
           decoration: BoxDecoration(
-            color: successColor.withOpacity(0.1),
+            color: successColor,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: successColor.withOpacity(0.3)),
+            boxShadow: [
+              BoxShadow(
+                color: successColor.withOpacity(0.2),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.check_circle_rounded, color: successColor, size: 28),
+              const Icon(
+                Icons.check_circle_rounded,
+                color: Colors.white,
+                size: 28,
+              ),
               const SizedBox(width: 12),
-              Text(
+              const Text(
                 'Task Completed',
                 style: TextStyle(
-                  color: successColor,
+                  color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
@@ -752,7 +920,6 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           ),
         );
     }
-    return const SizedBox.shrink();
   }
 
   // Helper to build a single button
@@ -1159,8 +1326,10 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   Future<void> _startActivity() async {
     // Check if OTP is required for starting
     List<String> rules = _taskDetail?.closureRules ?? [];
+    final role = _currentUserRole?.toLowerCase() ?? '';
+    bool needsOtp = role == 'student' || role == 'staff';
 
-    if (rules.contains('otp')) {
+    if (needsOtp && rules.contains('otp')) {
       // Use the new TaskOtpPage for Start Activity Verification
       await _openOtpPage(OtpPageMode.verify);
     } else {
@@ -1218,9 +1387,11 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   Future<void> _endActivity() async {
     List<String> rules = _taskDetail?.closureRules ?? [];
     if (rules.isEmpty) rules = ["otp"];
-
     // STEP 1: Verify OTP if required
-    if (rules.contains('otp')) {
+    final role = _currentUserRole?.toLowerCase() ?? '';
+    bool needsOtp = role == 'student' || role == 'staff';
+
+    if (needsOtp && rules.contains('otp')) {
       final verified = await _openOtpPage(OtpPageMode.verify);
       if (verified != true) return; // Stop if OTP failed
     }

@@ -66,6 +66,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'requiresApproval': true,
       'approvalAuthority': null, // Changed from String to Map or null
       'isPackageTask': false,
+      'maxHours': 0.0,
       'allowPause': false,
       'delegationAllowed': false,
       'autoEscalation': true,
@@ -252,8 +253,43 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       lastDate: DateTime(2030),
     );
     if (picked != null) {
-      setState(() => _taskData[key] = picked);
+      setState(() {
+        _taskData[key] = picked;
+        if (_taskData['isPackageTask']) {
+          _updatePackageMaxHours();
+        }
+      });
     }
+  }
+
+  void _updatePackageMaxHours() {
+    double hours = 0.0;
+
+    if (_taskData['taskType'] == 'Fixed Time Task') {
+      final st = _taskData['startTime'] as TimeOfDay?;
+      final et = _taskData['endTime'] as TimeOfDay?;
+      if (st != null && et != null) {
+        int m = (et.hour * 60 + et.minute) - (st.hour * 60 + st.minute);
+        hours = m / 60.0;
+      } else {
+        hours = 8.0; // Default work day
+      }
+    } else {
+      final start = _taskData['startDate'] as DateTime? ?? DateTime.now();
+      final end = _taskData['endDate'] as DateTime? ?? DateTime.now();
+      
+      if (end.isBefore(start)) {
+        hours = 0.0;
+      } else {
+        // Calculate inclusive working days
+        int days = end.difference(start).inDays + 1;
+        hours = days * 8.0; // Assume 8 hours per working day (8:30 - 16:30)
+      }
+    }
+
+    setState(() {
+      _taskData['maxHours'] = hours;
+    });
   }
 
   @override
@@ -416,7 +452,14 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           (v) => setState(() => _taskData['priority'] = v),
         ),
         const SizedBox(height: 16),
-        /* Removed IS PACKAGE TASK toggle */
+        _modernToggle(
+          "IS PACKAGE TASK",
+          _taskData['isPackageTask'] ?? false,
+          (v) => setState(() {
+            _taskData['isPackageTask'] = v;
+            if (v) _updatePackageMaxHours();
+          }),
+        ),
       ],
     ];
   }
@@ -457,7 +500,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         "TASK TYPE",
         ["Fixed Time Task", "Long Task", "Recurring Task", "Bidding Task"],
         _taskData['taskType'],
-        (v) => setState(() => _taskData['taskType'] = v),
+        (v) => setState(() {
+          _taskData['taskType'] = v;
+          if (_taskData['isPackageTask']) _updatePackageMaxHours();
+        }),
       ),
       const SizedBox(height: 24),
       _modernDropdown(
@@ -499,7 +545,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               child: _timePicker(
                 label: "START TIME",
                 time: _taskData['startTime'],
-                onTimePicked: (v) => setState(() => _taskData['startTime'] = v),
+                onTimePicked: (v) => setState(() {
+                  _taskData['startTime'] = v;
+                  if (_taskData['isPackageTask']) _updatePackageMaxHours();
+                }),
               ),
             ),
             const SizedBox(width: 16),
@@ -507,7 +556,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               child: _timePicker(
                 label: "END TIME",
                 time: _taskData['endTime'],
-                onTimePicked: (v) => setState(() => _taskData['endTime'] = v),
+                onTimePicked: (v) => setState(() {
+                  _taskData['endTime'] = v;
+                  if (_taskData['isPackageTask']) _updatePackageMaxHours();
+                }),
               ),
             ),
           ],
@@ -530,7 +582,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               child: _timePicker(
                 label: "START TIME",
                 time: _taskData['startTime'],
-                onTimePicked: (v) => setState(() => _taskData['startTime'] = v),
+                onTimePicked: (v) => setState(() {
+                  _taskData['startTime'] = v;
+                  if (_taskData['isPackageTask']) _updatePackageMaxHours();
+                }),
               ),
             ),
             const SizedBox(width: 16),
@@ -538,7 +593,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               child: _timePicker(
                 label: "END TIME",
                 time: _taskData['endTime'],
-                onTimePicked: (v) => setState(() => _taskData['endTime'] = v),
+                onTimePicked: (v) => setState(() {
+                  _taskData['endTime'] = v;
+                  if (_taskData['isPackageTask']) _updatePackageMaxHours();
+                }),
               ),
             ),
           ],
@@ -557,9 +615,14 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           onChanged: (v) => _taskData['maxAcceptances'] = int.tryParse(v) ?? 3,
         ),
       ] else ...[
-        _dateTile("VALID FROM", 'startDate'),
-        const SizedBox(height: 16),
-        _dateTile("VALID UNTIL", 'endDate'),
+        _dateTile(
+          _taskData['isPackageTask'] ? "START DATE" : "VALID FROM",
+          'startDate',
+        ),
+        if (!_taskData['isPackageTask']) ...[
+          const SizedBox(height: 16),
+          _dateTile("VALID UNTIL", 'endDate'),
+        ],
       ],
       const SizedBox(height: 24),
       _modernToggle(
@@ -598,6 +661,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
     // PACKAGE TASK VIEW: Sequential List
     return [
+      _dateTile("OVERALL PROJECT DEADLINE", 'endDate'),
+      const SizedBox(height: 24),
       Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -1747,11 +1812,42 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'score': _taskData['score'],
       'is_mandatory': isMandatory,
       'is_package': _taskData['isPackageTask'],
+      'max_hours': _taskData['maxHours'] ?? 0.0,
       'is_document': _taskData['is_document'] ?? true,
       'is_pause_allowed': _taskData['allowPause'],
       'closure_ids': closureIds,
       'task_type_data': taskTypeData,
     };
+
+    // Explicitly add due_date at root for package tracking
+    if (_taskData['isPackageTask']) {
+      final DateTime? end = _taskData['endDate'] ?? _taskData['selectedDate'];
+      if (end != null) {
+        payload['due_date'] = DateFormat('yyyy-MM-dd').format(end);
+      }
+    }
+
+    if (_taskData['isPackageTask']) {
+      double totalStepsHours = 0;
+      payload['sub_tasks'] = (_taskData['subTasks'] as List).map((s) {
+        final d = (s['duration'] as num?)?.toDouble() ?? 0.0;
+        totalStepsHours += d;
+        return {
+          'title': s['title'],
+          'assignee_id': s['assignee_id'],
+          'order_index': s['order'],
+          'allocated_hours': d,
+        };
+      }).toList();
+
+      final maxLimit = (_taskData['maxHours'] as num?)?.toDouble() ?? 0.0;
+      if (maxLimit > 0 && totalStepsHours > maxLimit) {
+        _showErrorSnackBar(
+          "Sum of sub-task hours (${totalStepsHours.toStringAsFixed(1)}) exceeds package limit (${maxLimit.toStringAsFixed(1)})",
+        );
+        return;
+      }
+    }
 
     // Only attach venue_id when user selected a real venue
     if (venueId != null) {
@@ -1909,7 +2005,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     setState(() {
       (_taskData['subTasks'] as List).add({
         'title': '',
-        'assigneeId': 'Select Assignee',
+        'assignee_id': null,
+        'assignee_name': 'Select Assignee',
+        'duration': 0.0,
         'order': (_taskData['subTasks'] as List).length + 1,
       });
     });
@@ -1959,25 +2057,47 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             ],
           ),
           const Divider(),
-          _userPickerTile(
-            label: "ASSIGNEE FOR STEP ${index + 1}",
-            subtitle: subTask['assigneeId'] ?? "Select Assignee",
-            icon: Icons.person_add_alt_1,
-            onTap: () async {
-              final List<Map<String, dynamic>>? result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) =>
-                      const UserSelectionPage(multiSelect: false),
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: _userPickerTile(
+                  label: "ASSIGNEE",
+                  subtitle: subTask['assignee_name'] ?? "Select...",
+                  icon: Icons.person_add_alt_1,
+                  onTap: () async {
+                    final List<Map<String, dynamic>>? result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            const UserSelectionPage(multiSelect: false),
+                      ),
+                    );
+    
+                    if (result != null && result.isNotEmpty) {
+                      setState(() {
+                        subTask['assignee_id'] =
+                            result.first['id'] ?? result.first['user_id'];
+                        subTask['assignee_name'] = result.first['name'];
+                      });
+                    }
+                  },
                 ),
-              );
-
-              if (result != null && result.isNotEmpty) {
-                setState(() {
-                  subTask['assigneeId'] = result.first['name'];
-                });
-              }
-            },
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 1,
+                child: _modernField(
+                  label: "HOURS",
+                  hint: "0.0",
+                  isNumber: true,
+                  initialValue: subTask['duration']?.toString(),
+                  onChanged: (v) => setState(() {
+                    subTask['duration'] = double.tryParse(v) ?? 0.0;
+                  }),
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
+import '../../services/task_service.dart';
+import '../../services/auth_service.dart';
 
 class MorningAcknowledgementPage extends StatefulWidget {
-  final VoidCallback
-  onAcknowledged; // Needed to tell RootWrapper to switch screens
+  final VoidCallback onAcknowledged;
   const MorningAcknowledgementPage({super.key, required this.onAcknowledged});
 
   @override
@@ -14,6 +15,9 @@ class MorningAcknowledgementPage extends StatefulWidget {
 
 class _MorningAcknowledgementPageState
     extends State<MorningAcknowledgementPage> {
+  final TaskService _taskService = TaskService();
+  final AuthService _authService = AuthService();
+  
   final Color brandAccent = const Color(0xFF6366F1);
   final Color textMain = const Color(0xFF1E293B);
   final Color textSub = const Color(0xFF64748B);
@@ -21,7 +25,48 @@ class _MorningAcknowledgementPageState
   final Color destructive = const Color(0xFFF43F5E);
 
   bool _isAcknowledged = false;
+  bool _isLoading = true;
+  bool _isActionLoading = false;
+  List<dynamic> _unacknowledgedTasks = [];
+  String _userName = "User";
   final String deadlineString = "08:45 AM";
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchData();
+  }
+
+  Future<void> _fetchData() async {
+    setState(() => _isLoading = true);
+    try {
+      final tasks = await _taskService.getUnacknowledgedTasks();
+      final user = await _authService.getCurrentUser();
+      setState(() {
+        _unacknowledgedTasks = tasks;
+        _userName = user['name'] ?? "User";
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint("Error fetching acknowledgement data: $e");
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleAcknowledge() async {
+    if (!_isAcknowledged) return;
+    
+    setState(() => _isActionLoading = true);
+    try {
+      await _taskService.acknowledgeGeneral();
+      widget.onAcknowledged();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Acknowledgement Error: $e")),
+      );
+      setState(() => _isActionLoading = false);
+    }
+  }
 
   // Logic to check if user is late
   bool _isLate() {
@@ -51,7 +96,9 @@ class _MorningAcknowledgementPageState
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(28.0),
-              child: Column(
+              child: _isLoading 
+                ? const Center(child: CircularProgressIndicator())
+                : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 20),
@@ -74,26 +121,25 @@ class _MorningAcknowledgementPageState
                   const SizedBox(height: 16),
 
                   Expanded(
-                    child: ListView(
-                      physics: const BouncingScrollPhysics(),
-                      children: [
-                        _taskPreviewTile(
-                          "Morning Briefing",
-                          "General",
-                          "09:00 AM",
-                        ),
-                        _taskPreviewTile(
-                          "Advanced Calculus",
-                          "Lecture",
-                          "10:30 AM",
-                        ),
-                        _taskPreviewTile(
-                          "Lab Submission",
-                          "Assignment",
-                          "02:00 PM",
-                        ),
-                      ],
-                    ),
+                    child: _unacknowledgedTasks.isEmpty 
+                      ? Center(
+                          child: Text(
+                            "No specific tasks assigned for today yet.",
+                            style: TextStyle(color: textSub, fontSize: 13),
+                          ),
+                        )
+                      : ListView.builder(
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: _unacknowledgedTasks.length,
+                        itemBuilder: (context, index) {
+                          final task = _unacknowledgedTasks[index];
+                          return _taskPreviewTile(
+                            task['task_title'] ?? 'Task',
+                            task['category'] ?? 'General',
+                            task['priority'] ?? 'Standard',
+                          );
+                        },
+                      ),
                   ),
 
                   _buildAcknowledgeSection(activeThemeColor),
@@ -111,7 +157,7 @@ class _MorningAcknowledgementPageState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          "Good Morning, Annish Litisha",
+          "Good Morning, $_userName",
           style: TextStyle(
             color: textMain,
             fontSize: 28,
@@ -285,8 +331,8 @@ class _MorningAcknowledgementPageState
           width: double.infinity,
           height: 60,
           child: ElevatedButton(
-            onPressed: _isAcknowledged
-                ? widget.onAcknowledged
+            onPressed: (_isAcknowledged && !_isActionLoading)
+                ? _handleAcknowledge
                 : null, // Fires callback to RootWrapper
             style: ElevatedButton.styleFrom(
               backgroundColor: btnColor,
@@ -297,10 +343,16 @@ class _MorningAcknowledgementPageState
               ),
               elevation: 0,
             ),
-            child: const Text(
-              "Enter Dashboard",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
+            child: _isActionLoading 
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                )
+              : const Text(
+                  "Enter Dashboard",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
           ),
         ),
         const SizedBox(height: 16),

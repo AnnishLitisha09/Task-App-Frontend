@@ -17,6 +17,7 @@ import '../../models/departmental_dashboard_model.dart';
 import './venue_history_page.dart';
 import './venue_approvals_page.dart';
 import './venue_schedule_page.dart';
+import './venue_availability_page.dart';
 import '../common/generic_view_all_page.dart';
 
 class RoleUserPage extends StatefulWidget {
@@ -62,9 +63,13 @@ class _RoleUserPageState extends State<RoleUserPage> {
     });
 
     try {
-      final data = await _userService.getDepartmentalDashboard();
+      final results = await Future.wait([
+        _userService.getDepartmentalDashboard(),
+        _taskService.getEscalations(unread: true),
+      ]);
       setState(() {
-        _deptDetails = data;
+        _deptDetails = results[0] as DepartmentalDashboard;
+        _escalations = results[1] as List<dynamic>;
         _isLoading = false;
       });
     } catch (e) {
@@ -105,15 +110,22 @@ class _RoleUserPageState extends State<RoleUserPage> {
     });
 
     try {
-      final data = await _taskService.getVenueDashboard();
+      final results = await Future.wait([
+        _taskService.getVenueDashboard(),
+        _taskService.getEscalations(unread: true),
+      ]);
+
       setState(() {
-        _venueDetails = data;
-        if (data.venues.isNotEmpty && _selectedRoleVenue == null) {
-          _selectedRoleVenue = data.venues.first;
-        } else if (data.venues.isNotEmpty && _selectedRoleVenue != null) {
-          _selectedRoleVenue = data.venues.firstWhere(
+        _venueDetails = results[0] as VenueDetailsResponse;
+        _escalations = results[1] as List<dynamic>;
+
+        if (_venueDetails!.venues.isNotEmpty && _selectedRoleVenue == null) {
+          _selectedRoleVenue = _venueDetails!.venues.first;
+        } else if (_venueDetails!.venues.isNotEmpty &&
+            _selectedRoleVenue != null) {
+          _selectedRoleVenue = _venueDetails!.venues.firstWhere(
             (v) => v.venueId == _selectedRoleVenue!.venueId,
-            orElse: () => data.venues.first,
+            orElse: () => _venueDetails!.venues.first,
           );
         }
         _isLoading = false;
@@ -411,10 +423,14 @@ class _RoleUserPageState extends State<RoleUserPage> {
               color: AppTheme.brandAccent,
             ),
             StatCard(
-              label: "Usage",
-              value: _selectedRoleVenue?.todayUsagePercentage ?? "0%",
-              icon: Icons.speed_rounded,
-              color: Colors.orangeAccent,
+              label: "Venue Status",
+              value: _selectedRoleVenue?.currentStatus.replaceAll('_', ' ').toUpperCase() ?? "Check",
+              icon: Icons.meeting_room_rounded,
+              color: Colors.deepPurpleAccent,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const VenueAvailabilityPage()),
+              ),
             ),
           ],
         );
@@ -903,6 +919,60 @@ class _RoleUserPageState extends State<RoleUserPage> {
         }
 
         final currentVenue = _selectedRoleVenue ?? _venueDetails!.venues.first;
+
+        // --- Escalated Tasks (Global) ---
+        sections.add(
+          SectionHeader(
+            title: "Escalated Tasks",
+            count: _escalations.length,
+            isStatus: _escalations.isNotEmpty,
+            onViewAll: () {},
+          ),
+        );
+        if (_escalations.isEmpty) {
+          sections.add(
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text(
+                  "No escalated tasks",
+                  style: TextStyle(color: AppTheme.textSub),
+                ),
+              ),
+            ),
+          );
+        } else {
+          for (final esc in _escalations.take(2)) {
+            final taskId = esc['task_id'] ?? esc['id'];
+            sections.add(
+              TaskCard(
+                title: esc['title']?.toString() ?? 'Escalated Task',
+                sub:
+                    esc['description']?.toString() ??
+                    esc['reason']?.toString() ??
+                    'Escalated • Requires attention',
+                accent: AppTheme.danger,
+                icon: Icons.priority_high_rounded,
+                onTap: taskId != null
+                    ? () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TaskDetailsPage(
+                            taskData: {
+                              'task_id': taskId,
+                              'title': esc['title'],
+                            },
+                            viewMode: 'incharge',
+                          ),
+                        ),
+                      )
+                    : null,
+              ),
+            );
+          }
+        }
+
+        sections.add(const SizedBox(height: 24));
 
         // --- Pending Approvals (Selected Venue) ---
         sections.add(

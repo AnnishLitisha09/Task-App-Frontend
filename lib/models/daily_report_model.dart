@@ -53,6 +53,7 @@ class DailyReportTask {
   final int creatorId;
   final List<DailyReportAssignee> assignees;
   final String? venue;
+  final List<String> closureMethods;
   final DailyReportTime time;
 
   DailyReportTask({
@@ -70,6 +71,7 @@ class DailyReportTask {
     required this.creatorId,
     required this.assignees,
     this.venue,
+    required this.closureMethods,
     required this.time,
   });
 
@@ -95,6 +97,7 @@ class DailyReportTask {
       venue: json['venue'] is Map
           ? json['venue']['name']?.toString()
           : json['venue']?.toString(),
+      closureMethods: List<String>.from(json['closure_methods'] ?? []),
       time: DailyReportTime.fromJson(json['time'] ?? {}),
     );
   }
@@ -103,11 +106,15 @@ class DailyReportTask {
 class DailyReportAssignee {
   final int userId;
   final String status;
+  final String name;
+  final String role;
   final Map<String, dynamic> details;
 
   DailyReportAssignee({
     required this.userId,
     required this.status,
+    required this.name,
+    required this.role,
     required this.details,
   });
 
@@ -115,6 +122,8 @@ class DailyReportAssignee {
     return DailyReportAssignee(
       userId: json['user_id'] ?? 0,
       status: json['status'] ?? '',
+      name: json['name']?.toString() ?? '',
+      role: json['role']?.toString() ?? '',
       details: json['details'] ?? {},
     );
   }

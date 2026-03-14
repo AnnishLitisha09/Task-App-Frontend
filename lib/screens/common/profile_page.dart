@@ -11,7 +11,6 @@ import '../faculty/students_page.dart';
 import '../role_user/all_department_page.dart';
 import '../role_user/all_faculty_page.dart';
 import '../role_user/dept_directory_page.dart';
-import '../role_user/department_profile_page.dart';
 import '../role_user/view_dept_tasks.dart';
 import '../student/on_duty_wallet_page.dart';
 import '../student/self_log_history_page.dart';
