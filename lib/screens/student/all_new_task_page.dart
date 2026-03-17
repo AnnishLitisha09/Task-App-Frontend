@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:intl/intl.dart';
 import '../../services/task_service.dart';
 import '../../theme/app_theme.dart';
 import '../../components/skeleton_loader.dart';
@@ -88,8 +89,13 @@ class _AllNewTasksPageState extends State<AllNewTasksPage> {
       }
     }).toList();
 
-    // Sort by timing
+    // Sort by date and timing
     normalizedTasks.sort((a, b) {
+      String dA = a['date'] ?? a['start_date']?.toString().split('T')[0] ?? '9999-12-31';
+      String dB = b['date'] ?? b['start_date']?.toString().split('T')[0] ?? '9999-12-31';
+      int dateCompare = dA.compareTo(dB);
+      if (dateCompare != 0) return dateCompare;
+
       String tA = (a['timing'] == null || a['timing'].toString().isEmpty)
           ? '23:59'
           : a['timing'].toString();
@@ -106,9 +112,21 @@ class _AllNewTasksPageState extends State<AllNewTasksPage> {
       String timing = (t['timing'] == null || t['timing'].toString().isEmpty)
           ? 'Anytime'
           : t['timing'].toString();
+      
+      String dateStr = t['date'] ?? t['start_date'] ?? '';
+      String formattedDate = '';
+      if (dateStr.isNotEmpty) {
+        try {
+          // Handle ISO string or YYYY-MM-DD
+          final dt = DateTime.parse(dateStr.toString().contains('T') ? dateStr.toString() : dateStr.toString());
+          formattedDate = DateFormat('MMM dd').format(dt);
+        } catch (_) {}
+      }
 
-      if (timing != currentHeader) {
-        currentHeader = timing;
+      String header = formattedDate.isNotEmpty ? "$formattedDate - $timing" : timing;
+
+      if (header != currentHeader) {
+        currentHeader = header;
         result.add({'isHeader': true, 'title': currentHeader});
       }
       result.add(t);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../theme/app_theme.dart';
 import '../../components/task_card.dart';
 import 'task_detail_page.dart';
@@ -37,10 +38,15 @@ class _GenericViewAllPageState extends State<GenericViewAllPage> {
 
     final List<dynamic> sortedTasks = List.from(_currentTasks);
     sortedTasks.sort((a, b) {
-      final String timeA =
-          a['timing']?.toString() ?? a['time']?.toString() ?? '';
-      final String timeB =
-          b['timing']?.toString() ?? b['time']?.toString() ?? '';
+      // Sort by Date first
+      String dA = a['date']?.toString() ?? a['start_date']?.toString() ?? '9999-12-31';
+      String dB = b['date']?.toString() ?? b['start_date']?.toString() ?? '9999-12-31';
+      int dateCompare = dA.compareTo(dB);
+      if (dateCompare != 0) return dateCompare;
+
+      // Then by Time
+      final String timeA = a['timing']?.toString() ?? a['time']?.toString() ?? a['start_time']?.toString() ?? '23:59';
+      final String timeB = b['timing']?.toString() ?? b['time']?.toString() ?? b['start_time']?.toString() ?? '23:59';
       return timeA.compareTo(timeB);
     });
 
@@ -48,18 +54,23 @@ class _GenericViewAllPageState extends State<GenericViewAllPage> {
     String currentHeader = '';
 
     for (var task in sortedTasks) {
-      String fullTiming =
-          task['timing']?.toString() ?? task['time']?.toString() ?? '';
-      String timeHeader = "Scheduled";
-      if (fullTiming.contains(' ')) {
-        final parts = fullTiming.split(' ');
-        if (parts.isNotEmpty) {
-          final lastPart = parts.last;
-          if (lastPart.contains(':')) {
-            timeHeader = lastPart.substring(0, 5);
-          }
-        }
+      String dateStr = task['date']?.toString() ?? task['start_date']?.toString() ?? '';
+      String timeStr = task['timing']?.toString() ?? task['time']?.toString() ?? task['start_time']?.toString() ?? 'TBD';
+      
+      // Clean up timeStr
+      if (timeStr.length > 5 && timeStr.contains(':')) {
+        timeStr = timeStr.substring(0, 5);
       }
+
+      String formattedDate = '';
+      if (dateStr.isNotEmpty) {
+        try {
+          final dt = DateTime.parse(dateStr.contains('T') ? dateStr : dateStr);
+          formattedDate = DateFormat('MMM dd').format(dt);
+        } catch (_) {}
+      }
+
+      String timeHeader = formattedDate.isNotEmpty ? "$formattedDate ($timeStr)" : timeStr;
 
       if (timeHeader != currentHeader) {
         currentHeader = timeHeader;
@@ -175,8 +186,10 @@ class _GenericViewAllPageState extends State<GenericViewAllPage> {
                             MaterialPageRoute(
                               builder: (_) => TaskDetailsPage(
                                 taskData: {
+                                  ...task,
                                   'task_id': taskId,
                                   'title': task['title'],
+                                  if (widget.title == "Pending Proofs") 'isPendingProof': true,
                                 },
                                 viewMode: widget.viewMode,
                               ),

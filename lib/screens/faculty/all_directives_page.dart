@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../services/task_service.dart';
 import '../../theme/app_theme.dart';
 import '../../components/task_card.dart';
@@ -40,10 +41,16 @@ class _AllDirectivesPageState extends State<AllDirectivesPage> {
       return;
     }
 
-    // Sort by start_time from task_type array
+    // Sort by start_date and start_time
     directives.sort((a, b) {
       final aTiming = a['timing'] as Map<String, dynamic>? ?? {};
       final bTiming = b['timing'] as Map<String, dynamic>? ?? {};
+      
+      String dA = aTiming['start_date'] ?? '9999-12-31';
+      String dB = bTiming['start_date'] ?? '9999-12-31';
+      int dateCompare = dA.compareTo(dB);
+      if (dateCompare != 0) return dateCompare;
+
       String tA = aTiming['start_time'] ?? '23:59';
       String tB = bTiming['start_time'] ?? '23:59';
       return tA.compareTo(tB);
@@ -56,12 +63,23 @@ class _AllDirectivesPageState extends State<AllDirectivesPage> {
       final timing = d['timing'] as Map<String, dynamic>? ?? {};
       String start = timing['start_time'] ?? 'Time TBD';
       String end = timing['end_time'] ?? '';
+      String date = timing['start_date'] ?? '';
 
       // Clean up seconds from hh:mm:ss if present
       if (start.length > 5) start = start.substring(0, 5);
-      if (end.length > 5) end = end.substring(0, 5);
+      if (end.length > 5 && end.contains(':')) end = end.substring(0, 5);
 
-      String header = end.isNotEmpty ? '$start - $end' : start;
+      String formattedDate = '';
+      if (date.isNotEmpty) {
+        try {
+          final dt = DateTime.parse(date);
+          formattedDate = DateFormat('MMM dd').format(dt);
+        } catch (_) {}
+      }
+
+      String header = formattedDate.isNotEmpty 
+          ? (end.isNotEmpty ? '$formattedDate ($start - $end)' : '$formattedDate ($start)')
+          : (end.isNotEmpty ? '$start - $end' : start);
       if (header != currentHeader) {
         currentHeader = header;
         result.add({'isHeader': true, 'title': currentHeader});
@@ -114,11 +132,11 @@ class _AllDirectivesPageState extends State<AllDirectivesPage> {
     });
 
     try {
-      await _taskService.acceptTask(taskId);
+      await _taskService.selfAssignTask(taskId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Task accepted!'),
+            content: Text('Task added to your list!'),
             backgroundColor: AppTheme.success,
           ),
         );
@@ -296,6 +314,7 @@ class _AllDirectivesPageState extends State<AllDirectivesPage> {
                     icon: Icons.assignment_turned_in_rounded,
                     heroTag: heroTag,
                     isRequest: true,
+                    acceptLabel: "Execute Directive",
                     onAccept: () {
                       if (widget.isBlocked) {
                         ScaffoldMessenger.of(context).showSnackBar(

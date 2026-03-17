@@ -17,7 +17,7 @@ class PerformanceStats {
     return PerformanceStats(
       totalScore: (json['total_score'] as num?)?.toInt() ?? 0,
       totalPenalty: (json['total_penalty'] as num?)?.toInt() ?? 0,
-      totalEarnedScore: (json['total_earned_score'] as num?)?.toInt() ?? 0,
+      totalEarnedScore: (json['total_earned_score'] as num? ?? json['earned_score'] as num?)?.toInt() ?? 0,
       last7Days:
           (json['last_7_days'] as List?)
               ?.map((e) => DayTrend.fromJson(e))

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -12,6 +13,7 @@ import '../../components/section_header.dart';
 import '../../components/skeleton_loader.dart';
 import '../../components/unified_reject_dialog.dart';
 import '../common/task_detail_page.dart';
+import '../common/generic_view_all_page.dart';
 import '../../models/faculty_dashboard_stats.dart';
 import '../common/user_selection_page.dart';
 import '../../services/task_service.dart';
@@ -20,6 +22,10 @@ import 'all_directives_page.dart';
 import 'all_escalations_page.dart';
 import 'all_schedule_page.dart';
 import 'all_proofs_page.dart';
+import 'task_verification_page.dart';
+import 'verify_users_proof_page.dart';
+import '../common/score_performance_page.dart';
+
 
 class FacultyPage extends StatefulWidget {
   final bool isBlocked;
@@ -37,8 +43,11 @@ class FacultyPage extends StatefulWidget {
 class _FacultyPageState extends State<FacultyPage> {
   FacultyDashboardStats? _stats;
   List<dynamic> _pendingProofs = [];
+  List<dynamic> _pendingVerifications = [];
   List<dynamic> _escalations = [];
+  List<dynamic> _authorityApprovals = [];
   String? _userRole;
+  List<String> _allRoles = [];
   bool _isLoading = true;
 
   @override
@@ -53,13 +62,21 @@ class _FacultyPageState extends State<FacultyPage> {
       _fetchUserRole(),
       _fetchStats(),
       _fetchPendingProofs(),
+      _fetchPendingVerifications(),
       _fetchEscalations(),
+      _fetchAuthorityApprovals(),
     ]);
     if (mounted) setState(() => _isLoading = false);
   }
 
   Future<void> _fetchUserRole() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? allRolesJson = prefs.getString('allRoles');
+      if (allRolesJson != null) {
+        _allRoles = List<String>.from(jsonDecode(allRolesJson));
+      }
+      
       final profile = await UserService().getUserProfile();
       if (mounted) {
         setState(() {
@@ -68,6 +85,30 @@ class _FacultyPageState extends State<FacultyPage> {
       }
     } catch (e) {
       // Fallback
+    }
+  }
+
+  Future<void> _fetchAuthorityApprovals() async {
+    try {
+      // Check if user has an authority role
+      final authorityRoles = ['hod', 'dean', 'principal'];
+      bool isAuthority = _allRoles.any((r) => authorityRoles.contains(r.toLowerCase())) ||
+                        (_userRole != null && authorityRoles.contains(_userRole!.toLowerCase()));
+
+      if (!isAuthority) {
+        if (mounted) setState(() => _authorityApprovals = []);
+        return;
+      }
+
+      final userService = UserService();
+      final dashboard = await userService.getDepartmentalDashboard();
+      if (mounted) {
+        setState(() {
+          _authorityApprovals = dashboard.pendingApprovals;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _authorityApprovals = []);
     }
   }
 
@@ -116,8 +157,14 @@ class _FacultyPageState extends State<FacultyPage> {
       final dynamic response = await taskService.getPendingProofs();
       if (mounted) {
         setState(() {
-          if (response is Map && response.containsKey('tasks')) {
-            _pendingProofs = response['tasks'] as List;
+          if (response is Map) {
+            if (response.containsKey('items')) {
+              _pendingProofs = response['items'] as List;
+            } else if (response.containsKey('tasks')) {
+              _pendingProofs = response['tasks'] as List;
+            } else {
+              _pendingProofs = [];
+            }
           } else if (response is List) {
             _pendingProofs = response;
           } else {
@@ -127,6 +174,24 @@ class _FacultyPageState extends State<FacultyPage> {
       }
     } catch (e) {
       if (mounted) setState(() => _pendingProofs = []);
+    }
+  }
+
+  Future<void> _fetchPendingVerifications() async {
+    try {
+      final TaskService taskService = TaskService();
+      final dynamic response = await taskService.getPendingVerifications();
+      if (mounted) {
+        setState(() {
+          if (response is List) {
+            _pendingVerifications = response;
+          } else {
+            _pendingVerifications = [];
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _pendingVerifications = []);
     }
   }
 
@@ -351,61 +416,6 @@ class _FacultyPageState extends State<FacultyPage> {
                         ? 'https://ui-avatars.com/api/?name=${info.name.replaceAll(' ', '+')}&background=random'
                         : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
                   ),
-                  if (widget.isBlocked)
-                    SliverToBoxAdapter(
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 8,
-                        ),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppTheme.danger.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: AppTheme.danger.withOpacity(0.3),
-                          ),
-                        ),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.warning_amber_rounded,
-                                  color: AppTheme.danger,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    "Action Required: Please acknowledge today's schedule to proceed.",
-                                    style: AppTheme.bodyMain.copyWith(
-                                      color: AppTheme.danger,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: widget.onAcknowledge,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppTheme.danger,
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                child: const Text("Acknowledge Now"),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                   if (_isLoading)
                     const SliverToBoxAdapter(child: DashboardSkeleton())
                   else
@@ -413,7 +423,10 @@ class _FacultyPageState extends State<FacultyPage> {
                       padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate([
-                          Column(
+                          if (widget.isBlocked)
+                            _buildBlockedMessage()
+                          else ...[
+                            Column(
                             children: [
                               Row(
                                 children: [
@@ -454,12 +467,23 @@ class _FacultyPageState extends State<FacultyPage> {
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
-                                    child: StatCard(
-                                      label: "Penalty",
-                                      value:
-                                          "₹${_stats?.facultyInfo.penalty ?? '0.00'}",
-                                      icon: Icons.money_off_csred_rounded,
-                                      color: AppTheme.danger,
+                                    child: InkWell(
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => const ScorePerformancePage(),
+                                          ),
+                                        );
+                                      },
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: StatCard(
+                                        label: "Penalty",
+                                        value:
+                                            "₹${_stats?.facultyInfo.penalty ?? '0.00'}",
+                                        icon: Icons.money_off_csred_rounded,
+                                        color: AppTheme.danger,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -468,9 +492,111 @@ class _FacultyPageState extends State<FacultyPage> {
                           ),
                           const SizedBox(height: 32),
 
-                          // --- Incoming Directives (max 2) ---
+                          // 1. Today's Schedule
                           SectionHeader(
-                            title: "Incoming Directives",
+                            title: "Today's Schedule",
+                            onViewAll: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AllSchedulePage(
+                                    userRole: _userRole ?? 'Faculty',
+                                  ),
+                                ),
+                              );
+                              _refreshAll();
+                            },
+                          ),
+                          if (allTasks.isEmpty)
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 20),
+                                child: Text(
+                                  "No tasks scheduled for today",
+                                  style: TextStyle(
+                                    color: AppTheme.textSub,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            ...allTasks.take(2).map<Widget>((item) {
+                              final String heroTag =
+                                  "task_${item['task_id']}_today";
+                              final timing =
+                                  item['timing'] as Map<String, dynamic>? ??
+                                  (item['task_type'] is Map
+                                      ? item['task_type']
+                                            as Map<String, dynamic>
+                                      : {});
+                              final String dateStr = timing['start_date'] ?? "";
+                              final String startTime =
+                                  timing['start_time'] ?? "";
+                              final String endTime = timing['end_time'] ?? "";
+
+                              String timeInfo = "";
+                              if (startTime.isNotEmpty && endTime.isNotEmpty) {
+                                timeInfo =
+                                    " (${startTime.substring(0, 5)} - ${endTime.substring(0, 5)})";
+                              } else if (startTime.isNotEmpty) {
+                                timeInfo = " (${startTime.substring(0, 5)})";
+                              }
+
+                              final String formattedDate = dateStr.isNotEmpty
+                                  ? DateFormat(
+                                      'MMM dd, yyyy',
+                                    ).format(DateTime.parse(dateStr))
+                                  : "";
+
+                              final String dateDisplay =
+                                  formattedDate.isNotEmpty
+                                  ? "$formattedDate$timeInfo"
+                                  : "";
+                              final bool hasDesc =
+                                  item['description'] != null &&
+                                  item['description'].toString().isNotEmpty;
+                              final String finalDesc = hasDesc
+                                  ? " • ${item['description']}"
+                                  : "";
+                              final String subText = "$dateDisplay$finalDesc";
+
+                              return TaskCard(
+                                key: ValueKey(heroTag),
+                                title: item['title'] ?? 'Task',
+                                sub: subText,
+                                accent: AppTheme.success,
+                                icon: Icons.calendar_today_rounded,
+                                heroTag: heroTag,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => TaskDetailsPage(
+                                      taskData: {
+                                        'task_id': item['task_id'],
+                                        'title': item['title'],
+                                        'sub': item['status'],
+                                        'accent': AppTheme.success,
+                                        'icon': Icons.calendar_today_rounded,
+                                        'heroTag': heroTag,
+                                        'startDate':
+                                            timing['start_date'] ?? "N/A",
+                                        'deadline': timing['end_date'] ?? "N/A",
+                                        'completionType': "INFO",
+                                        "isRequest": false,
+                                        'userRole': 'Faculty',
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+
+                          const SizedBox(height: 32),
+
+                          // 2. Pending Approval (Incoming Directives)
+                          SectionHeader(
+                            title: "New Task Requests",
                             isStatus: true,
                             count: pending.length,
                             onViewAll: () => Navigator.push(
@@ -607,7 +733,66 @@ class _FacultyPageState extends State<FacultyPage> {
 
                           const SizedBox(height: 32),
 
-                          // --- Escalated Tasks (max 2) ---
+                          // 3. Authority Approval (HOD level)
+                          if (_authorityApprovals.isNotEmpty) ...[
+                            SectionHeader(
+                              title: "Authority Approvals",
+                              isStatus: true,
+                              count: _authorityApprovals.length,
+                              onViewAll: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => GenericViewAllPage(
+                                    title: "Authority Approvals",
+                                    tasks: _authorityApprovals,
+                                    viewMode: 'approver',
+                                    accentColor: AppTheme.warning,
+                                    onTaskAction: (taskId, approve) async {
+                                      try {
+                                        if (approve) {
+                                          await TaskService().acceptTask(taskId);
+                                        } else {
+                                          await TaskService().rejectTask(taskId, "Rejected by Authority");
+                                        }
+                                        _refreshAll();
+                                      } catch (e) {
+                                        debugPrint("Error in authority action: $e");
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
+                            ..._authorityApprovals.take(2).map<Widget>((task) {
+                              return TaskCard(
+                                title: task['title']?.toString() ?? "Approval Request",
+                                sub: "Requested by: ${task['requested_by'] ?? 'N/A'}",
+                                accent: AppTheme.warning,
+                                icon: Icons.how_to_reg_rounded,
+                                isApproval: true,
+                                onAccept: () async {
+                                  await TaskService().acceptTask(task['task_id']);
+                                  _refreshAll();
+                                },
+                                onReject: () async {
+                                  await TaskService().rejectTask(task['task_id'], "Rejected by Authority");
+                                  _refreshAll();
+                                },
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => TaskDetailsPage(
+                                      taskData: {'task_id': task['task_id'], 'title': task['title']},
+                                      viewMode: 'approver',
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                            const SizedBox(height: 32),
+                          ],
+
+                          // 4. Escalated Tasks
                           SectionHeader(
                             title: "Escalated Tasks",
                             isStatus: true,
@@ -691,109 +876,45 @@ class _FacultyPageState extends State<FacultyPage> {
 
                           const SizedBox(height: 32),
 
-                          // --- Today's Schedule (max 2) ---
-                          SectionHeader(
-                            title: "Today's Schedule",
-                            onViewAll: () async {
-                              await Navigator.push(
+                          // 4.5 Task Verification
+                          if (_pendingVerifications.isNotEmpty) ...[
+                            SectionHeader(
+                              title: "Task Verification",
+                              count: _pendingVerifications.length,
+                              onViewAll: () => Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => AllSchedulePage(
-                                    userRole: _userRole ?? 'Faculty',
-                                  ),
-                                ),
-                              );
-                              _refreshAll();
-                            },
-                          ),
-                          if (allTasks.isEmpty)
-                            const Center(
-                              child: Padding(
-                                padding: EdgeInsets.symmetric(vertical: 20),
-                                child: Text(
-                                  "No tasks scheduled for today",
-                                  style: TextStyle(
-                                    color: AppTheme.textSub,
-                                    fontStyle: FontStyle.italic,
-                                  ),
+                                  builder: (_) => const TaskVerificationPage(),
                                 ),
                               ),
-                            )
-                          else
-                            ...allTasks.take(2).map<Widget>((item) {
-                              final String heroTag =
-                                  "task_${item['task_id']}_today";
-                              final timing =
-                                  item['timing'] as Map<String, dynamic>? ??
-                                  (item['task_type'] is Map
-                                      ? item['task_type']
-                                            as Map<String, dynamic>
-                                      : {});
-                              final String dateStr = timing['start_date'] ?? "";
-                              final String startTime =
-                                  timing['start_time'] ?? "";
-                              final String endTime = timing['end_time'] ?? "";
-
-                              String timeInfo = "";
-                              if (startTime.isNotEmpty && endTime.isNotEmpty) {
-                                timeInfo =
-                                    " (${startTime.substring(0, 5)} - ${endTime.substring(0, 5)})";
-                              } else if (startTime.isNotEmpty) {
-                                timeInfo = " (${startTime.substring(0, 5)})";
-                              }
-
-                              final String formattedDate = dateStr.isNotEmpty
-                                  ? DateFormat(
-                                      'MMM dd, yyyy',
-                                    ).format(DateTime.parse(dateStr))
-                                  : "";
-
-                              final String dateDisplay =
-                                  formattedDate.isNotEmpty
-                                  ? "$formattedDate$timeInfo"
-                                  : "";
-                              final bool hasDesc =
-                                  item['description'] != null &&
-                                  item['description'].toString().isNotEmpty;
-                              final String finalDesc = hasDesc
-                                  ? " • ${item['description']}"
-                                  : "";
-                              final String subText = "$dateDisplay$finalDesc";
-
+                            ),
+                            const SizedBox(height: 16),
+                            ..._pendingVerifications.take(2).map((verify) {
+                              final heroTag = "verify_${verify['assignment_id']}_dash";
                               return TaskCard(
-                                key: ValueKey(heroTag),
-                                title: item['title'] ?? 'Task',
-                                sub: subText,
-                                accent: AppTheme.success,
-                                icon: Icons.calendar_today_rounded,
+                                title: verify['title'] ?? 'Task Review',
+                                sub: 'By: ${verify['assignee_name']} (${verify['assignee_role']})',
+                                accent: AppTheme.brandAccent,
+                                icon: Icons.fact_check_rounded,
                                 heroTag: heroTag,
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => TaskDetailsPage(
-                                      taskData: {
-                                        'task_id': item['task_id'],
-                                        'title': item['title'],
-                                        'sub': item['status'],
-                                        'accent': AppTheme.success,
-                                        'icon': Icons.calendar_today_rounded,
-                                        'heroTag': heroTag,
-                                        'startDate':
-                                            timing['start_date'] ?? "N/A",
-                                        'deadline': timing['end_date'] ?? "N/A",
-                                        'completionType': "INFO",
-                                        "isRequest": false,
-                                        'userRole': 'Faculty',
-                                      },
-                                    ),
-                                  ),
-                                ),
+                                onTap: () async {
+                                    final result = await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => VerifyUsersProofPage(
+                                          taskId: verify['task_id'],
+                                          taskTitle: verify['title'] ?? 'Task Review',
+                                        ),
+                                      ),
+                                    );
+                                  if (result == 'refreshed') _refreshAll();
+                                },
                               );
                             }),
+                            const SizedBox(height: 32),
+                          ],
 
-                          const SizedBox(height: 32),
-
-                          // --- Pending Proofs (max 2) ---
+                          // 5. Pending Proofs
                           SectionHeader(
                             title: "Pending Proofs",
                             isStatus: true,
@@ -834,8 +955,7 @@ class _FacultyPageState extends State<FacultyPage> {
                               return TaskCard(
                                 key: ValueKey(heroTag),
                                 title: proof['title'] ?? 'Proof Task',
-                                sub:
-                                    proof['description'] ??
+                                sub: proof['description'] ??
                                     'Proof Status: ${proof['proof_status'] ?? 'Pending'}',
                                 accent: Colors.orange,
                                 icon: Icons.photo_camera_rounded,
@@ -848,14 +968,14 @@ class _FacultyPageState extends State<FacultyPage> {
                                         'task_id': proof['task_id'],
                                         'assignment_id': proof['assignment_id'],
                                         'title': proof['title'],
-                                        'sub':
-                                            proof['description'] ??
+                                        'sub': proof['description'] ??
                                             'Awaiting proof verification',
                                         'accent': Colors.orange,
                                         'icon': Icons.photo_camera_rounded,
                                         'heroTag': heroTag,
                                         'deadline': deadlineStr,
                                         'completionType': "PROOF_REVIEW",
+                                        'isPendingProof': true,
                                         'isRequest': false,
                                         'userRole': 'Faculty',
                                         'is_document': proof['is_document'],
@@ -867,8 +987,7 @@ class _FacultyPageState extends State<FacultyPage> {
                                 ),
                               );
                             }),
-
-                          const SizedBox(height: 32),
+                          ],
                         ]),
                       ),
                     ),
@@ -879,5 +998,55 @@ class _FacultyPageState extends State<FacultyPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildBlockedMessage() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 40, horizontal: 8),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppTheme.danger.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppTheme.danger.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.lock_person_rounded, size: 64, color: AppTheme.danger.withOpacity(0.8)),
+          const SizedBox(height: 24),
+          Text(
+            "Access Restricted",
+            style: AppTheme.h2.copyWith(color: AppTheme.danger),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            "Your account is restricted because today's tasks haven't been acknowledged. Please contact an administrator to acknowledge your schedule.",
+            textAlign: TextAlign.center,
+            style: AppTheme.bodyMain.copyWith(color: AppTheme.textSub),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Once an admin acknowledges your schedule, you can refresh to gain access.",
+            textAlign: TextAlign.center,
+            style: AppTheme.bodySub.copyWith(color: AppTheme.textSub.withOpacity(0.7)),
+          ),
+          const SizedBox(height: 32),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: widget.onAcknowledge,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text("Check Acknowledgment Status"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.danger,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn().slideY(begin: 0.1);
   }
 }

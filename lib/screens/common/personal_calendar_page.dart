@@ -240,26 +240,37 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
       backgroundColor: Colors.white,
       elevation: 0,
       centerTitle: false,
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            DateFormat('EEEE, MMMM d, yyyy').format(_selectedDate),
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 18,
-              color: brandAccent,
+      title: LayoutBuilder(
+        builder: (context, constraints) {
+          return SizedBox(
+            width: constraints.maxWidth,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  DateFormat('EEEE, MMMM d, yyyy').format(_selectedDate),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                    color: brandAccent,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  "${_calendarEvents.length} events scheduled",
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: slate500.withOpacity(0.7),
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-          ),
-          Text(
-            "${_calendarEvents.length} events scheduled",
-            style: TextStyle(
-              fontSize: 12,
-              color: slate500.withOpacity(0.7),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
+          );
+        }
       ),
       actions: [
         IconButton(
@@ -309,20 +320,24 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
     int colIndex = task['colIndex'] ?? 0;
     double totalCols = task['totalCols']?.toDouble() ?? 1.0;
 
-    double horizontalPadding = 22.0; // 10 left + 12 right padding total
+    double horizontalPadding = 22.0; 
     double availableWidth = maxWidth - horizontalPadding;
     double cardWidth = availableWidth / totalCols;
     double left = 10 + (colIndex * cardWidth);
 
+    // FIX: Ensure minimum height and prevent overflow for short tasks
+    double cardHeight = (duration * hourHeight) - 4;
+    if (cardHeight < 30) cardHeight = 30; // Minimum usable height
+
     return Positioned(
-      top: start * hourHeight + 4,
+      top: start * hourHeight + 2,
       left: left,
       width: cardWidth,
-      height: (duration * hourHeight) - 8,
+      height: cardHeight,
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           boxShadow: [
             BoxShadow(
               color: taskColor.withOpacity(0.06),
@@ -330,56 +345,62 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
               offset: const Offset(0, 4),
             ),
           ],
-          border: Border.all(color: taskColor.withOpacity(0.1), width: 1),
+          border: Border.all(color: taskColor.withOpacity(0.12), width: 1),
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 4,
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                color: taskColor,
-                borderRadius: const BorderRadius.horizontal(
-                  right: Radius.circular(4),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Row(
+            children: [
+              Container(
+                width: 3.5,
+                margin: const EdgeInsets.symmetric(vertical: 6),
+                decoration: BoxDecoration(
+                  color: taskColor,
+                  borderRadius: const BorderRadius.horizontal(
+                    right: Radius.circular(4),
+                  ),
                 ),
               ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      task['title'] ?? "Untitled Event",
-                      style: TextStyle(
-                        color: taskColor.withAlpha(220),
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (duration > 0.5) ...[
-                      const SizedBox(height: 2),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: duration < 0.4 ? 2 : 6,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
                       Text(
-                        task['sub'] ?? "",
+                        task['title'] ?? "Event",
                         style: TextStyle(
-                          color: slate500.withOpacity(0.6),
-                          fontSize: 11,
+                          color: taskColor.withAlpha(220),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                          height: 1.1,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      if (duration > 0.6) ...[
+                        const SizedBox(height: 1),
+                        Text(
+                          task['sub'] ?? "",
+                          style: TextStyle(
+                            color: slate500.withOpacity(0.55),
+                            fontSize: 10,
+                            height: 1.1,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ).animate().fadeIn().moveY(begin: 5, end: 0),
     );

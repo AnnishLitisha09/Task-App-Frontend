@@ -127,7 +127,7 @@ class _AllEscalationsPageState extends State<AllEscalationsPage> {
                             MaterialPageRoute(
                               builder: (_) => TaskDetailsPage(
                                 taskData: {
-                                  'task_id': e['task_id'],
+                                  'task_id': e['task_id'] ?? e['id'],
                                   'title': title,
                                   'sub': sub,
                                   'accent': AppTheme.danger,
@@ -137,6 +137,7 @@ class _AllEscalationsPageState extends State<AllEscalationsPage> {
                                   'deadline': e['end_date'] ?? 'N/A',
                                   'completionType': statusStr,
                                   'isRequest': false,
+                                  'isEscalated': true,
                                   'authority': 'Administration',
                                   'userRole': widget.userRole,
                                 },

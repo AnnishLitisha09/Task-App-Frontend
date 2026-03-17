@@ -17,6 +17,8 @@ import '../student/self_log_history_page.dart';
 import '../role_user/venue_availability_page.dart';
 import '../role_user/resource_availability_page.dart';
 import '../role_user/maintenance_logs_page.dart';
+import 'score_performance_page.dart';
+
 
 class ProfilePage extends StatefulWidget {
   final String role;
@@ -138,6 +140,23 @@ class _ProfilePageState extends State<ProfilePage> {
             _buildPerformanceBar(widget.role),
 
             const SizedBox(height: 32),
+
+            if (isFaculty)
+              _buildSettingsGroup("Performance Tracking", [
+                _settingsTile(
+                  Icons.analytics_outlined,
+                  "Score & Performance",
+                  "Detailed breakdown of points and penalties",
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ScorePerformancePage(),
+                      ),
+                    );
+                  },
+                ),
+              ]),
 
             if (isAuthority)
               if (widget.scope == 'institution')

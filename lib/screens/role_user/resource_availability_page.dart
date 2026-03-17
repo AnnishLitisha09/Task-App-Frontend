@@ -3,6 +3,9 @@ import '../../theme/app_theme.dart';
 import '../../components/skeleton_loader.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../services/resource_service.dart';
+import '../../components/stat_card.dart';
+import '../../components/section_header.dart';
+import '../../components/task_card.dart';
 
 class ResourceAvailabilityPage extends StatefulWidget {
   const ResourceAvailabilityPage({super.key});
@@ -38,7 +41,6 @@ class _ResourceAvailabilityPageState extends State<ResourceAvailabilityPage> {
   }
 
   void _showManageResourceDialog(Map<String, dynamic> groupedResource) {
-    // Calculate current available quantity
     final items = (groupedResource['items'] as List);
     final availableItem = items.firstWhere(
       (i) => i['status'] == 'available',
@@ -46,163 +48,206 @@ class _ResourceAvailabilityPageState extends State<ResourceAvailabilityPage> {
     );
     final availableQty = availableItem['quantity'] as int;
     final totalQty = groupedResource['total_quantity'] as int;
+    final damagedCount = items.firstWhere((i) => i['status'] == 'damaged', orElse: () => {'quantity': 0})['quantity'] as int;
+    final brokenCount = items.firstWhere((i) => i['status'] == 'broken', orElse: () => {'quantity': 0})['quantity'] as int;
+    final maintenanceCount = items.firstWhere((i) => i['status'] == 'under maintenance', orElse: () => {'quantity': 0})['quantity'] as int;
+    final int currentFaultyTotal = damagedCount + brokenCount + maintenanceCount;
 
     final totalQtyController = TextEditingController(text: totalQty.toString());
-    final faultyQtyController = TextEditingController(text: "0");
-    final reasonController = TextEditingController();
-    String faultyStatus = 'damaged';
+    final faultyQtyController = TextEditingController(text: currentFaultyTotal.toString());
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text("Manage Inventory: ${groupedResource['name']}"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("TOTAL QUANTITY", style: AppTheme.overline),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: totalQtyController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: "Total Items in Venue",
-                    hintText: "Update total count",
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                const Divider(),
-                const SizedBox(height: 16),
-                Text("REPORT FAULTY / DAMAGED", style: AppTheme.overline.copyWith(color: AppTheme.danger)),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: TextField(
-                        controller: faultyQtyController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: "Faulty Count",
-                          border: OutlineInputBorder(),
+        builder: (context, setDialogState) => Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.brandAccent.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.settings_suggest_rounded, color: AppTheme.brandAccent, size: 22),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Manage Inventory", style: AppTheme.caption.copyWith(letterSpacing: 1.2, fontWeight: FontWeight.w700)),
+                            Text(groupedResource['name'] ?? 'Asset', 
+                              style: AppTheme.h2.copyWith(fontSize: 18, color: AppTheme.textMain),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ],
                         ),
                       ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close_rounded, color: AppTheme.textSub),
+                        style: IconButton.styleFrom(backgroundColor: AppTheme.surfaceColor),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+                  
+                  Text("STOCK COUNT", style: AppTheme.overline.copyWith(color: AppTheme.textSub)),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: totalQtyController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                    decoration: InputDecoration(
+                      labelText: "Total Physical Items",
+                      hintText: "Enter total count in venue",
+                      prefixIcon: const Icon(Icons.inventory_rounded, size: 20),
+                      filled: true,
+                      fillColor: AppTheme.surfaceColor,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 3,
-                      child: DropdownButtonFormField<String>(
-                        value: faultyStatus,
-                        items: ['damaged', 'broken', 'under maintenance']
-                            .map((s) => DropdownMenuItem(value: s, child: Text(s.toUpperCase())))
-                            .toList(),
-                        onChanged: (v) => setDialogState(() => faultyStatus = v!),
-                        decoration: const InputDecoration(
-                          labelText: "Issue Type",
-                          border: OutlineInputBorder(),
-                        ),
+                  ),
+                  
+                  const SizedBox(height: 32),
+                  const Divider(height: 1),
+                  const SizedBox(height: 32),
+
+                  Row(
+                    children: [
+                      Text("REPORT FAULTY", style: AppTheme.overline.copyWith(color: AppTheme.danger)),
+                      const Spacer(),
+                      Text("Max: $availableQty available", style: AppTheme.caption.copyWith(color: AppTheme.textSub)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: AppTheme.danger.withOpacity(0.03),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: AppTheme.danger.withOpacity(0.08)),
+                    ),
+                    child: TextField(
+                      controller: faultyQtyController,
+                      keyboardType: TextInputType.number,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                      decoration: InputDecoration(
+                        labelText: "Faulty / Damaged Items",
+                        hintText: "Enter quantity to flag as faulty",
+                        prefixIcon: const Icon(Icons.warning_amber_rounded, size: 20, color: AppTheme.danger),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: reasonController,
-                  decoration: const InputDecoration(
-                    labelText: "Reason (Optional)",
-                    hintText: "What happened?",
-                    border: OutlineInputBorder(),
                   ),
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  "Available to report: $availableQty",
-                  style: AppTheme.caption.copyWith(fontStyle: FontStyle.italic),
-                ),
-              ],
+                  
+                  const SizedBox(height: 40),
+                  
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                          child: const Text("Discard", style: TextStyle(color: AppTheme.textSub, fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            final newTotal = int.tryParse(totalQtyController.text);
+                            final fQty = int.tryParse(faultyQtyController.text) ?? 0;
+
+                            if (newTotal == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text("Please enter a valid total quantity")),
+                              );
+                              return;
+                            }
+
+                            try {
+                              final payload = {
+                                'venue_id': _venueData!['venue_id'],
+                                'name': groupedResource['name'],
+                                'new_total_quantity': newTotal,
+                                'faulty_report': fQty > 0
+                                    ? {
+                                        'quantity': fQty,
+                                        'status': 'damaged',
+                                      }
+                                    : null,
+                              };
+
+                              await _resourceService.manageResource(payload);
+                              Navigator.pop(context);
+                              _fetchData();
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(e.toString()), backgroundColor: AppTheme.danger),
+                              );
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.brandPrimary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                          child: const Text("Save Changes", style: TextStyle(fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final newTotal = int.tryParse(totalQtyController.text);
-                final fQty = int.tryParse(faultyQtyController.text) ?? 0;
-
-                if (newTotal == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Please enter a valid total quantity")),
-                  );
-                  return;
-                }
-
-                try {
-                  final payload = {
-                    'venue_id': _venueData!['venue_id'],
-                    'name': groupedResource['name'],
-                    'new_total_quantity': newTotal,
-                    'faulty_report': fQty > 0
-                        ? {
-                            'quantity': fQty,
-                            'status': faultyStatus,
-                            'reason': reasonController.text,
-                          }
-                        : null,
-                  };
-
-                  await _resourceService.manageResource(payload);
-                  Navigator.pop(context);
-                  _fetchData();
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.toString()), backgroundColor: AppTheme.danger),
-                  );
-                }
-              },
-              child: const Text("Apply Changes"),
-            ),
-          ],
         ),
       ),
     );
   }
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text("Venue Inventory", 
-          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: -0.5)),
-        backgroundColor: Colors.white.withOpacity(0.8),
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, letterSpacing: -0.2)),
+        backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
         foregroundColor: AppTheme.textMain,
         actions: [
           IconButton(
             onPressed: _fetchData, 
-            icon: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: AppTheme.brandAccent.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.refresh_rounded, size: 20, color: AppTheme.brandAccent)
-            )
+            icon: const Icon(Icons.refresh_rounded, size: 22, color: AppTheme.brandAccent)
           ),
           const SizedBox(width: 8),
         ],
       ),
       body: _isLoading
-          ? const Padding(padding: EdgeInsets.all(20), child: DashboardSkeleton())
+          ? const Padding(padding: EdgeInsets.all(24), child: DashboardSkeleton())
           : _venueData == null
               ? Center(child: Text("No venue data found", style: AppTheme.bodySub))
               : _buildContent(),
@@ -212,253 +257,98 @@ class _ResourceAvailabilityPageState extends State<ResourceAvailabilityPage> {
   Widget _buildContent() {
     final groupedResources = (_venueData!['grouped_resources'] as List? ?? []);
     
-    return RepaintBoundary(
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(20, 120, 20, 100),
-        itemCount: groupedResources.length + 1, // +1 for header
-        itemBuilder: (context, index) {
-          if (index == 0) return _buildVenueHeader();
-          
-          final r = groupedResources[index - 1] as Map<String, dynamic>;
-          return _buildGroupedResourceCard(r);
-        },
+    return RefreshIndicator(
+      onRefresh: _fetchData,
+      color: AppTheme.brandAccent,
+      child: CustomScrollView(
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            sliver: SliverToBoxAdapter(child: _buildVenueHeader()),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final r = groupedResources[index] as Map<String, dynamic>;
+                  return _buildThemedResourceCard(r);
+                },
+                childCount: groupedResources.length,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildVenueHeader() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 32),
-      padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppTheme.brandPrimary, AppTheme.brandPrimary.withOpacity(0.8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(32),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.brandPrimary.withOpacity(0.3),
-            blurRadius: 30,
-            offset: const Offset(0, 15),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -20,
-            top: -20,
-            child: Icon(Icons.inventory_2_rounded, 
-              size: 100, color: Colors.white.withOpacity(0.05)),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.location_on_rounded, color: Colors.white, size: 14),
-                        const SizedBox(width: 6),
-                        Text(
-                          _venueData!['location'] ?? 'Main Campus',
-                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppTheme.success,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(color: AppTheme.success.withOpacity(0.4), blurRadius: 10)
-                      ]
-                    ),
-                    child: Text(
-                      (_venueData!['current_status'] ?? 'OPEN').toString().toUpperCase(),
-                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5),
-                    ),
-                  ),
-                ],
+    final status = (_venueData!['current_status'] ?? 'OPEN').toString().toUpperCase();
+    final bool isAvailable = status == 'OPEN' || status == 'AVAILABLE';
+    final int totalCount = (_venueData!['grouped_resources'] as List? ?? []).length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: StatCard(
+                label: "Managed Venue",
+                value: _venueData!['name'] ?? 'Venue',
+                icon: Icons.stadium_rounded,
+                color: AppTheme.brandAccent,
               ),
-              const SizedBox(height: 24),
-              Text(_venueData!['name'] ?? 'Venue', 
-                style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 4),
-              Text("Total Resources Monitored", 
-                style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13, fontWeight: FontWeight.w500)),
-            ],
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 600.ms).slideY(begin: 0.1, curve: Curves.easeOutBack);
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: StatCard(
+                label: "Current Status",
+                value: status,
+                icon: Icons.circle_notifications_rounded,
+                color: isAvailable ? AppTheme.success : AppTheme.warning,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        StatCard(
+          label: "Total Resource Types",
+          value: totalCount.toString(),
+          icon: Icons.inventory_2_rounded,
+          color: AppTheme.info,
+        ),
+        const SizedBox(height: 32),
+        const SectionHeader(title: "Deployed Inventory"),
+      ],
+    ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.1);
   }
 
-  Widget _buildGroupedResourceCard(Map<String, dynamic> r) {
+  Widget _buildThemedResourceCard(Map<String, dynamic> r) {
     final items = (r['items'] as List);
     final available = items.firstWhere((i) => i['status'] == 'available', orElse: () => {'quantity': 0})['quantity'];
     final damaged = items.firstWhere((i) => i['status'] == 'damaged', orElse: () => {'quantity': 0})['quantity'];
     final broken = items.firstWhere((i) => i['status'] == 'broken', orElse: () => {'quantity': 0})['quantity'];
     final maintenance = items.firstWhere((i) => i['status'] == 'under maintenance', orElse: () => {'quantity': 0})['quantity'];
 
-    return RepaintBoundary(
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: AppTheme.dividerColor.withOpacity(0.5)),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.brandPrimary.withOpacity(0.03),
-              blurRadius: 40,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [AppTheme.brandAccent.withOpacity(0.2), AppTheme.brandAccent.withOpacity(0.05)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: const Icon(Icons.layers_rounded, color: AppTheme.brandAccent),
-                  ),
-                  const SizedBox(width: 18),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(r['name'] ?? 'Asset', 
-                          style: AppTheme.h2.copyWith(fontSize: 18, color: AppTheme.textMain)),
-                        const SizedBox(height: 2),
-                        Text(r['description'] ?? 'Standard resource unit', 
-                          style: AppTheme.bodySub.copyWith(fontSize: 11)),
-                      ],
-                    ),
-                  ),
-                  _buildTotalBadge(r['total_quantity'] as int),
-                ],
-              ),
-            ),
-            
-            // Bento Grid for statuses
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      _buildBentoItem("AVAILABLE", available, AppTheme.success, Icons.check_circle_rounded),
-                      const SizedBox(width: 12),
-                      _buildBentoItem("DAMAGED", damaged, AppTheme.warning, Icons.warning_amber_rounded),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      _buildBentoItem("BROKEN", broken, AppTheme.danger, Icons.cancel_rounded),
-                      const SizedBox(width: 12),
-                      _buildBentoItem("FIXING", maintenance, Colors.blue, Icons.build_circle_rounded),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            
-            // Manage Button
-            InkWell(
-              onTap: () => _showManageResourceDialog(r),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 20),
-                decoration: BoxDecoration(
-                  color: AppTheme.brandPrimary.withOpacity(0.02),
-                  border: Border(top: BorderSide(color: AppTheme.dividerColor.withOpacity(0.5))),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.settings_suggest_rounded, size: 18, color: AppTheme.brandAccent),
-                    const SizedBox(width: 8),
-                    Text("MANAGE INVENTORY", 
-                      style: AppTheme.bodyMain.copyWith(fontSize: 13, color: AppTheme.brandAccent, letterSpacing: 0.5)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ).animate().fadeIn(duration: 400.ms).slideX(begin: 0.05, curve: Curves.easeOut),
-    );
-  }
+    final List<String> statusAlerts = [];
+    if (damaged > 0) statusAlerts.add("$damaged Damaged");
+    if (broken > 0) statusAlerts.add("$broken Broken");
+    if (maintenance > 0) statusAlerts.add("$maintenance In Repair");
 
-  Widget _buildTotalBadge(int total) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.brandPrimary.withOpacity(0.03),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.brandPrimary.withOpacity(0.05)),
-      ),
-      child: Column(
-        children: [
-          Text(total.toString(), 
-            style: const TextStyle(color: AppTheme.brandPrimary, fontSize: 18, fontWeight: FontWeight.w900)),
-          Text("TOTAL", style: AppTheme.overline.copyWith(fontSize: 8)),
-        ],
-      ),
-    );
-  }
+    final String statusInfo = statusAlerts.isNotEmpty 
+        ? " • ${statusAlerts.join(", ")}" 
+        : "";
 
-  Widget _buildBentoItem(String label, int count, Color color, IconData icon) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.04),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withOpacity(0.1)),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: color, size: 18),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(count.toString(), 
-                  style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.w900, height: 1.1)),
-                Text(label, style: AppTheme.caption.copyWith(fontSize: 8, color: color.withOpacity(0.8))),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
+    return TaskCard(
+      title: r['name'] ?? 'Asset',
+      sub: "Available: $available / Total: ${r['total_quantity']}$statusInfo",
+      accent: statusAlerts.isNotEmpty ? AppTheme.warning : AppTheme.brandAccent,
+      icon: Icons.layers_rounded,
+      onTap: () => _showManageResourceDialog(r),
+      heroTag: "resource_${r['name']}",
+    ).animate().fadeIn(duration: 400.ms).slideX(begin: 0.05);
   }
-
 }

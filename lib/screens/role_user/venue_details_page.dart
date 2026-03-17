@@ -212,43 +212,70 @@ class _VenueDetailsPageState extends State<VenueDetailsPage> {
                         )
                       else
                         SizedBox(
-                          height: 100,
+                          height: 90,
                           child: ListView.builder(
                             scrollDirection: Axis.horizontal,
-                            itemCount: _venueResources.length,
+                            itemCount: _venueResources.length > 2 ? 3 : _venueResources.length,
+                            physics: const BouncingScrollPhysics(),
                             itemBuilder: (context, i) {
+                              if (i == 2 && _venueResources.length > 2) {
+                                return GestureDetector(
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => const ResourceAvailabilityPage()),
+                                  ),
+                                  child: Container(
+                                    width: 100,
+                                    margin: const EdgeInsets.only(right: 12, bottom: 4, top: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.brandAccent.withOpacity(0.05),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: AppTheme.brandAccent.withOpacity(0.1)),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        "+${_venueResources.length - 2} More",
+                                        style: const TextStyle(
+                                          color: AppTheme.brandAccent,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
                               final res = _venueResources[i];
                               return Container(
-                                width: 160,
-                                margin: const EdgeInsets.only(right: 12),
-                                padding: const EdgeInsets.all(12),
+                                width: 150,
+                                margin: const EdgeInsets.only(right: 12, bottom: 4, top: 2),
+                                padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: surfaceColor,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: brandAccent.withOpacity(0.1)),
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: const Color(0xFFF1F5F9)),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.02),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Row(
-                                      children: [
-                                        Icon(Icons.inventory_2_outlined, size: 16, color: brandAccent),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            res['name'] ?? 'Asset',
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
                                     Text(
-                                      "Qty: ${res['quantity'] ?? 0}",
-                                      style: TextStyle(color: textSub, fontSize: 12),
+                                      res['name'] ?? 'Asset',
+                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF1E293B)),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      "Quantity: ${res['quantity'] ?? 0}",
+                                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.w600),
                                     ),
                                   ],
                                 ),

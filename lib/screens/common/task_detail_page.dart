@@ -5,7 +5,9 @@ import '../../models/task_detail_model.dart';
 import '../../services/task_service.dart';
 import '../../services/user_service.dart';
 import 'task_closure_page.dart' show TaskClosurePage;
+import '../../models/exhaustive_task_model.dart';
 import 'task_otp_page.dart';
+import 'user_selection_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Activity Lifecycle Status
@@ -38,12 +40,12 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   // Activity Lifecycle State
   ActivityStatus _activityStatus = ActivityStatus.NOT_STARTED;
   DateTime? _activityStartTime;
-  final Duration _pausedDuration = Duration.zero;
 
   TaskDetailModel? _taskDetail;
   bool _isLoading = true;
   int? _currentUserId;
   String? _currentUserRole;
+  List<dynamic> _activityLogs = [];
 
   @override
   void initState() {
@@ -78,11 +80,45 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           }
         }
 
+        // Initialize activity status from assignment status
+        ActivityStatus status = ActivityStatus.NOT_STARTED;
+        DateTime? startTime;
+        if (detail.assignees.isNotEmpty) {
+          final myAssign = detail.assignees.firstWhere(
+            (a) => a.userId == uid,
+            orElse: () => detail.assignees.first,
+          );
+
+          final s = myAssign.status.toLowerCase();
+          if (s == 'in_progress' || s == 'started') {
+            status = ActivityStatus.IN_PROGRESS;
+            startTime = DateTime.tryParse(myAssign.acceptedAt);
+          } else if (s == 'paused') {
+            status = ActivityStatus.PAUSED;
+            startTime = DateTime.tryParse(myAssign.acceptedAt);
+          } else if (s == 'completed' || s == 'closed') {
+            status = ActivityStatus.COMPLETED;
+            startTime = DateTime.tryParse(myAssign.acceptedAt);
+          } else if (s == 'pending') {
+            status = ActivityStatus.NOT_STARTED;
+          }
+        }
+
+        // Fetch Exhaustive Details for Activity Logs
+        try {
+          final exhaustive = await service.getExhaustiveTaskDetail(int.parse(taskId));
+          _activityLogs = exhaustive.historyLogs; // Use historyLogs instead of logs
+        } catch (e) {
+          debugPrint("Could not fetch exhaustive logs: $e");
+        }
+
         setState(() {
           _taskDetail = detail;
           _isLoading = false;
           _currentUserId = uid;
           _currentUserRole = urole;
+          _activityStatus = status;
+          _activityStartTime = startTime;
         });
       }
     } catch (e) {
@@ -144,12 +180,10 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                 const SizedBox(height: 24),
                 _buildScoreCard(type),
                 const SizedBox(height: 32),
-                if (_activityStatus != ActivityStatus.NOT_STARTED) ...[
-                  _buildSectionLabel("Activity Log"),
-                  const SizedBox(height: 12),
-                  _buildActivityLog(),
-                  const SizedBox(height: 32),
-                ],
+                _buildSectionLabel("Activity Log"),
+                const SizedBox(height: 12),
+                _buildActivityLog(),
+                const SizedBox(height: 32),
                 _buildSectionLabel("Assignment Description"),
                 const SizedBox(height: 12),
                 _buildDescriptionBox(
@@ -158,7 +192,6 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                 const SizedBox(height: 32),
                 _buildCreatorSection(),
                 const SizedBox(height: 24),
-                _buildHistoryLogs(),
               ],
             ),
           ),
@@ -207,12 +240,146 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         ),
       ),
       actions: [
-        IconButton(
-          onPressed: () {},
+        PopupMenuButton<String>(
           icon: Icon(Icons.more_horiz_rounded, color: textSub),
+          onSelected: _handleMenuAction,
+          itemBuilder: (context) {
+            final bool isPendingProof = widget.taskData['isPendingProof'] == true ||
+                widget.taskData['completionType'] == 'PROOF_SUBMIT';
+
+            if (isPendingProof) {
+              return [
+                const PopupMenuItem(
+                  value: 'cancel',
+                  child: Row(
+                    children: [
+                      Icon(Icons.cancel_outlined, size: 20, color: Colors.red),
+                      SizedBox(width: 12),
+                      Text("Cancel Task", style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
+              ];
+            }
+
+            return [
+              const PopupMenuItem(
+                value: 'transfer',
+                child: Row(
+                  children: [
+                    Icon(Icons.swap_horiz_rounded, size: 20),
+                    SizedBox(width: 12),
+                    Text("Transfer Task"),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'cancel',
+                child: Row(
+                  children: [
+                    Icon(Icons.cancel_outlined, size: 20, color: Colors.red),
+                    SizedBox(width: 12),
+                    Text("Cancel Task", style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ];
+          },
         ),
         const SizedBox(width: 8),
       ],
+    );
+  }
+
+  Future<void> _handleMenuAction(String value) async {
+    if (value == 'transfer') {
+      _showTransferDialog();
+    } else if (value == 'cancel') {
+      _showCancelDialog();
+    }
+  }
+
+  Future<void> _showTransferDialog() async {
+    final List<Map<String, dynamic>>? result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const UserSelectionPage(
+          multiSelect: false,
+          allowedRoles: ['faculty', 'student', 'staff'],
+        ),
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      final user = result.first;
+      final userId = user['user_id'] ?? user['id'];
+      if (userId == null) return;
+
+      final reason = await _showReasonDialog("Transfer Task", "Reason for transferring this task:");
+      if (reason != null && reason.isNotEmpty) {
+        setState(() => _isLoading = true);
+        try {
+          await TaskService().transferTask(_taskDetail!.taskId, userId, reason);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Task transferred to ${user['name']}"), backgroundColor: successColor),
+            );
+            Navigator.pop(context, "transferred");
+          }
+        } catch (e) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Transfer failed: $e"), backgroundColor: destructive),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  Future<void> _showCancelDialog() async {
+    final reason = await _showReasonDialog("Cancel Task", "Reason for cancelling this task:");
+    if (reason != null && reason.isNotEmpty) {
+      setState(() => _isLoading = true);
+      try {
+        await TaskService().cancelTaskApproval(_taskDetail!.taskId, reason);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: const Text("Task cancelled successfully"), backgroundColor: successColor),
+          );
+          Navigator.pop(context, "cancelled");
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Cancellation failed: $e"), backgroundColor: destructive),
+          );
+        }
+      }
+    }
+  }
+
+  Future<String?> _showReasonDialog(String title, String label) async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          decoration: InputDecoration(labelText: label),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text("Confirm"),
+          ),
+        ],
+      ),
     );
   }
 
@@ -283,6 +450,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         border: Border.all(color: brandAccent.withOpacity(0.1)),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
@@ -293,7 +461,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                   color: brandAccent.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.timer_outlined, color: brandAccent, size: 24),
+                child: Icon(Icons.history_rounded, color: brandAccent, size: 24),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -301,9 +469,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _activityStatus == ActivityStatus.COMPLETED
-                          ? "TASK COMPLETED"
-                          : "CURRENTLY ACTIVE",
+                      "ACTIVITY TIMELINE",
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
@@ -313,9 +479,13 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _activityStartTime != null
-                          ? "Started at ${DateFormat('jm').format(_activityStartTime!)}"
-                          : "Awaiting start...",
+                      _activityStatus == ActivityStatus.COMPLETED
+                          ? "Task Completed"
+                          : _activityStatus == ActivityStatus.PAUSED
+                              ? "Currently Paused"
+                              : _activityStatus == ActivityStatus.IN_PROGRESS
+                                  ? "Currently Active"
+                                  : "Awaiting Start",
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
@@ -327,22 +497,48 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
               ),
             ],
           ),
-          if (_pausedDuration != Duration.zero) ...[
+          if (_activityLogs.isNotEmpty) ...[
             const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Divider(height: 1),
+            ),
+            ..._activityLogs.take(3).map((log) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Icon(
+                    log is HistoryLog && log.action.toLowerCase().contains('start') ? Icons.play_arrow_rounded :
+                    log is HistoryLog && log.action.toLowerCase().contains('pause') ? Icons.pause_rounded :
+                    log is HistoryLog && (log.action.toLowerCase().contains('end') || log.action.toLowerCase().contains('close')) ? Icons.stop_rounded : Icons.info_outline,
+                    size: 14,
+                    color: textSub,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      log is HistoryLog ? "${log.action}: ${log.details}" : "Status Update",
+                      style: TextStyle(fontSize: 12, color: textMain.withOpacity(0.7)),
+                    ),
+                  ),
+                  Text(
+                    log is HistoryLog ? DateFormat('jm').format(DateTime.parse(log.timestamp)) : "",
+                    style: TextStyle(fontSize: 11, color: textSub),
+                  ),
+                ],
+              ),
+            )),
+          ] else if (_activityStartTime != null) ...[
+             const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
               child: Divider(height: 1),
             ),
             Row(
               children: [
-                Icon(Icons.pause_circle_outline, color: textSub, size: 18),
-                const SizedBox(width: 12),
+                Icon(Icons.play_circle_outline, color: textSub, size: 14),
+                const SizedBox(width: 8),
                 Text(
-                  "Total Pause: ${_pausedDuration.inMinutes} mins",
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: textSub,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  "Started at ${DateFormat('jm').format(_activityStartTime!)}",
+                  style: TextStyle(fontSize: 12, color: textMain.withOpacity(0.7)),
                 ),
               ],
             ),
@@ -435,7 +631,11 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
 
     // Determine what to show
     bool canExecute = isAssignedToMe || isManager;
-    bool canShowOtpManager = isManager && hasOtpUsersAssigned;
+
+    final bool isPendingProof = widget.taskData['isPendingProof'] == true ||
+        widget.taskData['completionType'] == 'PROOF_SUBMIT';
+
+    bool canShowOtpManager = isManager && hasOtpUsersAssigned && !isPendingProof;
 
     if (canExecute) {
       return Row(
@@ -652,6 +852,14 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         overrideOtpType ??
         (_activityStatus == ActivityStatus.NOT_STARTED ? 'START' : 'END');
 
+    int? obtainedScore;
+    int? penalty;
+    if (otpType == 'END') {
+      final scores = _calculateScoreAndPenalty();
+      obtainedScore = scores['obtainedScore'];
+      penalty = scores['penalty'];
+    }
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -661,6 +869,9 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           mode: mode,
           otpType: otpType,
           taskTitle: _taskDetail?.title ?? "",
+          isDocument: _taskDetail?.isDocument ?? false,
+          obtainedScore: obtainedScore,
+          penalty: penalty,
         ),
       ),
     );
@@ -701,7 +912,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
               child: ElevatedButton(
                 onPressed: () => _handleApprovalAction(false),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: destructive.withOpacity(0.9),
+                  backgroundColor: destructive.withOpacity(0.1),
                   foregroundColor: destructive,
                   elevation: 0,
                   minimumSize: const Size(double.infinity, 64),
@@ -714,7 +925,6 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                   "Reject",
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
-                    color: Colors.white,
                   ),
                 ),
               ),
@@ -817,8 +1027,47 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   }
 
   Widget _buildActualActionButtons() {
+    final bool isAssignedToMe = _taskDetail?.assignees.any((a) => a.userId == _currentUserId) ?? false;
+    final bool isManager = _currentUserId != null &&
+        (_currentUserId == _taskDetail?.creatorId || _currentUserId == _taskDetail?.facultyId);
+
+    // 1. Escalated Task Actions (Management Actions: Transfer / Execute / Cancel)
+    final bool isEscalatedStatus = !isAssignedToMe && (widget.taskData['isEscalated'] == true || 
+                                   (_taskDetail?.isEscalate ?? false) ||
+                                   (_taskDetail?.category.toUpperCase() == 'DIRECTIVE'));
+
+    if (isEscalatedStatus) {
+      return _buildEscalatedActions();
+    }
+
+    // 0. Directive / Task Request Approval (Accept/Reject)
+    if (widget.taskData['isRequest'] == true) {
+      return _buildApprovalActions();
+    }
+
+    // 2. Pending Proof Submission (For Assignees) — directly open proof upload page
+    if (widget.taskData['isPendingProof'] == true) {
+      return _buildSingleButton(
+        label: "Submit Proof",
+        icon: Icons.upload_file_rounded,
+        color: Colors.orange,
+        onPressed: _submitPendingProof,
+      );
+    }
+    
+    // If faculty is NOT assigned, but viewing a standard task, they might only see "Generate OTP" (handled elsewhere) or nothing.
+    if (!isAssignedToMe && isManager) {
+      return const SizedBox.shrink(); // Managers don't "Start" the activity, assignees do.
+    }
+
     switch (_activityStatus) {
       case ActivityStatus.NOT_STARTED:
+        if (_isMissed()) {
+          return _buildMissedBadge();
+        }
+        if (_isTooEarly()) {
+          return _buildPendingStartBadge();
+        }
         return _buildSingleButton(
           label: "Start Activity",
           icon: Icons.play_arrow_rounded,
@@ -827,7 +1076,42 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         );
 
       case ActivityStatus.IN_PROGRESS:
-        // Show both "End Activity" and optionally "Pause"
+        bool isProofTask = _taskDetail?.isDocument == true || (_taskDetail?.closureRules.contains('photo_upload') ?? false);
+        
+        if (isProofTask) {
+          if (_taskDetail?.isPauseAllowed == true) {
+            return Row(
+              children: [
+                Expanded(
+                  child: _buildSingleButton(
+                    label: "Pause",
+                    icon: Icons.pause_rounded,
+                    color: Colors.orange,
+                    onPressed: _pauseActivity,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: _buildSingleButton(
+                    label: "Submit Proof & End",
+                    icon: Icons.upload_file_rounded,
+                    color: brandAccent,
+                    onPressed: _endActivity,
+                  ),
+                ),
+              ],
+            );
+          } else {
+            return _buildSingleButton(
+              label: "Submit Proof & End",
+              icon: Icons.upload_file_rounded,
+              color: brandAccent,
+              onPressed: _endActivity,
+            );
+          }
+        }
+
         if (_taskDetail?.isPauseAllowed == true) {
           return Row(
             children: [
@@ -922,6 +1206,8 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     }
   }
 
+
+
   // Helper to build a single button
   Widget _buildSingleButton({
     required String label,
@@ -955,16 +1241,27 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   // --- UPDATED: Badge color based on type ---
 
   Widget _buildPriorityBadge(bool isApproval) {
+    final bool isPendingProof = widget.taskData['isPendingProof'] == true ||
+        widget.taskData['completionType'] == 'PROOF_SUBMIT';
+
+    String label = isApproval ? "MANUAL APPROVAL" : "REQUIRED AUTHENTICATION";
+    Color color = isApproval ? successColor : destructive;
+
+    if (isPendingProof) {
+      label = "PROOF SUBMISSION PENDING";
+      color = Colors.orange;
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: (isApproval ? successColor : destructive).withOpacity(0.1),
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        isApproval ? "MANUAL APPROVAL" : "REQUIRED AUTHENTICATION",
+        label,
         style: TextStyle(
-          color: isApproval ? successColor : destructive,
+          color: color,
           fontSize: 10,
           fontWeight: FontWeight.w900,
           letterSpacing: 1,
@@ -1240,75 +1537,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     );
   }
 
-  Widget _buildHistoryLogs() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionLabel("Activity Timeline"),
-        const SizedBox(height: 16),
-        _logEntry(
-          "Task created",
-          _formatDate(_taskDetail?.createdAt) ?? "Feb 06, 09:00 AM",
-          isFirst: true,
-        ),
-        if (_taskDetail?.assignees.isNotEmpty == true)
-          _logEntry(
-            "Assigned to ${_taskDetail!.assignees.first.name}",
-            _formatDate(_taskDetail!.assignees.first.acceptedAt) ??
-                "Feb 06, 11:00 AM",
-            isLast: true,
-          ),
-      ],
-    );
-  }
 
-  Widget _logEntry(
-    String msg,
-    String time, {
-    bool isFirst = false,
-    bool isLast = false,
-  }) {
-    return IntrinsicHeight(
-      child: Row(
-        children: [
-          Column(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: isLast ? brandAccent : textSub.withOpacity(0.3),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              if (!isLast)
-                Expanded(child: Container(width: 2, color: surfaceColor)),
-            ],
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    msg,
-                    style: TextStyle(
-                      color: textMain,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(time, style: TextStyle(color: textSub, fontSize: 11)),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildSectionLabel(String label) {
     return Text(
@@ -1334,78 +1563,158 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       await _openOtpPage(OtpPageMode.verify);
     } else {
       // No OTP required, start directly
+      try {
+        await TaskService().startActivity(_taskDetail!.taskId);
+        
+        setState(() {
+          _activityStatus = ActivityStatus.IN_PROGRESS;
+          _activityStartTime = DateTime.now();
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Activity started!'),
+            backgroundColor: successColor,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to start: $e'),
+            backgroundColor: destructive,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _pauseActivity() async {
+    try {
+      await TaskService().pauseTask(_taskDetail!.taskId);
       setState(() {
-        _activityStatus = ActivityStatus.IN_PROGRESS;
-        _activityStartTime = DateTime.now();
+        _activityStatus = ActivityStatus.PAUSED;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Activity started!'),
-          backgroundColor: successColor,
+          content: const Text('Activity paused'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to pause: $e'),
+          backgroundColor: destructive,
           behavior: SnackBarBehavior.floating,
         ),
       );
     }
-
-    // TODO: Call API to start activity
-    // await TaskService().startActivity(_taskDetail!.taskId);
-  }
-
-  Future<void> _pauseActivity() async {
-    setState(() {
-      _activityStatus = ActivityStatus.PAUSED;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Activity paused'),
-        backgroundColor: Colors.orange,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-
-    // TODO: Call API to pause activity
   }
 
   Future<void> _resumeActivity() async {
-    setState(() {
-      _activityStatus = ActivityStatus.IN_PROGRESS;
-    });
+    try {
+      await TaskService().resumeTask(_taskDetail!.taskId);
+      setState(() {
+        _activityStatus = ActivityStatus.IN_PROGRESS;
+      });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Activity resumed'),
-        backgroundColor: successColor,
-        behavior: SnackBarBehavior.floating,
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Activity resumed'),
+          backgroundColor: successColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to resume: $e'),
+          backgroundColor: destructive,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  /// Opens the proof upload page directly for tasks where the activity was
+  /// already completed but the document/proof hasn't been submitted yet.
+  Future<void> _submitPendingProof() async {
+    final taskId = _taskDetail?.taskId ?? 
+        int.tryParse(widget.taskData['task_id']?.toString() ?? '') ?? 0;
+    final assignmentId = widget.taskData['assignment_id'];
+
+    if (taskId == 0) return;
+
+    final scores = _calculateScoreAndPenalty();
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskClosurePage(
+          taskData: {
+            ...widget.taskData,
+            'task_id': taskId,
+            if (assignmentId != null) 'assignment_id': assignmentId,
+            'closureType': 'proof', // proof-only mode (no OTP step)
+            'actionType': 'proof_submit',
+            'isPendingProof': true,
+            'isDocument': _taskDetail?.isDocument == true,
+            'obtainedScore': scores['obtainedScore'],
+            'penalty': scores['penalty'],
+          },
+        ),
       ),
     );
 
-    // TODO: Call API to resume activity
+    if (result == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Proof submitted successfully!'),
+          backgroundColor: successColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      Navigator.pop(context, 'proof_submitted');
+    }
   }
 
   Future<void> _endActivity() async {
     List<String> rules = _taskDetail?.closureRules ?? [];
     if (rules.isEmpty) rules = ["otp"];
-    // STEP 1: Verify OTP if required
+    
     final role = _currentUserRole?.toLowerCase() ?? '';
-    bool needsOtp = role == 'student' || role == 'staff';
-
+    bool needsOtp = role == 'student'; // End OTP is primarily for students
+    
+    // STEP 1: Verify OTP if required
     if (needsOtp && rules.contains('otp')) {
       final verified = await _openOtpPage(OtpPageMode.verify);
       if (verified != true) return; // Stop if OTP failed
+      
+      // If student and task requires document, TaskOtpPage already handled it.
+      if (_taskDetail?.isDocument == true) {
+        return; // Already finalized in _openOtpPage -> _finalizeCompletionLocally
+      }
     }
 
-    // STEP 2: Proof Upload if required (Case 2)
-    if (rules.contains('photo_upload')) {
+    // STEP 2: Proof Upload if required (For non-OTP flow, or faculty/staff)
+    if (rules.contains('photo_upload') || _taskDetail?.isDocument == true) {
+      final scores = _calculateScoreAndPenalty();
       final result = await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => TaskClosurePage(
             taskData: {
               ...widget.taskData,
-              'closureType': 'photo_upload',
+              'task_id': _taskDetail?.taskId,
+              'closureType': 'proof',
               'actionType': 'end',
+              'isDocument': _taskDetail?.isDocument == true,
+              'obtainedScore': scores['obtainedScore'],
+              'penalty': scores['penalty'],
             },
           ),
         ),
@@ -1415,9 +1724,78 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         _finalizeCompletionLocally();
       }
     } else {
-      // If no photo upload, just finalize (OTP verify already handled backend)
-      _finalizeCompletionLocally();
+      // If no proof required AND No OTP was done (or we are faculty/staff and no rules applied), close via API
+      if (!needsOtp || !rules.contains('otp')) {
+         _finalizeTaskWithoutOtp();
+      }
     }
+  }
+
+  Future<void> _finalizeTaskWithoutOtp() async {
+    final taskId = _taskDetail?.taskId ?? 0;
+    if (taskId == 0) return;
+
+    final scores = _calculateScoreAndPenalty();
+
+    setState(() => _isLoading = true);
+    try {
+      await TaskService().submitTaskProofFallback(
+        taskId, 
+        obtainedScore: scores['obtainedScore'],
+        penalty: scores['penalty'],
+      );
+      _finalizeCompletionLocally();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e"), backgroundColor: destructive),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Map<String, int> _calculateScoreAndPenalty() {
+    final int baseScore = _taskDetail?.score ?? 0;
+    final int penaltyPerHour = _taskDetail?.penaltyPerHour ?? 0;
+
+    final String? deadlineStr = _taskDetail?.taskTypes.firstOrNull?.endDate;
+    final String? endTimeStr = _taskDetail?.taskTypes.firstOrNull?.endTime;
+
+    DateTime? deadline;
+    if (deadlineStr != null && deadlineStr.isNotEmpty) {
+      deadline = DateTime.tryParse(deadlineStr);
+      if (deadline != null && endTimeStr != null && endTimeStr.isNotEmpty) {
+        final timeParts = endTimeStr.split(':');
+        final hours = int.tryParse(timeParts[0]) ?? 0;
+        final minutes = int.tryParse(timeParts[1]) ?? 0;
+        deadline = DateTime(deadline.year, deadline.month, deadline.day, hours, minutes);
+      }
+    } else {
+      // Fallback
+      if (widget.taskData['deadline'] != null) {
+        // Try to parse if it's an ISO string or similar, usually it's formatted though.
+        deadline = DateTime.tryParse(widget.taskData['deadline']);
+      }
+    }
+
+    int penalty = 0;
+    int obtainedScore = baseScore;
+
+    if (deadline != null) {
+      final now = DateTime.now();
+      if (now.isAfter(deadline)) {
+        final hoursLate = now.difference(deadline).inHours;
+        if (hoursLate > 0) {
+          penalty = hoursLate * penaltyPerHour;
+          obtainedScore = baseScore - penalty;
+          if (obtainedScore < 0) obtainedScore = 0;
+        }
+      }
+    }
+
+    return {'obtainedScore': obtainedScore, 'penalty': penalty};
   }
 
   Future<void> _rejectTaskByUser() async {
@@ -1520,5 +1898,164 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         }
       }
     }
+  }
+  Widget _buildEscalatedActions() {
+    return _buildSingleButton(
+      label: "Execute Directive",
+      icon: Icons.flash_on_rounded,
+      color: brandAccent,
+      onPressed: _handleExecuteDirective,
+    );
+  }
+
+  Future<void> _handleExecuteDirective() async {
+    final taskId = _taskDetail?.taskId ??
+        int.tryParse(widget.taskData['task_id']?.toString() ?? '') ??
+        0;
+    if (taskId == 0) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await TaskService().selfAssignTask(taskId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("Task self-assigned successfully!"),
+            backgroundColor: successColor,
+          ),
+        );
+        // Refresh detail
+        _fetchTaskDetail();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e"), backgroundColor: destructive),
+        );
+      }
+    }
+  }
+
+  bool _isMissed() {
+    if (_taskDetail == null || _taskDetail!.taskTypes.isEmpty) return false;
+
+    final taskType = _taskDetail!.taskTypes.first;
+    String dateStr = taskType.endDate;
+    if (dateStr.isEmpty || dateStr == 'null') dateStr = taskType.startDate;
+    if (dateStr.isEmpty || dateStr == 'null') return false;
+
+    String timeStr = taskType.endTime;
+    if (timeStr.isEmpty || timeStr == 'null') timeStr = "23:59:59";
+
+    try {
+      final timeParts = timeStr.split(':');
+      final int hour = int.parse(timeParts[0]);
+      final int minute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
+
+      final dateParts = dateStr.split('-');
+      if (dateParts.length != 3) return false;
+
+      final endDateTime = DateTime(
+        int.parse(dateParts[0]),
+        int.parse(dateParts[1]),
+        int.parse(dateParts[2]),
+        hour,
+        minute,
+      );
+
+      return DateTime.now().isAfter(endDateTime);
+    } catch (e) {
+      debugPrint("Error calculating missed status: $e");
+      return false;
+    }
+  }
+
+  Widget _buildMissedBadge() {
+    return Container(
+      width: double.infinity,
+      height: 64,
+      decoration: BoxDecoration(
+        color: destructive.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: destructive.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error_outline_rounded, color: destructive, size: 24),
+          const SizedBox(width: 12),
+          Text(
+            "Activity Missed",
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+              color: destructive,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isTooEarly() {
+    if (_taskDetail == null || _taskDetail!.taskTypes.isEmpty) return false;
+
+    final taskType = _taskDetail!.taskTypes.first;
+    // Robust date parsing
+    String dateStr = taskType.startDate;
+    if (dateStr.isEmpty || dateStr == 'null') return false;
+
+    String timeStr = taskType.startTime;
+    if (timeStr.isEmpty || timeStr == 'null') timeStr = "00:00:00";
+
+    try {
+      final timeParts = timeStr.split(':');
+      final int hour = timeParts.length > 0 ? int.parse(timeParts[0]) : 0;
+      final int minute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
+
+      final dateParts = dateStr.split('-');
+      if (dateParts.length != 3) return false;
+
+      final startDateTime = DateTime(
+        int.parse(dateParts[0]),
+        int.parse(dateParts[1]),
+        int.parse(dateParts[2]),
+        hour,
+        minute,
+      );
+
+      return DateTime.now().isBefore(startDateTime);
+    } catch (e) {
+      debugPrint("Error calculating early status: $e");
+      return false;
+    }
+  }
+
+  Widget _buildPendingStartBadge() {
+    return Container(
+      width: double.infinity,
+      height: 64,
+      decoration: BoxDecoration(
+        color: brandAccent.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: brandAccent.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.schedule_rounded, color: brandAccent, size: 24),
+          const SizedBox(width: 12),
+          Text(
+            "Activity Starts Soon",
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+              color: brandAccent,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

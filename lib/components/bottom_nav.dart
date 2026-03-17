@@ -13,7 +13,9 @@ import '../screens/common/profile_page.dart';
 import '../screens/common/task_management_page.dart';
 import '../screens/role_user/venue_details_page.dart';
 import '../screens/admin/admin_page.dart';
-import 'package:intl/intl.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class MainWrapper extends StatefulWidget {
   final String userRole;
@@ -42,26 +44,44 @@ class _MainWrapperState extends State<MainWrapper> {
   Future<void> _loadUserPreferences() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // Check acknowledgment status for today
-    String todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    bool ack = prefs.getBool('ack_$todayKey') ?? false;
+    // Data coming from SharedPreferences
 
     setState(() {
       _userTitle = prefs.getString('userTitle') ?? 'User';
       _scopeType = prefs.getString('userScope') ?? 'none';
-      _hasAcknowledged = ack;
-      _isLoading = false;
     });
+    
+    // Fetch real acknowledgment status from backend
+    await _refreshAcknowledgementStatus();
   }
 
-  void _handleAcknowledgement() async {
-    final prefs = await SharedPreferences.getInstance();
-    String todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    await prefs.setBool('ack_$todayKey', true);
+  Future<void> _refreshAcknowledgementStatus() async {
+    setState(() => _isLoading = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl = dotenv.get('BACKEND_URL', fallback: 'http://localhost:3002/api/');
+      
+      final response = await http.get(
+        Uri.parse('${backendUrl}tasks/acknowledgments/status'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
 
-    setState(() {
-      _hasAcknowledged = true;
-    });
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _hasAcknowledged = data['acknowledged'] ?? false;
+          _isLoading = false;
+        });
+      } else {
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -77,6 +97,10 @@ class _MainWrapperState extends State<MainWrapper> {
     final String role = widget.userRole;
     List<Widget> pages;
 
+    final now = DateTime.now();
+    final deadline = DateTime(now.year, now.month, now.day, 8, 45);
+    bool isBlocked = (role != 'admin') && now.isAfter(deadline) && !_hasAcknowledged;
+
     // --- ADMIN LOGIC ---
     if (role == 'admin') {
       pages = [
@@ -89,13 +113,18 @@ class _MainWrapperState extends State<MainWrapper> {
     // --- ROLE-USER (AUTHORITY) LOGIC ---
     else if (role == 'role-user') {
       pages = [
-        RoleUserPage(title: _userTitle, scope: _scopeType), // Index 0: Hub
-        const PersonalCalendarPage(), // Index 2: Calendar
+        RoleUserPage(
+          title: _userTitle,
+          scope: _scopeType,
+          isBlocked: isBlocked,
+          onAcknowledge: _refreshAcknowledgementStatus,
+        ),
+        const PersonalCalendarPage(),
         _scopeType == 'institution'
             ? const TaskManagementPage()
             : (_scopeType == 'infrastructure'
-                  ? const VenueDetailsPage() // Create this screen later
-                  : const TaskManagementPage()), // Department level
+                  ? const VenueDetailsPage()
+                  : const TaskManagementPage()),
         _scopeType == 'institution'
             ? ProfilePage(
                 role: 'role-user',
@@ -114,24 +143,26 @@ class _MainWrapperState extends State<MainWrapper> {
                       scope: 'department',
                     )),
       ];
-    } // --- FACULTY LOGIC ---
+    }
+    // --- FACULTY LOGIC ---
     else if (role == 'faculty') {
-      final now = DateTime.now();
-      final deadline = DateTime(now.year, now.month, now.day, 8, 45);
-      bool isBlocked = now.isAfter(deadline) && !_hasAcknowledged;
-
       pages = [
         FacultyPage(
           isBlocked: isBlocked,
-          onAcknowledge: _handleAcknowledgement,
+          onAcknowledge: _refreshAcknowledgementStatus,
         ),
         const PersonalCalendarPage(),
         const TaskManagementPage(),
         const ProfilePage(role: 'faculty'),
       ];
-    } else if (role == 'staff') {
+    }
+    // --- STAFF LOGIC ---
+    else if (role == 'staff') {
       pages = [
-        const StaffPage(),
+        StaffPage(
+          isBlocked: isBlocked,
+          onAcknowledge: _refreshAcknowledgementStatus,
+        ),
         const PersonalCalendarPage(),
         const StaffHistoryPage(),
         const ProfilePage(role: 'staff'),
@@ -139,15 +170,11 @@ class _MainWrapperState extends State<MainWrapper> {
     }
     // --- STUDENT LOGIC ---
     else {
-      final now = DateTime.now();
-      final deadline = DateTime(now.year, now.month, now.day, 8, 45);
-      bool isBlocked = now.isAfter(deadline) && !_hasAcknowledged;
-
       pages = [
         StudentPage(
           onAcceptTask: (t) {},
           isBlocked: isBlocked,
-          onAcknowledge: _handleAcknowledgement,
+          onAcknowledge: _refreshAcknowledgementStatus,
         ),
         const PersonalCalendarPage(),
         const ScorePerformancePage(),
@@ -249,8 +276,24 @@ class _MainWrapperState extends State<MainWrapper> {
     const Color primaryBlue = Color(0xFF6366F1);
     const Color inactiveGrey = Color(0xFF94A3B8);
 
+    final now = DateTime.now();
+    final deadline = DateTime(now.year, now.month, now.day, 8, 45);
+    bool isBlocked = (widget.userRole != 'admin') && now.isAfter(deadline) && !_hasAcknowledged;
+
     return GestureDetector(
-      onTap: () => setState(() => _selectedIndex = index),
+      onTap: () {
+        if (isBlocked && index != 0 && index != 3) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Access Restricted. Please contact administrator to acknowledge your schedule."),
+              backgroundColor: Color(0xFFEF4444),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return;
+        }
+        setState(() => _selectedIndex = index);
+      },
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: 350.ms,

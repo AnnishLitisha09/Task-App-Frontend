@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../services/task_service.dart';
 
 enum OtpPageMode { generate, verify }
@@ -13,6 +14,9 @@ class TaskOtpPage extends StatefulWidget {
   final OtpPageMode mode;
   final String otpType; // 'START' or 'END'
   final String taskTitle;
+  final bool isDocument;
+  final int? obtainedScore;
+  final int? penalty;
 
   const TaskOtpPage({
     super.key,
@@ -21,6 +25,9 @@ class TaskOtpPage extends StatefulWidget {
     required this.mode,
     required this.otpType,
     required this.taskTitle,
+    this.isDocument = false,
+    this.obtainedScore,
+    this.penalty,
   });
 
   @override
@@ -45,6 +52,10 @@ class _TaskOtpPageState extends State<TaskOtpPage> {
   int _cooldownLeft = 0;
   bool _isSuccess = false;
   final MobileScannerController _scannerController = MobileScannerController();
+  
+  // Proof Logic
+  String? _selectedFilePath;
+  String? _selectedFileName;
 
   @override
   void initState() {
@@ -124,7 +135,13 @@ class _TaskOtpPageState extends State<TaskOtpPage> {
     setState(() => _isLoading = true);
     try {
       if (widget.assignmentId == null) throw Exception("Assignment ID missing");
-      await TaskService().verifyOTP(widget.assignmentId!, code);
+      await TaskService().verifyOTP(
+        widget.assignmentId!, 
+        code,
+        filePath: _selectedFilePath,
+        obtainedScore: widget.obtainedScore,
+        penalty: widget.penalty,
+      );
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -241,7 +258,10 @@ class _TaskOtpPageState extends State<TaskOtpPage> {
                 children: [
                   const SizedBox(height: 20),
                   _buildHeader(),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 24),
+                  if (widget.mode == OtpPageMode.verify && widget.otpType == 'END' && widget.isDocument)
+                    _buildProofPicker(),
+                  const SizedBox(height: 24),
                   widget.mode == OtpPageMode.generate
                       ? _buildGeneratorView()
                       : _buildManualEntryView(),
@@ -776,4 +796,98 @@ class _TaskOtpPageState extends State<TaskOtpPage> {
   }
 
   static const Color _kSubtle = Color(0xFFF1F5F9);
+
+  Widget _buildProofPicker() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "DOCUMENTATION REQUIRED",
+          style: TextStyle(
+            color: Colors.grey.shade500,
+            fontSize: 10,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(height: 12),
+        InkWell(
+          onTap: _pickProofFile,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: _selectedFilePath != null ? _kIndigo : _kBorder,
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: (_selectedFilePath != null ? _kIndigo : Colors.grey).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    _selectedFilePath != null ? Icons.description_rounded : Icons.add_a_photo_rounded,
+                    color: _selectedFilePath != null ? _kIndigo : Colors.grey,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _selectedFileName ?? "Pick Proof Document/Image",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: _selectedFilePath != null ? _kSlate : Colors.grey,
+                        ),
+                      ),
+                      if (_selectedFilePath == null)
+                        const Text(
+                          "Required to complete this task",
+                          style: TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                    ],
+                  ),
+                ),
+                if (_selectedFilePath != null)
+                  const Icon(Icons.check_circle_rounded, color: Colors.green),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickProofFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'png', 'pdf'],
+      );
+      if (result != null && result.files.single.path != null) {
+        setState(() {
+          _selectedFilePath = result.files.single.path;
+          _selectedFileName = result.files.single.name;
+        });
+      }
+    } catch (e) {
+      debugPrint("File picker error: $e");
+    }
+  }
 }

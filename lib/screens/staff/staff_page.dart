@@ -7,9 +7,18 @@ import '../../models/staff_dashboard_model.dart';
 import '../../services/user_service.dart';
 import 'all_staff_schedule_page.dart';
 import 'staff_history_page.dart';
+import '../../services/task_service.dart';
+import '../common/generic_view_all_page.dart';
 
 class StaffPage extends StatefulWidget {
-  const StaffPage({super.key});
+  final bool isBlocked;
+  final VoidCallback onAcknowledge;
+
+  const StaffPage({
+    super.key,
+    this.isBlocked = false,
+    required this.onAcknowledge,
+  });
 
   @override
   State<StaffPage> createState() => _StaffPageState();
@@ -30,6 +39,8 @@ class _StaffPageState extends State<StaffPage> {
   String? _error;
   List<ActivityItem> _recentActivities = [];
   StaffDashboardResponse? _staffDashboard;
+  List<dynamic> _escalations = [];
+  List<dynamic> _pendingProofs = [];
 
   List<Map<String, dynamic>> todayTasks = [
     {
@@ -86,14 +97,19 @@ class _StaffPageState extends State<StaffPage> {
     setState(() => _isLoading = true);
     try {
       final userService = UserService();
-      // Fetch both simultaneously
+      final taskService = TaskService();
+      // Fetch simultaneously
       final results = await Future.wait([
         userService.getActivityHistory(),
         userService.getStaffDashboard(),
+        taskService.getEscalations(unread: true),
+        taskService.getPendingProofs(),
       ]);
 
       final history = results[0] as ActivityHistoryResponse;
       final staffData = results[1] as StaffDashboardResponse;
+      final escalations = results[2] as List<dynamic>;
+      final proofs = results[3];
 
       if (mounted) {
         setState(() {
@@ -102,6 +118,16 @@ class _StaffPageState extends State<StaffPage> {
             ...history.history.today,
             ...history.history.yesterday,
           ];
+          _escalations = escalations;
+          if (proofs is List) {
+            _pendingProofs = proofs;
+          } else if (proofs is Map) {
+            if (proofs.containsKey('items')) {
+              _pendingProofs = proofs['items'];
+            } else if (proofs.containsKey('data')) {
+              _pendingProofs = proofs['data'];
+            }
+          }
           _isLoading = false;
         });
       }
@@ -151,10 +177,13 @@ class _StaffPageState extends State<StaffPage> {
                       padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate([
-                          _buildStatsGrid(),
-                          const SizedBox(height: 32),
+                          if (widget.isBlocked)
+                            _buildBlockedMessage()
+                          else ...[
+                            _buildStatsGrid(),
+                            const SizedBox(height: 32),
 
-                          // --- Today's Schedule (max 2) ---
+                            // 1. Today's Schedule
                           _buildSectionHeader(
                             "Today's Schedule",
                             onViewAll: () => Navigator.push(
@@ -188,7 +217,72 @@ class _StaffPageState extends State<StaffPage> {
 
                           const SizedBox(height: 32),
 
-                          // --- Recent Activity (max 2) ---
+                          // 2. Escalated Tasks
+                          _buildSectionHeader(
+                            "Escalated Tasks",
+                            isStatus: _escalations.isNotEmpty,
+                            onViewAll: () {},
+                          ),
+                          if (_escalations.isEmpty)
+                            Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 20),
+                                child: Text(
+                                  "No escalated tasks",
+                                  style: TextStyle(color: textSub),
+                                ),
+                              ),
+                            )
+                          else
+                            ..._escalations.take(2).map(
+                              (esc) => _taskCard(
+                                esc['title'] ?? 'Task',
+                                esc['description'] ?? 'Requires attention',
+                                destructive,
+                                Icons.priority_high_rounded,
+                              ),
+                            ),
+
+                          const SizedBox(height: 32),
+
+                          // 3. Pending Proofs
+                          _buildSectionHeader(
+                            "Pending Proofs",
+                            onViewAll: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => GenericViewAllPage(
+                                  title: "Pending Proofs",
+                                  tasks: _pendingProofs,
+                                  viewMode: 'viewonly',
+                                  accentColor: successColor,
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (_pendingProofs.isEmpty)
+                            Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 20),
+                                child: Text(
+                                  "No pending proofs",
+                                  style: TextStyle(color: textSub),
+                                ),
+                              ),
+                            )
+                          else
+                            ..._pendingProofs.take(2).map(
+                              (proof) => _taskCard(
+                                proof['title'] ?? 'Proof Review',
+                                "Status: ${proof['status'] ?? 'Pending'}",
+                                successColor,
+                                Icons.verified_rounded,
+                              ),
+                            ),
+
+                          const SizedBox(height: 32),
+
+                          // 4. Recent Activity
                           _buildSectionHeader(
                             "Recent Activity",
                             onViewAll: () => Navigator.push(
@@ -263,7 +357,8 @@ class _StaffPageState extends State<StaffPage> {
                                         .toList(),
                             ),
                           ).animate().fadeIn(duration: 500.ms),
-                        ]),
+                        ],
+                      ]),
                       ),
                     ),
                 ],
@@ -621,5 +716,61 @@ class _StaffPageState extends State<StaffPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildBlockedMessage() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 40, horizontal: 8),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEF4444).withOpacity(0.05),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.lock_person_rounded,
+              size: 64, color: const Color(0xFFEF4444).withOpacity(0.8)),
+          const SizedBox(height: 24),
+          const Text(
+            "Access Restricted",
+            style: TextStyle(
+              color: Color(0xFFEF4444),
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            "Your account is restricted because today's tasks haven't been acknowledged. Please contact an administrator to acknowledge your schedule.",
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "Once an admin acknowledges your schedule, you can refresh to gain access.",
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+          ),
+          const SizedBox(height: 32),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: widget.onAcknowledge,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text("Check Acknowledgment Status"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFEF4444),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+                elevation: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn().slideY(begin: 0.1);
   }
 }

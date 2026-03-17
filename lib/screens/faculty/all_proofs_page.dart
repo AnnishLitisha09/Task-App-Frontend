@@ -29,8 +29,14 @@ class _AllProofsPageState extends State<AllProofsPage> {
       final dynamic response = await _taskService.getPendingProofs();
       if (mounted) {
         setState(() {
-          if (response is Map && response.containsKey('tasks')) {
-            _proofs = response['tasks'] as List;
+          if (response is Map) {
+            if (response.containsKey('items')) {
+              _proofs = response['items'] as List;
+            } else if (response.containsKey('tasks')) {
+              _proofs = response['tasks'] as List;
+            } else {
+              _proofs = [];
+            }
           } else if (response is List) {
             _proofs = response;
           } else {

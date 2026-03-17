@@ -33,6 +33,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   bool _isLoadingVenues = false;
   bool _isLoadingTitles = false;
   String? _userRole;
+  String? _excelFilePath; // Track uploaded excel file
 
   @override
   void initState() {
@@ -63,7 +64,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'penaltyRule': {'penaltyValue': 5},
       'completionMethods': <String>[],
       'subTasks': <Map<String, dynamic>>[],
-      'requiresApproval': true,
+      'requiresApproval': false,
       'approvalAuthority': null, // Changed from String to Map or null
       'isPackageTask': false,
       'maxHours': 0.0,
@@ -243,6 +244,34 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       }
     }
   }
+  Future<void> _pickExcelFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        setState(() {
+          _excelFilePath = result.files.single.path;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Excel file attached: ${result.files.single.name}"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error picking file: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   // Helper for Date Picker
 
   Future<void> _pickDate(String key) async {
@@ -1027,6 +1056,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             ),
           ),
         ),
+        const SizedBox(height: 12),
+        _excelUploadTile(),
       ],
     );
   }
@@ -1064,6 +1095,66 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       );
     }).toList();
+  }
+
+  Widget _excelUploadTile() {
+    return InkWell(
+      onTap: _pickExcelFile,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: _excelFilePath != null
+              ? Colors.green.withOpacity(0.05)
+              : Colors.blue.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _excelFilePath != null
+                ? Colors.green.withOpacity(0.3)
+                : Colors.blue.withOpacity(0.1),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              _excelFilePath != null ? Icons.check_circle : Icons.upload_file,
+              color: _excelFilePath != null ? Colors.green : Colors.blue,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _excelFilePath != null
+                        ? "Excel Attached"
+                        : "Bulk Assign via Excel",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      color:
+                          _excelFilePath != null ? Colors.green : Colors.blue,
+                    ),
+                  ),
+                  if (_excelFilePath != null)
+                    Text(
+                      _excelFilePath!.split('/').last,
+                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                    ),
+                ],
+              ),
+            ),
+            if (_excelFilePath != null)
+              IconButton(
+                icon: const Icon(Icons.close, size: 16, color: Colors.grey),
+                onPressed: () => setState(() => _excelFilePath = null),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _authorityPicker() {
@@ -1696,6 +1787,20 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
     // Removed working hours check for directives (allowed 24/7)
 
+    // --- NEW: Deadline Validation (Prevent creating past tasks) ---
+    if (_taskData['taskType'] == 'Fixed Time Task') {
+      final DateTime selectedDate = _taskData['selectedDate'] ?? DateTime.now();
+      final TimeOfDay? et = _taskData['endTime'];
+      if (et != null) {
+        final deadline = DateTime(selectedDate.year, selectedDate.month,
+            selectedDate.day, et.hour, et.minute);
+        if (deadline.isBefore(DateTime.now())) {
+          _showErrorSnackBar("Cannot create a task with a past deadline.");
+          return;
+        }
+      }
+    }
+
     // Build task_type_data
     Map<String, dynamic> taskTypeData = {};
 
@@ -1881,7 +1986,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       print(payload.toString());
       print("==============================================");
       final taskService = TaskService();
-      await taskService.createTaskUnified(payload);
+      await taskService.createTaskUnified(payload, filePath: _excelFilePath);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1982,7 +2087,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       print(payload.toString());
       print("=============================================");
       final taskService = TaskService();
-      await taskService.createTaskUnified(payload);
+      await taskService.createTaskUnified(payload, filePath: _excelFilePath);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

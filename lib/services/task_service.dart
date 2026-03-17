@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/task_detail_model.dart';
@@ -64,6 +66,117 @@ class TaskService {
     }
   }
 
+  /// Submit proof document for a task that is already accepted/in-progress.
+  /// This uses the dedicated /submit-proof endpoint with real file upload.
+  Future<void> submitTaskProof(
+    int taskId, {
+    String? filePath,
+    Uint8List? fileBytes,
+    String? fileName,
+    int? obtainedScore,
+    int? penalty,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final url = Uri.parse('${backendUrl}tasks/$taskId/submit-proof');
+      final request = http.MultipartRequest('POST', url);
+
+      request.headers['Authorization'] = 'Bearer $token';
+
+      if (obtainedScore != null) {
+        request.fields['obtained_score'] = obtainedScore.toString();
+      }
+      if (penalty != null) {
+        request.fields['penalty'] = penalty.toString();
+      }
+
+      if (kIsWeb && fileBytes != null && fileName != null) {
+        request.files.add(http.MultipartFile.fromBytes('file', fileBytes, filename: fileName));
+      } else if (filePath != null) {
+        request.files.add(await http.MultipartFile.fromPath('file', filePath));
+      }
+
+      final streamed = await request.send();
+      final resp = await http.Response.fromStream(streamed);
+
+      if (resp.statusCode != 200 && resp.statusCode != 201) {
+        final errBody = jsonDecode(resp.body);
+        throw Exception(errBody['message'] ?? 'Proof submission failed');
+      }
+    } catch (e) {
+      throw Exception('Submit proof error: $e');
+    }
+  }
+
+  /// Fallback JSON-based proof submit API if the backend doesn't support Multipart
+  Future<void> submitTaskProofFallback(
+    int taskId, {
+    String? proof,
+    int? obtainedScore,
+    int? penalty,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final url = Uri.parse('${backendUrl}tasks/$taskId/submit-proof');
+      
+      final Map<String, dynamic> body = {};
+      if (proof != null) body['proof'] = proof;
+      if (obtainedScore != null) body['obtained_score'] = obtainedScore;
+      if (penalty != null) body['penalty'] = penalty;
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        final errBody = jsonDecode(response.body);
+        throw Exception(errBody['message'] ?? 'Proof submission failed');
+      }
+    } catch (e) {
+      throw Exception('Submit proof error: $e');
+    }
+  }
+
+  Future<dynamic> getPendingVerifications() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}tasks/verification/pending'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception(
+          'Failed to load pending verifications: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      throw Exception('Error fetching pending verifications: $e');
+    }
+  }
+
   Future<dynamic> getFacultyDashboardStats() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -90,28 +203,48 @@ class TaskService {
   }
 
   Future<Map<String, dynamic>> createTaskUnified(
-    Map<String, dynamic> payload,
-  ) async {
+    Map<String, dynamic> payload, {
+    String? filePath,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken') ?? '';
       final backendUrl =
           dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
-      final response = await http.post(
-        Uri.parse('${backendUrl}tasks/unified-create'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(payload),
-      );
+      final url = Uri.parse('${backendUrl}tasks/unified-create');
+
+      // Use MultipartRequest to support file upload
+      final request = http.MultipartRequest('POST', url);
+
+      // Add Headers
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+      });
+
+      // Add Fields (JSON payload)
+      // The backend expects flat fields or JSON strings for nested objects
+      payload.forEach((key, value) {
+        if (value is Map || value is List) {
+          request.fields[key] = jsonEncode(value);
+        } else {
+          request.fields[key] = value.toString();
+        }
+      });
+
+      // Add File if exists
+      if (filePath != null) {
+        request.files.add(await http.MultipartFile.fromPath('file', filePath));
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
         return data;
       } else {
-        throw Exception('Failed to create task: ${response.statusCode}');
+        throw Exception('Failed to create task: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
       throw Exception('Error creating task: $e');
@@ -339,6 +472,29 @@ class TaskService {
     }
   }
 
+  Future<void> selfAssignTask(int taskId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.post(
+        Uri.parse('${backendUrl}tasks/$taskId/self-assign'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception('Failed to self-assign task: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error self-assigning task: $e');
+    }
+  }
+
   Future<void> rejectTask(
     int taskId,
     String reason, {
@@ -378,6 +534,8 @@ class TaskService {
     int? closureId,
     String? proof,
     String? reason,
+    int? obtainedScore,
+    int? penalty,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -389,6 +547,8 @@ class TaskService {
       if (closureId != null) payload['closure_id'] = closureId;
       if (proof != null) payload['proof'] = proof;
       if (reason != null) payload['reason'] = reason;
+      if (obtainedScore != null) payload['obtained_score'] = obtainedScore;
+      if (penalty != null) payload['penalty'] = penalty;
 
       final response = await http.post(
         Uri.parse('${backendUrl}tasks/$taskId/close'),
@@ -613,25 +773,40 @@ class TaskService {
 
   Future<Map<String, dynamic>> verifyOTP(
     int assignmentId,
-    String otpCode,
-  ) async {
+    String otpCode, {
+    String? filePath,
+    int? obtainedScore,
+    int? penalty,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken') ?? '';
       final backendUrl =
           dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
-      final response = await http.post(
-        Uri.parse('${backendUrl}tasks/otp/verify'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'assignment_id': assignmentId,
-          'otp_code': otpCode.trim(),
-        }),
-      );
+      final url = Uri.parse('${backendUrl}tasks/otp/verify');
+      final request = http.MultipartRequest('POST', url);
+
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+      });
+
+      request.fields['assignment_id'] = assignmentId.toString();
+      request.fields['otp_code'] = otpCode.trim();
+      
+      if (obtainedScore != null) {
+        request.fields['obtained_score'] = obtainedScore.toString();
+      }
+      if (penalty != null) {
+        request.fields['penalty'] = penalty.toString();
+      }
+
+      if (filePath != null) {
+        request.files.add(await http.MultipartFile.fromPath('file', filePath));
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         return jsonDecode(response.body);
@@ -666,6 +841,162 @@ class TaskService {
       }
     } catch (e) {
       throw Exception('Error fetching pending tasks: $e');
+    }
+  }
+
+  Future<void> reviewTaskProof(int assignmentId, String status,
+      {String? reason}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.post(
+        Uri.parse('${backendUrl}tasks/assignment/$assignmentId/review-proof'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'status': status,
+          'reason': reason,
+        }),
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        final errBody = jsonDecode(response.body);
+        throw Exception(errBody['message'] ?? 'Review failed');
+      }
+    } catch (e) {
+      throw Exception('Review Error: $e');
+    }
+  }
+
+  Future<void> startActivity(int taskId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.post(
+        Uri.parse('${backendUrl}tasks/$taskId/start-activity'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        final errBody = jsonDecode(response.body);
+        throw Exception(errBody['message'] ?? 'Start failed');
+      }
+    } catch (e) {
+      throw Exception('Start Error: $e');
+    }
+  }
+
+  Future<void> pauseTask(int taskId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.put(
+        Uri.parse('${backendUrl}tasks/$taskId/pause'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        final errBody = jsonDecode(response.body);
+        throw Exception(errBody['message'] ?? 'Pause failed');
+      }
+    } catch (e) {
+      throw Exception('Pause Error: $e');
+    }
+  }
+
+  Future<void> resumeTask(int taskId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.put(
+        Uri.parse('${backendUrl}tasks/$taskId/resume'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        final errBody = jsonDecode(response.body);
+        throw Exception(errBody['message'] ?? 'Resume failed');
+      }
+    } catch (e) {
+      throw Exception('Resume Error: $e');
+    }
+  }
+
+  Future<void> transferTask(int taskId, int transferToUserId, String reason) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.post(
+        Uri.parse('${backendUrl}tasks/$taskId/transfer'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'transfer_to_user_id': transferToUserId,
+          'reason': reason,
+        }),
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        final errBody = jsonDecode(response.body);
+        throw Exception(errBody['message'] ?? 'Transfer failed');
+      }
+    } catch (e) {
+      throw Exception('Transfer Error: $e');
+    }
+  }
+
+  Future<void> cancelTaskApproval(int taskId, String reason) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.post(
+        Uri.parse('${backendUrl}tasks/$taskId/cancel-approval'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'reason': reason,
+        }),
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        final errBody = jsonDecode(response.body);
+        throw Exception(errBody['message'] ?? 'Cancellation failed');
+      }
+    } catch (e) {
+      throw Exception('Cancellation Error: $e');
     }
   }
 }

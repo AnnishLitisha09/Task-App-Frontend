@@ -316,4 +316,49 @@ class ResourceService {
       throw Exception('Error managing resource: $e');
     }
   }
+  Future<List<int>> downloadVenueReport() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl = dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}resources/venues/export'),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return response.bodyBytes;
+      } else {
+        throw Exception('Failed to download venue report: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error downloading venue report: $e');
+    }
+  }
+
+  Future<List<int>> downloadResourceReport() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl = dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}resources/export'),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return response.bodyBytes;
+      } else {
+        throw Exception('Failed to download resource report: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error downloading resource report: $e');
+    }
+  }
 }

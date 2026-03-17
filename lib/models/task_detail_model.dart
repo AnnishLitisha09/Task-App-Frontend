@@ -80,16 +80,16 @@ class TaskDetailModel {
       category: json['category'] ?? '',
       priority: (json['priority'] ?? '').toString(),
       status: json['status'] ?? '',
-      score: json['score'] ?? 0,
-      penaltyPerHour: json['penalty_per_hour'] ?? 0,
-      isPackage: json['is_package'] ?? false,
-      isPauseAllowed: json['is_pause_allowed'] ?? false,
-      isDocument: json['is_document'] ?? false,
-      isMandatory: json['is_mandatory'] ?? false,
-      isApproved: json['is_approved'] ?? false,
-      isFaculty: json['is_faculty'] ?? false,
-      isDeleted: json['is_deleted'] ?? false,
-      isEscalate: json['is_escalate'] ?? false,
+      score: (num.tryParse(json['score']?.toString() ?? '0') ?? 0).toInt(),
+      penaltyPerHour: (num.tryParse(json['penalty_per_hour']?.toString() ?? '0') ?? 0).toInt(),
+      isPackage: json['is_package'] == true || json['is_package'] == 1 || json['is_package'].toString() == 'true',
+      isPauseAllowed: json['is_pause_allowed'] == true || json['is_pause_allowed'] == 1 || json['is_pause_allowed'].toString() == 'true',
+      isDocument: json['is_document'] == true || json['is_document'] == 1 || json['is_document'].toString() == 'true',
+      isMandatory: json['is_mandatory'] == true || json['is_mandatory'] == 1 || json['is_mandatory'].toString() == 'true',
+      isApproved: json['is_approved'] == true || json['is_approved'] == 1 || json['is_approved'].toString() == 'true',
+      isFaculty: json['is_faculty'] == true || json['is_faculty'] == 1 || json['is_faculty'].toString() == 'true',
+      isDeleted: json['is_deleted'] == true || json['is_deleted'] == 1 || json['is_deleted'].toString() == 'true',
+      isEscalate: json['is_escalate'] == true || json['is_escalate'] == 1 || json['is_escalate'].toString() == 'true',
       venueId: json['venue_id'],
       resourceId: json['resource_id'],
       creatorId: int.tryParse(json['creator_id']?.toString() ?? '') ?? 0,
@@ -184,6 +184,8 @@ class TaskAssignee {
   final String email;
   final String status;
   final String acceptedAt;
+  final String? proof;
+  final String? submittedTime;
 
   TaskAssignee({
     required this.assignmentId,
@@ -193,6 +195,8 @@ class TaskAssignee {
     required this.email,
     required this.status,
     required this.acceptedAt,
+    this.proof,
+    this.submittedTime,
   });
 
   factory TaskAssignee.fromJson(Map<String, dynamic> json) {
@@ -204,6 +208,8 @@ class TaskAssignee {
       email: json['email'] ?? '',
       status: json['status'] ?? '',
       acceptedAt: json['accepted_at'] ?? '',
+      proof: json['proof'],
+      submittedTime: json['submitted_time'],
     );
   }
 }

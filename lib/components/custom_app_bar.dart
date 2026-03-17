@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../screens/common/notifications_page.dart';
 
 class CustomAppBar extends StatelessWidget {
   final String title;
@@ -7,12 +8,15 @@ class CustomAppBar extends StatelessWidget {
   final int notificationCount;
   final String? profileImageUrl;
 
+  final List<Widget>? actions;
+
   const CustomAppBar({
     super.key,
     required this.title,
     this.date,
     this.notificationCount = 0,
     this.profileImageUrl,
+    this.actions,
   });
 
   @override
@@ -56,51 +60,61 @@ class CustomAppBar extends StatelessWidget {
               ],
             ),
             const Spacer(),
-            _buildNotificationBadge(),
+            if (actions != null) ...actions!,
+            const SizedBox(width: 8),
+            _buildNotificationBadge(context),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildNotificationBadge() {
-    return Container(
-      height: 44,
-      width: 44,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.brandPrimary.withOpacity(0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          const Icon(
-            Icons.notifications_none_rounded,
-            color: AppTheme.textMain,
-            size: 22,
-          ),
-          if (notificationCount > 0)
-            Positioned(
-              top: 12,
-              right: 12,
-              child: Container(
-                height: 8,
-                width: 8,
-                decoration: BoxDecoration(
-                  color: AppTheme.danger,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 1.5),
+  Widget _buildNotificationBadge(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const NotificationsPage()),
+        );
+      },
+      child: Container(
+        height: 44,
+        width: 44,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.brandPrimary.withOpacity(0.06),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            const Icon(
+              Icons.notifications_none_rounded,
+              color: AppTheme.textMain,
+              size: 22,
+            ),
+            if (notificationCount > 0)
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Container(
+                  height: 10,
+                  width: 10,
+                  decoration: BoxDecoration(
+                    color: AppTheme.danger,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

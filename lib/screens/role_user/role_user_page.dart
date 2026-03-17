@@ -7,6 +7,10 @@ import '../../components/stat_card.dart';
 import '../../components/task_card.dart';
 import '../../components/section_header.dart';
 import '../../components/skeleton_loader.dart';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
+import '../../services/resource_service.dart';
 import '../../services/task_service.dart';
 import '../../models/venue_dashboard_model.dart';
 import '../../models/venue_history_model.dart';
@@ -23,8 +27,16 @@ import '../common/generic_view_all_page.dart';
 class RoleUserPage extends StatefulWidget {
   final String title;
   final String scope; // 'institution', 'department', 'infrastructure'
+  final bool isBlocked;
+  final VoidCallback onAcknowledge;
 
-  const RoleUserPage({super.key, required this.title, required this.scope});
+  const RoleUserPage({
+    super.key,
+    required this.title,
+    required this.scope,
+    this.isBlocked = false,
+    required this.onAcknowledge,
+  });
 
   @override
   State<RoleUserPage> createState() => _RoleUserPageState();
@@ -33,12 +45,14 @@ class RoleUserPage extends StatefulWidget {
 class _RoleUserPageState extends State<RoleUserPage> {
   final TaskService _taskService = TaskService();
   final UserService _userService = UserService();
+  final ResourceService _resourceService = ResourceService();
   VenueDetailsResponse? _venueDetails;
   VenueHistoryResponse? _globalHistory;
   DepartmentalDashboard? _deptDetails;
   InstitutionalDashboard? _institutionDashboard;
   List<dynamic> _escalations = [];
   VenueDetailItem? _selectedRoleVenue;
+  List<dynamic> _pendingProofs = [];
   bool _isLoading = false;
   bool _isHistoryLoading = false;
   String? _error;
@@ -66,10 +80,20 @@ class _RoleUserPageState extends State<RoleUserPage> {
       final results = await Future.wait([
         _userService.getDepartmentalDashboard(),
         _taskService.getEscalations(unread: true),
+        _taskService.getPendingProofs(),
       ]);
       setState(() {
         _deptDetails = results[0] as DepartmentalDashboard;
         _escalations = results[1] as List<dynamic>;
+        if (results[2] is List) {
+          _pendingProofs = results[2];
+        } else if (results[2] is Map) {
+          if (results[2].containsKey('items')) {
+            _pendingProofs = results[2]['items'];
+          } else if (results[2].containsKey('data')) {
+            _pendingProofs = results[2]['data'];
+          }
+        }
         _isLoading = false;
       });
     } catch (e) {
@@ -89,10 +113,20 @@ class _RoleUserPageState extends State<RoleUserPage> {
       final results = await Future.wait([
         _userService.getInstitutionalDashboard(),
         _taskService.getEscalations(unread: true),
+        _taskService.getPendingProofs(),
       ]);
       setState(() {
         _institutionDashboard = results[0] as InstitutionalDashboard;
         _escalations = results[1] as List<dynamic>;
+        if (results[2] is List) {
+          _pendingProofs = results[2];
+        } else if (results[2] is Map) {
+          if (results[2].containsKey('items')) {
+            _pendingProofs = results[2]['items'];
+          } else if (results[2].containsKey('data')) {
+            _pendingProofs = results[2]['data'];
+          }
+        }
         _isLoading = false;
       });
     } catch (e) {
@@ -113,11 +147,21 @@ class _RoleUserPageState extends State<RoleUserPage> {
       final results = await Future.wait([
         _taskService.getVenueDashboard(),
         _taskService.getEscalations(unread: true),
+        _taskService.getPendingProofs(),
       ]);
 
       setState(() {
         _venueDetails = results[0] as VenueDetailsResponse;
         _escalations = results[1] as List<dynamic>;
+        if (results[2] is List) {
+          _pendingProofs = results[2];
+        } else if (results[2] is Map) {
+          if (results[2].containsKey('items')) {
+            _pendingProofs = results[2]['items'];
+          } else if (results[2].containsKey('data')) {
+            _pendingProofs = results[2]['data'];
+          }
+        }
 
         if (_venueDetails!.venues.isNotEmpty && _selectedRoleVenue == null) {
           _selectedRoleVenue = _venueDetails!.venues.first;
@@ -188,10 +232,22 @@ class _RoleUserPageState extends State<RoleUserPage> {
                   parent: BouncingScrollPhysics(),
                 ),
                 slivers: [
-                  CustomAppBar(
+                   CustomAppBar(
                     title: widget.title,
                     date: formattedDate,
                     notificationCount: _escalations.length,
+                    actions: widget.scope.toLowerCase() == 'infrastructure' ? [
+                      IconButton(
+                        onPressed: () => _handleDownloadReport(true),
+                        icon: const Icon(Icons.analytics_rounded, color: AppTheme.brandAccent),
+                        tooltip: "Venue Report",
+                      ),
+                      IconButton(
+                        onPressed: () => _handleDownloadReport(false),
+                        icon: const Icon(Icons.inventory_2_rounded, color: AppTheme.success),
+                        tooltip: "Resource Report",
+                      ),
+                    ] : null,
                   ),
                   if (_isLoading)
                     const SliverToBoxAdapter(child: DashboardSkeleton())
@@ -251,9 +307,13 @@ class _RoleUserPageState extends State<RoleUserPage> {
                       sliver: SliverList(
                         delegate: SliverChildListDelegate([
                           const SizedBox(height: 12),
-                          _buildScopeDynamicMetrics(),
-                          const SizedBox(height: 32),
-                          ..._buildLogicDrivenTasks(),
+                          if (widget.isBlocked)
+                            _buildBlockedMessage()
+                          else ...[
+                            _buildScopeDynamicMetrics(),
+                            const SizedBox(height: 32),
+                            ..._buildLogicDrivenTasks(),
+                          ],
                           const SizedBox(height: 100),
                         ]),
                       ),
@@ -521,12 +581,58 @@ class _RoleUserPageState extends State<RoleUserPage> {
     }
   }
 
+  Future<void> _handleDownloadReport(bool isVenue) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Generating ${isVenue ? 'Venue' : 'Resource'} Report...")),
+      );
+
+      final List<int> bytes = isVenue 
+          ? await _resourceService.downloadVenueReport()
+          : await _resourceService.downloadResourceReport();
+
+      String? fileName = isVenue 
+          ? 'venue_utilisation_report_${DateTime.now().millisecondsSinceEpoch}.xlsx'
+          : 'resource_utilisation_report_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+
+      String? outputFile = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save Report:',
+        fileName: fileName,
+        bytes: Uint8List.fromList(bytes),
+      );
+
+      if (outputFile != null) {
+        if (!Platform.isAndroid && !Platform.isIOS) {
+          final file = File(outputFile);
+          await file.writeAsBytes(bytes);
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Report saved successfully!"),
+              backgroundColor: AppTheme.success,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error: $e"),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      }
+    }
+  }
+
   List<Widget> _buildLogicDrivenTasks() {
     List<Widget> sections = [];
     final String scope = widget.scope.toLowerCase();
 
     if (scope == 'institution') {
-      // --- Today's Schedule ---
+      // 1. Today's Schedule
       final schedule = _institutionDashboard?.todaysSchedule ?? [];
       sections.add(
         SectionHeader(
@@ -563,7 +669,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
 
       sections.add(const SizedBox(height: 24));
 
-      // --- Pending Approvals ---
+      // 2. Pending Approvals (Standard)
       final approvalList =
           _institutionDashboard?.personalActions.pendingMyApprovalList ?? [];
       final approvalCount =
@@ -622,7 +728,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
 
       sections.add(const SizedBox(height: 24));
 
-      // --- Escalated Tasks ---
+      // 3. Escalated Tasks
       sections.add(
         SectionHeader(
           title: "Escalated Tasks",
@@ -670,8 +776,67 @@ class _RoleUserPageState extends State<RoleUserPage> {
           );
         }
       }
+
+      sections.add(const SizedBox(height: 24));
+
+      // 4. Pending Proofs
+      sections.add(
+        SectionHeader(
+          title: "Pending Proofs",
+          count: _pendingProofs.length,
+          onViewAll: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => GenericViewAllPage(
+                title: "Pending Proofs",
+                tasks: _pendingProofs,
+                viewMode: 'viewonly',
+                accentColor: AppTheme.success,
+              ),
+            ),
+          ),
+        ),
+      );
+      if (_pendingProofs.isEmpty) {
+        sections.add(
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: Text(
+                "No pending proofs",
+                style: TextStyle(color: AppTheme.textSub),
+              ),
+            ),
+          ),
+        );
+      } else {
+        for (final proof in _pendingProofs.take(2)) {
+          final taskId = proof['task_id'] ?? proof['id'];
+          sections.add(
+            TaskCard(
+              title: proof['title']?.toString() ?? 'Proof Review',
+              sub: "Status: ${proof['status'] ?? 'Pending'}",
+              accent: AppTheme.success,
+              icon: Icons.verified_rounded,
+              onTap: taskId != null
+                  ? () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TaskDetailsPage(
+                            taskData: {
+                              'task_id': taskId,
+                              'title': proof['title'],
+                            },
+                          ),
+                        ),
+                      )
+                  : null,
+            ),
+          );
+        }
+      }
     } else if (scope == 'department') {
-      // --- Today's Schedule ---
+      // 1. Today's Schedule
       final schedule = _deptDetails?.todaysSchedule ?? [];
       sections.add(
         SectionHeader(
@@ -729,18 +894,18 @@ class _RoleUserPageState extends State<RoleUserPage> {
 
       sections.add(const SizedBox(height: 24));
 
-      // --- Pending Approvals ---
+      // 2. Authority Approval (HOD Level)
       final approvals = _deptDetails?.pendingApprovals ?? [];
       sections.add(
         SectionHeader(
-          title: "Pending Approvals",
+          title: "Authority Approval",
           count: _deptDetails?.pendingApprovalsCount ?? 0,
           isStatus: (_deptDetails?.pendingApprovalsCount ?? 0) > 0,
           onViewAll: () => Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => GenericViewAllPage(
-                title: "Pending Approvals",
+                title: "Authority Approval",
                 tasks: _deptDetails?.pendingApprovals ?? [],
                 viewMode: 'approver',
                 accentColor: AppTheme.warning,
@@ -770,7 +935,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
               title: task['title']?.toString() ?? "Approval Request",
               sub: "Requested by: ${task['requested_by'] ?? 'N/A'}",
               accent: AppTheme.warning,
-              icon: Icons.assignment_ind_rounded,
+              icon: Icons.how_to_reg_rounded,
               isApproval: true,
               onAccept: taskId != null
                   ? () => _handleGeneralTaskAction(taskId, true)
@@ -796,7 +961,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
 
       sections.add(const SizedBox(height: 24));
 
-      // --- Escalated Tasks ---
+      // 3. Escalated Tasks
       final escalated = _deptDetails?.escalatedTasks ?? [];
       sections.add(
         SectionHeader(
@@ -855,7 +1020,66 @@ class _RoleUserPageState extends State<RoleUserPage> {
 
       sections.add(const SizedBox(height: 24));
 
-      // --- Department Tasks ---
+      // 4. Pending Proofs
+      sections.add(
+        SectionHeader(
+          title: "Pending Proofs",
+          count: _pendingProofs.length,
+          onViewAll: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => GenericViewAllPage(
+                title: "Pending Proofs",
+                tasks: _pendingProofs,
+                viewMode: 'viewonly',
+                accentColor: AppTheme.success,
+              ),
+            ),
+          ),
+        ),
+      );
+      if (_pendingProofs.isEmpty) {
+        sections.add(
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: Text(
+                "No pending proofs",
+                style: TextStyle(color: AppTheme.textSub),
+              ),
+            ),
+          ),
+        );
+      } else {
+        for (final proof in _pendingProofs.take(2)) {
+          final taskId = proof['task_id'] ?? proof['id'];
+          sections.add(
+            TaskCard(
+              title: proof['title']?.toString() ?? 'Proof Review',
+              sub: "Status: ${proof['status'] ?? 'Pending'}",
+              accent: AppTheme.success,
+              icon: Icons.verified_rounded,
+              onTap: taskId != null
+                  ? () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TaskDetailsPage(
+                            taskData: {
+                              'task_id': taskId,
+                              'title': proof['title'],
+                            },
+                          ),
+                        ),
+                      )
+                  : null,
+            ),
+          );
+        }
+      }
+
+      sections.add(const SizedBox(height: 24));
+
+      // 5. Department Tasks
       final deptTasks = _deptDetails?.departmentTasks ?? [];
       sections.add(
         SectionHeader(
@@ -920,7 +1144,133 @@ class _RoleUserPageState extends State<RoleUserPage> {
 
         final currentVenue = _selectedRoleVenue ?? _venueDetails!.venues.first;
 
-        // --- Escalated Tasks (Global) ---
+        // 1. Today's Schedule (Selected Venue)
+        sections.add(
+          SectionHeader(
+            title: "Today's Schedule",
+            onViewAll: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const VenueSchedulePage()),
+            ),
+          ),
+        );
+
+        if (currentVenue.today.confirmedBookings.isEmpty) {
+          sections.add(
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Text(
+                  "No bookings scheduled today.",
+                  style: TextStyle(color: Colors.grey, fontSize: 13),
+                ),
+              ),
+            ),
+          );
+        } else {
+          for (var booking in currentVenue.today.confirmedBookings.take(2)) {
+            final bool isCompleted =
+                booking.status.toLowerCase() == 'completed';
+            sections.add(
+              TaskCard(
+                title: booking.title,
+                sub:
+                    "${currentVenue.name} • ${booking.fromTime} - ${booking.toTime} • ${booking.status.toUpperCase()}",
+                accent: isCompleted ? AppTheme.success : AppTheme.brandAccent,
+                icon: isCompleted
+                    ? Icons.check_circle_rounded
+                    : Icons.meeting_room_rounded,
+                onTap: () async {
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TaskDetailsPage(
+                        taskData: {
+                          'task_id': booking.taskId,
+                          'title': booking.title,
+                        },
+                        viewMode: 'incharge',
+                      ),
+                    ),
+                  );
+                  if (result != null) {
+                    _fetchVenueDashboard();
+                  }
+                },
+              ),
+            );
+            sections.add(const SizedBox(height: 12));
+          }
+        }
+
+        sections.add(const SizedBox(height: 24));
+
+        // 2. Pending Approvals (Standard Approvals for Incharge)
+        sections.add(
+          SectionHeader(
+            title: "Authority Approval",
+            onViewAll: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const VenueApprovalsPage()),
+              );
+              _fetchVenueDashboard();
+            },
+          ),
+        );
+
+        if (currentVenue.newRequestsPendingCount == 0 &&
+            currentVenue.pendingApprovalTasks.isEmpty) {
+          sections.add(
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Text(
+                  "No pending requests for this venue.",
+                  style: TextStyle(color: Colors.grey, fontSize: 13),
+                ),
+              ),
+            ),
+          );
+        } else {
+          for (var booking in currentVenue.pendingApprovalTasks.take(2)) {
+            sections.add(
+              TaskCard(
+                title: booking.title,
+                sub:
+                    "${currentVenue.name} • ${booking.fromTime} - ${booking.toTime} • By: ${booking.bookedBy}",
+                accent: AppTheme.warning,
+                icon: Icons.how_to_reg_rounded,
+                isRequest: true,
+                onAccept: () => _handleVenueTaskAction(booking.taskId, true),
+                onReject: () => _handleVenueTaskAction(booking.taskId, false),
+                onTap: () async {
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TaskDetailsPage(
+                        taskData: {
+                          'task_id': booking.taskId,
+                          'title': booking.title,
+                          'isRequest': true,
+                        },
+                        viewMode: 'incharge',
+                      ),
+                    ),
+                  );
+                  if (result != null) {
+                    _fetchVenueDashboard();
+                  }
+                },
+              ),
+            );
+            sections.add(const SizedBox(height: 12));
+          }
+        }
+
+        sections.add(const SizedBox(height: 24));
+
+        // 3. Escalated Tasks (Global/Venue)
         sections.add(
           SectionHeader(
             title: "Escalated Tasks",
@@ -974,128 +1324,62 @@ class _RoleUserPageState extends State<RoleUserPage> {
 
         sections.add(const SizedBox(height: 24));
 
-        // --- Pending Approvals (Selected Venue) ---
-        sections.add(
-          SectionHeader(
-            title: "Pending Approvals",
-            onViewAll: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const VenueApprovalsPage()),
-              );
-              _fetchVenueDashboard();
-            },
-          ),
-        );
-
-        if (currentVenue.newRequestsPendingCount == 0 &&
-            currentVenue.pendingApprovalTasks.isEmpty) {
-          sections.add(
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Text(
-                  "No pending requests for this venue.",
-                  style: TextStyle(color: Colors.grey, fontSize: 13),
-                ),
-              ),
-            ),
-          );
-        } else {
-          // Use pendingApprovalTasks if it's available, otherwise we fallback to a message or mock if count > 0
-          for (var booking in currentVenue.pendingApprovalTasks.take(2)) {
-            sections.add(
-              TaskCard(
-                title: booking.title,
-                sub:
-                    "${currentVenue.name} • ${booking.fromTime} - ${booking.toTime} • By: ${booking.bookedBy}",
-                accent: AppTheme.warning,
-                icon: Icons.bolt_rounded,
-                isRequest: true,
-                onAccept: () => _handleVenueTaskAction(booking.taskId, true),
-                onReject: () => _handleVenueTaskAction(booking.taskId, false),
-                onTap: () async {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => TaskDetailsPage(
-                        taskData: {
-                          'task_id': booking.taskId,
-                          'title': booking.title,
-                          'isRequest': true,
-                        },
-                        viewMode: 'incharge',
-                      ),
-                    ),
-                  );
-                  if (result != null) {
-                    _fetchVenueDashboard();
-                  }
-                },
-              ),
-            );
-            sections.add(const SizedBox(height: 12));
-          }
-        }
-
         sections.add(const SizedBox(height: 24));
 
-        // --- Today's Schedule (Selected Venue) ---
+        // 4. Pending Proofs
         sections.add(
           SectionHeader(
-            title: "Today's Schedule",
+            title: "Pending Proofs",
+            count: _pendingProofs.length,
             onViewAll: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const VenueSchedulePage()),
+              MaterialPageRoute(
+                builder: (_) => GenericViewAllPage(
+                  title: "Pending Proofs",
+                  tasks: _pendingProofs,
+                  viewMode: 'viewonly',
+                  accentColor: AppTheme.success,
+                ),
+              ),
             ),
           ),
         );
-
-        if (currentVenue.today.confirmedBookings.isEmpty) {
+        if (_pendingProofs.isEmpty) {
           sections.add(
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(
                 child: Text(
-                  "No other bookings scheduled today.",
-                  style: TextStyle(color: Colors.grey, fontSize: 13),
+                  "No pending proofs",
+                  style: TextStyle(color: AppTheme.textSub),
                 ),
               ),
             ),
           );
         } else {
-          for (var booking in currentVenue.today.confirmedBookings.take(2)) {
-            final bool isCompleted =
-                booking.status.toLowerCase() == 'completed';
+          for (final proof in _pendingProofs.take(2)) {
+            final taskId = proof['task_id'] ?? proof['id'];
             sections.add(
               TaskCard(
-                title: booking.title,
-                sub:
-                    "${currentVenue.name} • ${booking.fromTime} - ${booking.toTime} • ${booking.status.toUpperCase()}",
-                accent: isCompleted ? AppTheme.success : AppTheme.brandAccent,
-                icon: isCompleted
-                    ? Icons.check_circle_rounded
-                    : Icons.meeting_room_rounded,
-                onTap: () async {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => TaskDetailsPage(
-                        taskData: {
-                          'task_id': booking.taskId,
-                          'title': booking.title,
-                        },
-                        viewMode: 'incharge',
-                      ),
-                    ),
-                  );
-                  if (result != null) {
-                    _fetchVenueDashboard();
-                  }
-                },
+                title: proof['title']?.toString() ?? 'Proof Review',
+                sub: "Status: ${proof['status'] ?? 'Pending'}",
+                accent: AppTheme.success,
+                icon: Icons.verified_rounded,
+                onTap: taskId != null
+                    ? () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => TaskDetailsPage(
+                              taskData: {
+                                'task_id': taskId,
+                                'title': proof['title'],
+                              },
+                            ),
+                          ),
+                        )
+                    : null,
               ),
             );
-            sections.add(const SizedBox(height: 12));
           }
         }
 
@@ -1329,5 +1613,55 @@ class _RoleUserPageState extends State<RoleUserPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildBlockedMessage() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 40, horizontal: 8),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppTheme.danger.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppTheme.danger.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.lock_person_rounded, size: 64, color: AppTheme.danger.withOpacity(0.8)),
+          const SizedBox(height: 24),
+          Text(
+            "Access Restricted",
+            style: AppTheme.h2.copyWith(color: AppTheme.danger),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            "Your account is restricted because today's tasks haven't been acknowledged. Please contact an administrator to acknowledge your schedule.",
+            textAlign: TextAlign.center,
+            style: AppTheme.bodyMain.copyWith(color: AppTheme.textSub),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Once an admin acknowledges your schedule, you can refresh to gain access.",
+            textAlign: TextAlign.center,
+            style: AppTheme.bodySub.copyWith(color: AppTheme.textSub.withOpacity(0.7)),
+          ),
+          const SizedBox(height: 32),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: widget.onAcknowledge,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text("Check Acknowledgment Status"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.danger,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn().slideY(begin: 0.1);
   }
 }

@@ -14,6 +14,8 @@ class TaskCard extends StatelessWidget {
   final VoidCallback? onAccept;
   final VoidCallback? onReject;
   final VoidCallback? onTransfer;
+  final String? acceptLabel;
+  final String? rejectLabel;
 
   const TaskCard({
     super.key,
@@ -28,6 +30,8 @@ class TaskCard extends StatelessWidget {
     this.onAccept,
     this.onReject,
     this.onTransfer,
+    this.acceptLabel,
+    this.rejectLabel,
   });
 
   @override
@@ -87,7 +91,7 @@ class TaskCard extends StatelessWidget {
                   if (onReject != null)
                     Expanded(
                       child: _miniActionBtn(
-                        "Reject",
+                        rejectLabel ?? "Reject",
                         AppTheme.danger,
                         onReject,
                       ),
@@ -97,7 +101,7 @@ class TaskCard extends StatelessWidget {
                   if (onAccept != null)
                     Expanded(
                       child: _miniActionBtn(
-                        isApproval ? "Approve" : "Accept",
+                        acceptLabel ?? (isApproval ? "Approve" : "Accept"),
                         AppTheme.success,
                         onAccept,
                       ),

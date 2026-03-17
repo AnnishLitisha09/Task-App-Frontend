@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:file_picker/file_picker.dart';
 import '../../services/task_service.dart';
 
@@ -22,6 +23,7 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
   int _activeStep = 1;
   late bool requiresOtp;
   late bool requiresProof;
+  late bool isDocumentRequired;
 
   final List<TextEditingController> _controllers = List.generate(
     6,
@@ -37,11 +39,11 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
         widget.taskData['closureType']?.toString().toLowerCase() ?? 'both';
     requiresOtp = type == 'otp' || type == 'both';
     requiresProof = type == 'proof' || type == 'both';
+    isDocumentRequired = widget.taskData['isDocument'] == true;
     if (!requiresProof) _activeStep = 2;
   }
 
-  // --- Elegant Submission Modal ---
-  void _showSuccessDialog() {
+  void _showSuccessDialog({bool isPendingProof = false}) {
     showGeneralDialog(
       context: context,
       barrierDismissible: false,
@@ -76,20 +78,22 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    "Task Finalized",
+                    isPendingProof ? "Proof Submitted!" : "Task Finalized",
                     style: _titleStyle().copyWith(fontSize: 22),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    "The task has been successfully closed and recorded.",
+                  Text(
+                    isPendingProof
+                        ? "Your proof document has been submitted for review."
+                        : "The task has been successfully closed and recorded.",
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey),
+                    style: const TextStyle(color: Colors.grey),
                   ),
                   const SizedBox(height: 32),
                   ElevatedButton(
                     onPressed: () {
                       Navigator.pop(context); // Close dialog
-                      Navigator.pop(context); // Back to task list
+                      Navigator.pop(context, true); // Back to task detail with 'true' result
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: brandAccent,
@@ -98,9 +102,9 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                    child: const Text(
-                      "RETURN TO DASHBOARD",
-                      style: TextStyle(
+                    child: Text(
+                      isPendingProof ? "DONE" : "RETURN TO DASHBOARD",
+                      style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                       ),
@@ -137,32 +141,44 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
     setState(() => _isSubmitting = true);
     try {
       final service = TaskService();
+      final bool isPendingProof = widget.taskData['isPendingProof'] == true;
+      final String actionType = widget.taskData['actionType']?.toString() ?? '';
 
-      // Prepare closure parameters
-      bool isCompleted = true; // For Success cases
-      String? proofUrl;
-
-      // If there's a file, we "pretend" to upload it (get a mock URL or just send the name for now)
-      // Real implementation would use an upload service
-      if (_pickedFile != null) {
-        proofUrl = "https://storage.link/proof/${_pickedFile!.name}";
+      if (isPendingProof || actionType == 'end' || actionType == 'proof_submit') {
+        // Use submitTaskProof for individual completions/proofs
+        // This only updates the assignment status to 'completed', preserving the task for others.
+        await service.submitTaskProof(
+          taskId,
+          filePath: _pickedFile?.path,
+          fileBytes: _pickedFile?.bytes,
+          fileName: _pickedFile?.name,
+          obtainedScore: widget.taskData['obtainedScore'],
+          penalty: widget.taskData['penalty'],
+        );
+      } else {
+        // Standard task closure flow (for managers or single-user closing)
+        String? proofUrl;
+        if (_pickedFile != null) {
+          proofUrl = "https://storage.link/proof/${_pickedFile!.name}";
+        }
+        await service.closeTask(
+          taskId,
+          isCompleted: true,
+          closureId: requiresProof ? 2 : null,
+          proof: proofUrl,
+          obtainedScore: widget.taskData['obtainedScore'],
+          penalty: widget.taskData['penalty'],
+        );
       }
 
-      await service.closeTask(
-        taskId,
-        isCompleted: isCompleted,
-        closureId: requiresProof ? 2 : null, // Mock ID for proof closure type
-        proof: proofUrl,
-      );
-
       if (mounted) {
-        _showSuccessDialog();
+        _showSuccessDialog(isPendingProof: isPendingProof);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Error closing task: $e"),
+            content: Text("Error: $e"),
             backgroundColor: Colors.red,
           ),
         );
@@ -216,11 +232,16 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
         mainAxisAlignment:
             MainAxisAlignment.start, // Force internal column to top
         children: [
-          Text("Completion Proof", style: _titleStyle()),
+          Text(
+            isDocumentRequired ? "Completion Proof" : "Completion Proof (Optional)",
+            style: _titleStyle(),
+          ),
           const SizedBox(height: 8),
-          const Text(
-            "Please attach a visual or document record of the completed work.",
-            style: TextStyle(color: Colors.grey, fontSize: 15),
+          Text(
+            isDocumentRequired
+                ? "Please attach a mandatory document/photo for your completed work."
+                : "You can optionally attach a visual record of your completed work.",
+            style: const TextStyle(color: Colors.grey, fontSize: 15),
           ),
           const SizedBox(height: 32),
           _buildUploadAreaWithPreview(),
@@ -293,8 +314,10 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
               height: 200,
               width: double.infinity,
               color: _kSubtle,
-              child: isImage && _pickedFile!.path != null
-                  ? Image.file(File(_pickedFile!.path!), fit: BoxFit.cover)
+              child: isImage && (_pickedFile!.path != null || _pickedFile!.bytes != null)
+                  ? (kIsWeb && _pickedFile!.bytes != null
+                      ? Image.memory(_pickedFile!.bytes!, fit: BoxFit.cover)
+                      : (_pickedFile!.path != null ? Image.file(File(_pickedFile!.path!), fit: BoxFit.cover) : const SizedBox()))
                   : Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -433,9 +456,9 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
   }
 
   Widget _buildBottomButton() {
-    bool ready = _activeStep == 2
+    final bool ready = _activeStep == 2
         ? _controllers.every((c) => c.text.isNotEmpty)
-        : (_pickedFile != null || !requiresProof);
+        : (_pickedFile != null || !isDocumentRequired);
 
     // Determine button label based on action type
     String buttonLabel;
@@ -446,6 +469,9 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
       buttonLabel = _activeStep == 2 || !requiresOtp
           ? "START TASK"
           : "CONTINUE";
+    } else if (actionType == 'proof_submit') {
+      // Submitting proof for already-accepted task
+      buttonLabel = "SUBMIT PROOF";
     } else if (actionType == 'end') {
       // Ending activity
       buttonLabel = _activeStep == 2 || !requiresOtp
@@ -606,6 +632,7 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['jpg', 'png', 'pdf'],
+      withData: true, // Ensure bytes are available, especially on Web
     );
     if (result != null) setState(() => _pickedFile = result.files.first);
   }
