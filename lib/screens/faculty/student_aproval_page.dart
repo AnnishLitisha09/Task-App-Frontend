@@ -139,7 +139,7 @@ class _StudentAprovalPageState extends State<StudentAprovalPage> {
 
           Expanded(
             child: _isLoading
-                ? Center(child: CircularProgressIndicator(color: brandAccent))
+                ? _buildSkeletonApprovals()
                 : RefreshIndicator(
                     onRefresh: _fetchRequests,
                     color: brandAccent,
@@ -184,6 +184,72 @@ class _StudentAprovalPageState extends State<StudentAprovalPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSkeletonApprovals() {
+    Widget _shimmer({
+      double w = double.infinity,
+      double h = 14,
+      double r = 8,
+    }) =>
+        Container(
+              width: w,
+              height: h,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(r),
+              ),
+            )
+            .animate(onPlay: (c) => c.repeat())
+            .shimmer(duration: 1300.ms, color: Colors.white.withOpacity(0.7));
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      itemCount: 4,
+      itemBuilder: (_, i) => Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _shimmer(h: 18, r: 8),
+                      const SizedBox(height: 6),
+                      _shimmer(w: 110, h: 12, r: 6),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _shimmer(w: 70, h: 26, r: 8),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                _shimmer(w: 60, h: 38, r: 10),
+                const SizedBox(width: 12),
+                _shimmer(w: 24, h: 18, r: 6),
+                const SizedBox(width: 12),
+                _shimmer(w: 60, h: 38, r: 10),
+              ],
+            ),
+            const SizedBox(height: 20),
+            _shimmer(h: 12, r: 6),
+            const SizedBox(height: 6),
+            _shimmer(w: 200, h: 12, r: 6),
+          ],
+        ),
+      ).animate().fadeIn(delay: (i * 60).ms),
     );
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../services/student_service.dart';
 import '../../models/student_model.dart';
 import '../../theme/app_theme.dart';
@@ -45,9 +46,27 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: Colors.white,
-        body: Center(child: CircularProgressIndicator()),
+        appBar: AppBar(
+          title: const Text(
+            "Student Profile",
+            style: TextStyle(
+              color: Color(0xFF1E293B),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new,
+              color: Color(0xFF1E293B),
+            ),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        body: _buildSkeletonDetail(),
       );
     }
 
@@ -106,6 +125,100 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
               ..._studentDetail!.selfLogs.map((task) => _buildTaskItem(task)),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonDetail() {
+    Widget sh({double w = double.infinity, double h = 14, double r = 8}) =>
+        Container(
+              width: w,
+              height: h,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(r),
+              ),
+            )
+            .animate(onPlay: (c) => c.repeat())
+            .shimmer(duration: 1300.ms, color: Colors.white.withOpacity(0.7));
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          // Avatar placeholder
+          Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.grey.shade200,
+                ),
+              )
+              .animate(onPlay: (c) => c.repeat())
+              .shimmer(duration: 1300.ms, color: Colors.white.withOpacity(0.7)),
+          const SizedBox(height: 16),
+          sh(w: 160, h: 18, r: 9),
+          const SizedBox(height: 8),
+          sh(w: 220, h: 13, r: 6),
+          const SizedBox(height: 32),
+          // Stats row
+          Row(
+            children: [
+              Expanded(
+                child:
+                    Container(
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        )
+                        .animate(onPlay: (c) => c.repeat())
+                        .shimmer(
+                          duration: 1300.ms,
+                          color: Colors.white.withOpacity(0.7),
+                        ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child:
+                    Container(
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        )
+                        .animate(onPlay: (c) => c.repeat())
+                        .shimmer(
+                          duration: 1300.ms,
+                          color: Colors.white.withOpacity(0.7),
+                        ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 32),
+          // Section header
+          sh(w: 140, h: 16, r: 8),
+          const SizedBox(height: 16),
+          for (int i = 0; i < 3; i++) ...[
+            Container(
+                  height: 64,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                )
+                .animate(onPlay: (c) => c.repeat())
+                .shimmer(
+                  duration: 1300.ms,
+                  color: Colors.white.withOpacity(0.7),
+                ),
+            const SizedBox(height: 12),
+          ],
+        ],
       ),
     );
   }

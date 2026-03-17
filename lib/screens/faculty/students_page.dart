@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../services/student_service.dart';
 import '../../models/student_model.dart';
 import '../../theme/app_theme.dart';
-import 'student_detail_page.dart'; // Will create this next
+import 'student_detail_page.dart';
 
 class StudentsPage extends StatefulWidget {
   const StudentsPage({super.key});
@@ -112,7 +113,7 @@ class _StudentsPageState extends State<StudentsPage> {
           // Student List
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? _buildSkeletonList()
                 : _filteredStudents.isEmpty
                 ? Center(
                     child: Text(
@@ -135,6 +136,106 @@ class _StudentsPageState extends State<StudentsPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSkeletonList() {
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: 8,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (_, i) => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFF1F5F9)),
+        ),
+        child: Row(
+          children: [
+            Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.grey.shade200,
+                  ),
+                )
+                .animate(onPlay: (c) => c.repeat())
+                .shimmer(
+                  duration: 1300.ms,
+                  color: Colors.white.withOpacity(0.7),
+                ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                        height: 14,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(7),
+                        ),
+                      )
+                      .animate(onPlay: (c) => c.repeat())
+                      .shimmer(
+                        duration: 1300.ms,
+                        color: Colors.white.withOpacity(0.7),
+                      ),
+                  const SizedBox(height: 8),
+                  Container(
+                        height: 11,
+                        width: 140,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      )
+                      .animate(onPlay: (c) => c.repeat())
+                      .shimmer(
+                        duration: 1300.ms,
+                        color: Colors.white.withOpacity(0.7),
+                      ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                      height: 12,
+                      width: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    )
+                    .animate(onPlay: (c) => c.repeat())
+                    .shimmer(
+                      duration: 1300.ms,
+                      color: Colors.white.withOpacity(0.7),
+                    ),
+                const SizedBox(height: 6),
+                Container(
+                      height: 12,
+                      width: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    )
+                    .animate(onPlay: (c) => c.repeat())
+                    .shimmer(
+                      duration: 1300.ms,
+                      color: Colors.white.withOpacity(0.7),
+                    ),
+              ],
+            ),
+          ],
+        ),
+      ).animate().fadeIn(delay: (i * 50).ms),
     );
   }
 

@@ -182,7 +182,7 @@ class _TaskManagementPageState extends State<TaskManagementPage>
               // Tab Content
               Expanded(
                 child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? _buildSkeletonTasks()
                     : _errorMessage != null
                     ? Center(
                         child: Column(
@@ -212,6 +212,65 @@ class _TaskManagementPageState extends State<TaskManagementPage>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSkeletonTasks() {
+    Widget sh({double w = double.infinity, double h = 14, double r = 8}) =>
+        Container(
+              width: w,
+              height: h,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(r),
+              ),
+            )
+            .animate(onPlay: (c) => c.repeat())
+            .shimmer(duration: 1300.ms, color: Colors.white.withOpacity(0.7));
+
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
+      itemCount: 5,
+      itemBuilder: (_, i) => Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(32),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                sh(w: 80, h: 22, r: 10),
+                const SizedBox(width: 10),
+                sh(w: 60, h: 22, r: 10),
+              ],
+            ),
+            const SizedBox(height: 16),
+            sh(h: 20, r: 8),
+            const SizedBox(height: 8),
+            sh(w: 160, h: 13, r: 6),
+            const SizedBox(height: 20),
+            const Divider(height: 1, color: Color(0xFFE2E8F0)),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    sh(w: 32, h: 32, r: 8),
+                    const SizedBox(width: 8),
+                    sh(w: 32, h: 32, r: 8),
+                  ],
+                ),
+                sh(w: 80, h: 13, r: 6),
+              ],
+            ),
+          ],
+        ),
+      ).animate().fadeIn(delay: (i * 60).ms),
     );
   }
 
