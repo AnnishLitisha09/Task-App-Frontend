@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../services/task_service.dart';
 import '../../theme/app_theme.dart';
 import '../../components/skeleton_loader.dart';
+import '../common/task_detail_page.dart';
 
 class AllNewTasksPage extends StatefulWidget {
   final Function(Map<String, dynamic>) onAccept;
@@ -205,91 +206,110 @@ class _AllNewTasksPageState extends State<AllNewTasksPage> {
     final category = task['category'] ?? 'General';
     final taskId = task['task_id'];
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFFF1F5F9)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppTheme.brandAccent.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(14),
+    return GestureDetector(
+      onTap: taskId != null
+          ? () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => TaskDetailsPage(
+                    taskData: {
+                      ...task,
+                      'task_id': taskId,
+                      'title': title,
+                      'isRequest': true,
+                    },
+                  ),
                 ),
-                child: const Icon(
-                  Icons.bolt_rounded,
-                  color: AppTheme.brandAccent,
+              )
+          : null,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0xFFF1F5F9)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.brandAccent.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.bolt_rounded,
+                    color: AppTheme.brandAccent,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: AppTheme.textMain,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        "${task['date'] ?? task['start_date']?.split('T')[0] ?? 'Today'} • ${task['timing'] ?? 'Anytime'} • $category",
+                        style: const TextStyle(
+                          color: AppTheme.textSub,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppTheme.textSub,
                   size: 20,
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: AppTheme.textMain,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                      ),
-                    ),
-                    Text(
-                      "${task['date'] ?? task['start_date']?.split('T')[0] ?? 'Today'} • ${task['timing'] ?? 'Anytime'} • $category",
-                      style: const TextStyle(
-                        color: AppTheme.textSub,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
+              ],
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: _actionBtn(
+                    context,
+                    "Reject",
+                    AppTheme.danger,
+                    () => _showRejectDialog(context, title, taskId),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _actionBtn(
-                  context,
-                  "Reject",
-                  AppTheme.danger,
-                  () => _showRejectDialog(context, title, taskId),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _actionBtn(context, "Accept", AppTheme.success, () {
+                    widget.onAccept({
+                      'task_id': taskId,
+                      'title': title,
+                      'timing': task['timing'],
+                    });
+                    Navigator.pop(context);
+                  }),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _actionBtn(context, "Accept", AppTheme.success, () {
-                  widget.onAccept({
-                    'task_id': taskId,
-                    'title': title,
-                    'timing': task['timing'],
-                  });
-
-                  // The acceptance API is usually handled by the callback in StudentPage
-                  // which checks for overlaps first.
-                  Navigator.pop(context);
-                }),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     ).animate().fadeIn().slideY(begin: 0.1, end: 0);
   }

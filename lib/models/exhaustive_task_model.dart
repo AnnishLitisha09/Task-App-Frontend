@@ -1,9 +1,11 @@
 class ExhaustiveTaskModel {
   final TaskInfo taskInfo;
-  final ScheduleInfo schedule;
+  final ScheduleInfo? schedule;
   final VenueInfo? venue;
   final List<String> closureMethods;
+  final List<int> closureIds;
   final PeopleInfo people;
+  final SummaryStats summaryStats;
   final AssignmentStats assignmentStats;
   final List<Assignment> assignments;
   final List<HistoryLog> historyLogs;
@@ -12,10 +14,12 @@ class ExhaustiveTaskModel {
 
   ExhaustiveTaskModel({
     required this.taskInfo,
-    required this.schedule,
+    this.schedule,
     this.venue,
     required this.closureMethods,
+    required this.closureIds,
     required this.people,
+    required this.summaryStats,
     required this.assignmentStats,
     required this.assignments,
     required this.historyLogs,
@@ -24,18 +28,22 @@ class ExhaustiveTaskModel {
   });
 
   factory ExhaustiveTaskModel.fromJson(Map<String, dynamic> json) {
+    // assignees can be a Map {grouped, all} or a list directly
+    final dynamic rawAssignees = json['assignees'];
+    final List<dynamic> assigneeList = (rawAssignees is Map)
+        ? (rawAssignees['all'] as List? ?? [])
+        : (rawAssignees as List? ?? []);
+
     return ExhaustiveTaskModel(
       taskInfo: TaskInfo.fromJson(json['task_info'] ?? {}),
-      schedule: ScheduleInfo.fromJson(json['schedule'] ?? {}),
+      schedule: json['schedule'] != null ? ScheduleInfo.fromJson(json['schedule']) : null,
       venue: json['venue'] != null ? VenueInfo.fromJson(json['venue']) : null,
       closureMethods: List<String>.from(json['closure_methods'] ?? []),
+      closureIds: List<int>.from(json['closure_ids'] ?? []),
       people: PeopleInfo.fromJson(json['people'] ?? {}),
+      summaryStats: SummaryStats.fromJson(json['summary_stats'] ?? {}),
       assignmentStats: AssignmentStats.fromJson(json['assignment_stats'] ?? {}),
-      assignments:
-          (json['assignments'] as List?)
-              ?.map((e) => Assignment.fromJson(e))
-              .toList() ??
-          [],
+      assignments: assigneeList.map((e) => Assignment.fromJson(e)).toList(),
       historyLogs:
           (json['history_logs'] as List?)
               ?.map((e) => HistoryLog.fromJson(e))
@@ -185,6 +193,35 @@ class Actor {
   }
 }
 
+class SummaryStats {
+  final int assigned;
+  final int pending;
+  final int accepted;
+  final int rejected;
+  final int inProgress;
+  final int completed;
+
+  SummaryStats({
+    required this.assigned,
+    required this.pending,
+    required this.accepted,
+    required this.rejected,
+    required this.inProgress,
+    required this.completed,
+  });
+
+  factory SummaryStats.fromJson(Map<String, dynamic> json) {
+    return SummaryStats(
+      assigned: json['assigned'] ?? 0,
+      pending: json['pending'] ?? 0,
+      accepted: json['accepted'] ?? 0,
+      rejected: json['rejected'] ?? 0,
+      inProgress: json['in_progress'] ?? 0,
+      completed: json['completed'] ?? 0,
+    );
+  }
+}
+
 class AssignmentStats {
   final int totalCount;
   final int acceptedCount;
@@ -202,9 +239,9 @@ class AssignmentStats {
 
   factory AssignmentStats.fromJson(Map<String, dynamic> json) {
     return AssignmentStats(
-      totalCount: json['total_count'] ?? 0,
-      acceptedCount: json['accepted_count'] ?? 0,
-      rejectedCount: json['rejected_count'] ?? 0,
+      totalCount: json['total_count'] ?? json['assigned'] ?? 0,
+      acceptedCount: json['accepted_count'] ?? json['accepted'] ?? 0,
+      rejectedCount: json['rejected_count'] ?? json['rejected'] ?? 0,
       acceptedNames: List<String>.from(json['accepted_names'] ?? []),
       rejectedNames: List<String>.from(json['rejected_names'] ?? []),
     );

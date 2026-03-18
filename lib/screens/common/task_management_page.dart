@@ -66,6 +66,13 @@ class _TaskManagementPageState extends State<TaskManagementPage>
                       : DateTime.now(),
                   'description': t.description,
                   'status': t.status,
+                  'selectedAssignees': t.assignees
+                      .map((a) => {
+                            'id': a.userId,
+                            'name': a.name,
+                            'role': a.role,
+                          })
+                      .toList(),
                 },
               )
               .toList();
@@ -871,7 +878,10 @@ class _TaskManagementPageState extends State<TaskManagementPage>
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => CreateTaskPage(initialData: dataToEdit),
+              builder: (context) => CreateTaskPage(
+                initialData: dataToEdit,
+                taskId: taskData['task_id'],
+              ),
             ),
           );
         } else if (value == 'delete') {
@@ -1018,6 +1028,7 @@ class _TaskManagementPageState extends State<TaskManagementPage>
             MaterialPageRoute(
               builder: (context) => CreateTaskPage(
                 initialData: {...log, 'taskCategory': 'Self Log'},
+                taskId: log['task_id'],
               ),
             ),
           );

@@ -9,6 +9,7 @@ import '../../models/exhaustive_task_model.dart';
 import 'task_otp_page.dart';
 import 'user_selection_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../faculty/verify_users_proof_page.dart';
 
 // Activity Lifecycle Status
 enum ActivityStatus { NOT_STARTED, IN_PROGRESS, PAUSED, COMPLETED }
@@ -1027,37 +1028,81 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   }
 
   Widget _buildActualActionButtons() {
-    final bool isAssignedToMe = _taskDetail?.assignees.any((a) => a.userId == _currentUserId) ?? false;
-    final bool isManager = _currentUserId != null &&
-        (_currentUserId == _taskDetail?.creatorId || _currentUserId == _taskDetail?.facultyId);
+    final bool isAssignedToMe =
+        _taskDetail?.assignees.any((a) => a.userId == _currentUserId) ?? false;
+    final bool isManager =
+        _currentUserId != null &&
+        (_currentUserId == _taskDetail?.creatorId ||
+            _currentUserId == _taskDetail?.facultyId);
 
-    // 1. Escalated Task Actions (Management Actions: Transfer / Execute / Cancel)
-    final bool isEscalatedStatus = !isAssignedToMe && (widget.taskData['isEscalated'] == true || 
-                                   (_taskDetail?.isEscalate ?? false) ||
-                                   (_taskDetail?.category.toUpperCase() == 'DIRECTIVE'));
+    // Find current user's assignment
+    final myAssign = _taskDetail?.assignees.firstWhere(
+      (a) => a.userId == _currentUserId,
+      orElse: () => _taskDetail!.assignees.first,
+    );
+
+    final String assignStatus = myAssign?.status.toLowerCase() ?? '';
+    final bool isPendingAcceptance =
+        assignStatus == 'pending' || assignStatus == 'requested';
+
+    // 1. Task Request / Directive Approval (Accept/Reject)
+    // Show if explicitly requested via widget data OR if the assignment is genuinely pending
+    if (widget.taskData['isRequest'] == true || isPendingAcceptance) {
+      if (isAssignedToMe && isPendingAcceptance) {
+        return _buildApprovalActions();
+      }
+    }
+
+    // 2. Supervisor / Manager Verification (Review Proofs)
+    // If manager is viewing and there are pending proofs to verify
+    bool hasProofsToVerify = _taskDetail?.assignees.any((a) => a.proof != null && a.proof!.isNotEmpty && (a.status.toLowerCase() == 'submitted' || a.status.toLowerCase() == 'pending_review' || a.status.toLowerCase() == 'verification')) ?? false;
+    
+    if (isManager && (hasProofsToVerify || _taskDetail?.status.toLowerCase() == 'verification')) {
+      return _buildSingleButton(
+        label: "Review Submissions",
+        icon: Icons.fact_check_rounded,
+        color: brandAccent,
+        onPressed: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+               builder: (_) => VerifyUsersProofPage(
+                taskId: _taskDetail!.taskId,
+                taskTitle: _taskDetail!.title,
+              ),
+            ),
+          );
+          if (result == 'refreshed' || result == true) {
+            _fetchTaskDetail();
+          }
+        },
+      );
+    }
+
+    // 3. Escalated Task Actions (Management Actions: Transfer / Executive Directive / Cancel)
+    final bool isEscalatedStatus =
+        !isAssignedToMe &&
+        (widget.taskData['isEscalated'] == true ||
+            (_taskDetail?.isEscalate ?? false) ||
+            (_taskDetail?.category.toUpperCase() == 'DIRECTIVE'));
 
     if (isEscalatedStatus) {
       return _buildEscalatedActions();
     }
 
-    // 0. Directive / Task Request Approval (Accept/Reject)
-    if (widget.taskData['isRequest'] == true) {
-      return _buildApprovalActions();
-    }
-
-    // 2. Pending Proof Submission (For Assignees) — directly open proof upload page
-    if (widget.taskData['isPendingProof'] == true) {
+    // 4. Pending Proof Submission (For Assignees who finished but didn't upload or were rejected)
+    if (widget.taskData['isPendingProof'] == true || assignStatus == 'pending_proof') {
       return _buildSingleButton(
-        label: "Submit Proof",
+        label: "Submit Proof & End",
         icon: Icons.upload_file_rounded,
         color: Colors.orange,
         onPressed: _submitPendingProof,
       );
     }
-    
-    // If faculty is NOT assigned, but viewing a standard task, they might only see "Generate OTP" (handled elsewhere) or nothing.
+
+    // Managers don't "Start" the activity, assignees do.
     if (!isAssignedToMe && isManager) {
-      return const SizedBox.shrink(); // Managers don't "Start" the activity, assignees do.
+      return const SizedBox.shrink();
     }
 
     switch (_activityStatus) {
@@ -1076,41 +1121,9 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         );
 
       case ActivityStatus.IN_PROGRESS:
-        bool isProofTask = _taskDetail?.isDocument == true || (_taskDetail?.closureRules.contains('photo_upload') ?? false);
-        
-        if (isProofTask) {
-          if (_taskDetail?.isPauseAllowed == true) {
-            return Row(
-              children: [
-                Expanded(
-                  child: _buildSingleButton(
-                    label: "Pause",
-                    icon: Icons.pause_rounded,
-                    color: Colors.orange,
-                    onPressed: _pauseActivity,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: _buildSingleButton(
-                    label: "Submit Proof & End",
-                    icon: Icons.upload_file_rounded,
-                    color: brandAccent,
-                    onPressed: _endActivity,
-                  ),
-                ),
-              ],
-            );
-          } else {
-            return _buildSingleButton(
-              label: "Submit Proof & End",
-              icon: Icons.upload_file_rounded,
-              color: brandAccent,
-              onPressed: _endActivity,
-            );
-          }
-        }
+        bool isProofTask =
+            _taskDetail?.isDocument == true ||
+            (_taskDetail?.closureRules.contains('photo_upload') ?? false);
 
         if (_taskDetail?.isPauseAllowed == true) {
           return Row(
@@ -1127,8 +1140,8 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
               Expanded(
                 flex: 2,
                 child: _buildSingleButton(
-                  label: "End Activity",
-                  icon: Icons.stop_rounded,
+                  label: isProofTask ? "Submit Proof & End" : "End Activity",
+                  icon: isProofTask ? Icons.upload_file_rounded : Icons.stop_rounded,
                   color: brandAccent,
                   onPressed: _endActivity,
                 ),
@@ -1137,14 +1150,17 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           );
         } else {
           return _buildSingleButton(
-            label: "End Activity",
-            icon: Icons.stop_rounded,
+            label: isProofTask ? "Submit Proof & End" : "End Activity",
+            icon: isProofTask ? Icons.upload_file_rounded : Icons.stop_rounded,
             color: brandAccent,
             onPressed: _endActivity,
           );
         }
 
       case ActivityStatus.PAUSED:
+        bool isProofTaskPaused =
+            _taskDetail?.isDocument == true ||
+            (_taskDetail?.closureRules.contains('photo_upload') ?? false);
         return Row(
           children: [
             Expanded(
@@ -1159,8 +1175,10 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
             Expanded(
               flex: 2,
               child: _buildSingleButton(
-                label: "End Activity",
-                icon: Icons.stop_rounded,
+                label: isProofTaskPaused ? "Submit Proof & End" : "End Activity",
+                icon: isProofTaskPaused
+                    ? Icons.upload_file_rounded
+                    : Icons.stop_rounded,
                 color: brandAccent,
                 onPressed: _endActivity,
               ),
@@ -1169,7 +1187,6 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         );
 
       case ActivityStatus.COMPLETED:
-        // Task is completed, show completion message
         return Container(
           padding: const EdgeInsets.symmetric(vertical: 20),
           decoration: BoxDecoration(
@@ -1901,8 +1918,8 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   }
   Widget _buildEscalatedActions() {
     return _buildSingleButton(
-      label: "Execute Directive",
-      icon: Icons.flash_on_rounded,
+      label: "Executive Directive",
+      icon: Icons.admin_panel_settings_rounded,
       color: brandAccent,
       onPressed: _handleExecuteDirective,
     );
@@ -1940,6 +1957,19 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   bool _isMissed() {
     if (_taskDetail == null || _taskDetail!.taskTypes.isEmpty) return false;
 
+    // Stricter "Missed" Logic: 
+    // Show "Missed" ONLY if not yet started/completed AND deadline passed.
+    if (_taskDetail!.assignees.isNotEmpty && _currentUserId != null) {
+      final myAssign = _taskDetail!.assignees.where((a) => a.userId == _currentUserId);
+      if (myAssign.isNotEmpty) {
+        final s = myAssign.first.status.toLowerCase();
+        // If it's already in progress, completed, or being verified, it's NOT missed
+        if (s == 'in_progress' || s == 'completed' || s == 'closed' || s == 'verification' || s == 'rejected') {
+          return false;
+        }
+      }
+    }
+
     final taskType = _taskDetail!.taskTypes.first;
     String dateStr = taskType.endDate;
     if (dateStr.isEmpty || dateStr == 'null') dateStr = taskType.startDate;
@@ -1949,22 +1979,45 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     if (timeStr.isEmpty || timeStr == 'null') timeStr = "23:59:59";
 
     try {
-      final timeParts = timeStr.split(':');
-      final int hour = int.parse(timeParts[0]);
-      final int minute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
+      // 1. Try direct parsing (handles ISO strings from backend)
+      DateTime? endDateTime = DateTime.tryParse(dateStr);
 
-      final dateParts = dateStr.split('-');
-      if (dateParts.length != 3) return false;
+      // 2. If it was just a date part (yyyy-MM-dd), we need to combine with timeStr
+      if (endDateTime != null && !dateStr.contains('T') && !dateStr.contains(':')) {
+        final timeParts = timeStr.split(':');
+        final int hour = int.parse(timeParts[0]);
+        final int minute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
+        
+        endDateTime = DateTime(
+          endDateTime.year,
+          endDateTime.month,
+          endDateTime.day,
+          hour,
+          minute,
+        );
+      }
 
-      final endDateTime = DateTime(
-        int.parse(dateParts[0]),
-        int.parse(dateParts[1]),
-        int.parse(dateParts[2]),
-        hour,
-        minute,
-      );
+      if (endDateTime == null) {
+        // Fallback for manual parsing if tryParse failed (unlikely for ISO)
+        final dateParts = dateStr.split('-');
+        if (dateParts.length != 3) return false;
+        
+        final timeParts = timeStr.split(':');
+        final int hour = int.parse(timeParts[0]);
+        final int minute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
 
-      return DateTime.now().isAfter(endDateTime);
+        endDateTime = DateTime(
+          int.parse(dateParts[0]),
+          int.parse(dateParts[1]),
+          int.parse(dateParts[2]),
+          hour,
+          minute,
+        );
+      }
+
+      // Only mark as missed after 1 hour past the deadline
+      final missedThreshold = endDateTime.add(const Duration(hours: 1));
+      return DateTime.now().isAfter(missedThreshold);
     } catch (e) {
       debugPrint("Error calculating missed status: $e");
       return false;
@@ -2002,7 +2055,6 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     if (_taskDetail == null || _taskDetail!.taskTypes.isEmpty) return false;
 
     final taskType = _taskDetail!.taskTypes.first;
-    // Robust date parsing
     String dateStr = taskType.startDate;
     if (dateStr.isEmpty || dateStr == 'null') return false;
 
@@ -2010,20 +2062,40 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     if (timeStr.isEmpty || timeStr == 'null') timeStr = "00:00:00";
 
     try {
-      final timeParts = timeStr.split(':');
-      final int hour = timeParts.length > 0 ? int.parse(timeParts[0]) : 0;
-      final int minute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
+      // 1. Try direct parsing (handles ISO strings)
+      DateTime? startDateTime = DateTime.tryParse(dateStr);
 
-      final dateParts = dateStr.split('-');
-      if (dateParts.length != 3) return false;
+      // 2. Combine with time if only date was provided
+      if (startDateTime != null && !dateStr.contains('T') && !dateStr.contains(':')) {
+        final timeParts = timeStr.split(':');
+        final int hour = timeParts.length > 0 ? int.parse(timeParts[0]) : 0;
+        final int minute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
 
-      final startDateTime = DateTime(
-        int.parse(dateParts[0]),
-        int.parse(dateParts[1]),
-        int.parse(dateParts[2]),
-        hour,
-        minute,
-      );
+        startDateTime = DateTime(
+          startDateTime.year,
+          startDateTime.month,
+          startDateTime.day,
+          hour,
+          minute,
+        );
+      }
+
+      if (startDateTime == null) {
+        final dateParts = dateStr.split('-');
+        if (dateParts.length != 3) return false;
+
+        final timeParts = timeStr.split(':');
+        final int hour = timeParts.length > 0 ? int.parse(timeParts[0]) : 0;
+        final int minute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
+
+        startDateTime = DateTime(
+          int.parse(dateParts[0]),
+          int.parse(dateParts[1]),
+          int.parse(dateParts[2]),
+          hour,
+          minute,
+        );
+      }
 
       return DateTime.now().isBefore(startDateTime);
     } catch (e) {

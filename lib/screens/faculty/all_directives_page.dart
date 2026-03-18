@@ -314,7 +314,7 @@ class _AllDirectivesPageState extends State<AllDirectivesPage> {
                     icon: Icons.assignment_turned_in_rounded,
                     heroTag: heroTag,
                     isRequest: true,
-                    acceptLabel: "Execute Directive",
+                    acceptLabel: "Executive Directive",
                     onAccept: () {
                       if (widget.isBlocked) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -358,6 +358,7 @@ class _AllDirectivesPageState extends State<AllDirectivesPage> {
                             'deadline': timing['end_date'] ?? 'N/A',
                             'completionType': data['type'] ?? 'APPROVAL',
                             'isRequest': true,
+                            'isEscalated': true,
                             'authority': 'Administration',
                             'userRole': widget.userRole,
                           },

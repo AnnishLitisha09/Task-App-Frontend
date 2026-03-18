@@ -144,9 +144,8 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
       final bool isPendingProof = widget.taskData['isPendingProof'] == true;
       final String actionType = widget.taskData['actionType']?.toString() ?? '';
 
-      if (isPendingProof || actionType == 'end' || actionType == 'proof_submit') {
-        // Use submitTaskProof for individual completions/proofs
-        // This only updates the assignment status to 'completed', preserving the task for others.
+      if (isPendingProof || actionType == 'end' || actionType == 'proof_submit' || _pickedFile != null) {
+        // Use submitTaskProof for individual completions/proofs (Multipart)
         await service.submitTaskProof(
           taskId,
           filePath: _pickedFile?.path,
@@ -156,16 +155,11 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
           penalty: widget.taskData['penalty'],
         );
       } else {
-        // Standard task closure flow (for managers or single-user closing)
-        String? proofUrl;
-        if (_pickedFile != null) {
-          proofUrl = "https://storage.link/proof/${_pickedFile!.name}";
-        }
+        // Standard task closure flow (JSON) - only if no file is picked
         await service.closeTask(
           taskId,
           isCompleted: true,
           closureId: requiresProof ? 2 : null,
-          proof: proofUrl,
           obtainedScore: widget.taskData['obtainedScore'],
           penalty: widget.taskData['penalty'],
         );
@@ -469,19 +463,17 @@ class _TaskClosurePageState extends State<TaskClosurePage> {
       buttonLabel = _activeStep == 2 || !requiresOtp
           ? "START TASK"
           : "CONTINUE";
-    } else if (actionType == 'proof_submit') {
-      // Submitting proof for already-accepted task
-      buttonLabel = "SUBMIT PROOF";
-    } else if (actionType == 'end') {
-      // Ending activity
-      buttonLabel = _activeStep == 2 || !requiresOtp
-          ? "FINALIZE CLOSURE"
-          : "CONTINUE";
     } else {
-      // Default closure
-      buttonLabel = _activeStep == 2 || !requiresOtp
-          ? "FINALIZE CLOSURE"
-          : "CONTINUE";
+      // Ending or proof submission - use unified label if proof is required
+      if (requiresProof || isDocumentRequired || actionType == 'proof_submit') {
+        buttonLabel = _activeStep == 2 || !requiresOtp
+            ? "SUBMIT PROOF & END"
+            : "CONTINUE";
+      } else {
+        buttonLabel = _activeStep == 2 || !requiresOtp
+            ? "FINALIZE CLOSURE"
+            : "CONTINUE";
+      }
     }
 
     return Padding(

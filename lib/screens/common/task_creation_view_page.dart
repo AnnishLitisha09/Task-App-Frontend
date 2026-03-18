@@ -251,7 +251,9 @@ class _TaskViewPageState extends State<TaskViewPage> {
                       ),
                     ),
                     Text(
-                      "${DateFormat('MMM dd').format(DateTime.parse(schedule.startDate))} • ${schedule.startTime} - ${schedule.endTime}",
+                      schedule != null
+                          ? "${DateFormat('MMM dd').format(DateTime.parse(schedule.startDate))} • ${schedule.startTime} - ${schedule.endTime}"
+                          : "No schedule set",
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: textDark,

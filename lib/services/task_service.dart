@@ -12,6 +12,36 @@ import '../models/managed_venues_model.dart';
 import '../models/exhaustive_task_model.dart';
 
 class TaskService {
+  Future<Map<String, dynamic>> getTaskDetails(dynamic taskId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}tasks/${taskId.toString()}/details'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // New endpoint returns {success: true, task: {...}}
+        if (data['success'] == true && data['task'] != null) {
+          return data['task'] as Map<String, dynamic>;
+        }
+        return data as Map<String, dynamic>;
+      } else {
+        throw Exception('Failed to load task details: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching task details: $e');
+    }
+  }
+
   Future<TaskDetailModel> getTaskDetail(dynamic taskId) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -248,6 +278,58 @@ class TaskService {
       }
     } catch (e) {
       throw Exception('Error creating task: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> updateTaskUnified(
+    int taskId,
+    Map<String, dynamic> payload, {
+    String? filePath,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final url = Uri.parse('${backendUrl}tasks/$taskId');
+
+      // Use MultipartRequest to support file upload (via PUT)
+      final request = http.MultipartRequest('PUT', url);
+
+      // Add Headers
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+      });
+
+      // Add Fields (JSON payload)
+      payload.forEach((key, value) {
+        if (value != null) {
+          if (value is Map || value is List) {
+            request.fields[key] = jsonEncode(value);
+          } else {
+            request.fields[key] = value.toString();
+          }
+        }
+      });
+
+      // Add File if exists
+      if (filePath != null) {
+        request.files.add(await http.MultipartFile.fromPath('file', filePath));
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        return data;
+      } else {
+        throw Exception(
+            'Failed to update task: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Error updating task: $e');
     }
   }
 

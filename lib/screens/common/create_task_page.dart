@@ -9,8 +9,9 @@ import '../../services/user_service.dart';
 
 class CreateTaskPage extends StatefulWidget {
   final Map<String, dynamic>? initialData;
+  final int? taskId;
 
-  const CreateTaskPage({super.key, this.initialData});
+  const CreateTaskPage({super.key, this.initialData, this.taskId});
 
   @override
   State<CreateTaskPage> createState() => _CreateTaskPageState();
@@ -32,17 +33,24 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   List<dynamic> _taskTitles = [];
   bool _isLoadingVenues = false;
   bool _isLoadingTitles = false;
+  bool _isLoadingDetails = false;
   String? _userRole;
   String? _excelFilePath; // Track uploaded excel file
 
   @override
   void initState() {
     super.initState();
+    _initializeData(); // Always run first so _taskData is set before any async call
     _fetchUserRole();
     _fetchVenues();
     _fetchTaskTitles();
 
-    // 1. Define your full default template
+    if (widget.taskId != null) {
+      _fetchTaskDetails(); // Overwrites _taskData with server data
+    }
+  }
+
+  void _initializeData() {
     final Map<String, dynamic> defaultData = {
       'taskCategory': 'Directive Task',
       'title': '',
@@ -89,8 +97,6 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'selectedDocuments': <String>[],
       'is_document': true,
       'closure_ids': [1],
-      // Bidding task specific
-      'maxAcceptances': 3,
     };
 
     // 1. Start with template defaults
@@ -152,8 +158,169 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           }
         }
       }
+
+      // 6. Handle taskType mapping if it comes from backend
+      if (data['TaskTypes'] != null && data['TaskTypes'] is List && data['TaskTypes'].isNotEmpty) {
+        final typeObj = data['TaskTypes'][0];
+        String backendType = typeObj['task_name'] ?? 'Fixed Time Task';
+        
+        // Map canonical backend names to UI names
+        if (backendType == 'Date-Only / Long Task') {
+          data['taskType'] = 'Task';
+        } else if (backendType == 'Bidding / Nomination Task') {
+          // Fallback if it still exists in DB
+          data['taskType'] = 'Task'; 
+        } else {
+          data['taskType'] = backendType;
+        }
+
+        data['startDate'] = _parseDateString(typeObj['start_date']);
+        data['endDate'] = _parseDateString(typeObj['end_date']);
+        data['selectedDate'] = _parseDateString(typeObj['start_date']);
+        
+        // Pre-fill activityDate and selectedDate for Fixed/Floating
+        if (data['taskType'] == 'Fixed Time Task' || data['taskType'] == 'Floating Task') {
+          data['activityDate'] = data['startDate'];
+          data['selectedDate'] = data['startDate'];
+        }
+
+        data['startTime'] = _parseTimeString(typeObj['start_time']);
+        data['endTime'] = _parseTimeString(typeObj['end_time']);
+        data['maxAcceptances'] = typeObj['max_acceptances'] ?? 3;
+      }
+
+      // 7. Handle Selected Assignees Mapping
+      if (data['selectedAssignees'] == null || (data['selectedAssignees'] as List).isEmpty) {
+        if (data['TaskAssigns'] != null && data['TaskAssigns'] is List) {
+          data['selectedAssignees'] = (data['TaskAssigns'] as List).map((a) {
+            final u = a['User'];
+            if (u == null) return <String, dynamic>{};
+            final details = u['Student'] ?? u['Faculty'] ?? u['Staff'] ?? u['RoleUser'];
+            return {
+              'id': u['user_id'],
+              'user_id': u['user_id'],
+              'name': details?['name'] ?? 'Unknown User',
+              'role': u['role'],
+              'type': 'individual',
+            };
+          }).where((m) => m.isNotEmpty).toList();
+        }
+      }
+
+      // 8. Handle Approval mapping
+      if (data['requiresApproval'] == null && data['requires_approval'] != null) {
+        data['requiresApproval'] = data['requires_approval'];
+      }
+      if (data['approvalAuthority'] == null && data['approver_id'] != null) {
+        data['approvalAuthority'] = {
+          'user_id': data['approver_id'],
+          'id': data['approver_id'],
+          'name': 'Current Approver', // Best effort if name not available
+        };
+      }
     }
     _taskData = data;
+  }
+
+  Future<void> _fetchTaskDetails() async {
+    setState(() => _isLoadingDetails = true);
+    try {
+      final task = await _taskService.getTaskDetails(widget.taskId!);
+      setState(() {
+        _normalizeAndSetData(task);
+        _isLoadingDetails = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingDetails = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error fetching task details: $e")),
+        );
+      }
+      _initializeData(); // Fallback to empty if fetch fails
+    }
+  }
+
+  void _normalizeAndSetData(Map<String, dynamic> rawData) {
+    final Map<String, dynamic> data = Map.from(_taskData);
+
+    // Detect format: exhaustive uses task_info wrapper; new /details endpoint is flat
+    final bool isExhaustive = rawData.containsKey('task_info');
+    final Map<String, dynamic> taskInfo = isExhaustive ? (rawData['task_info'] as Map<String, dynamic>? ?? rawData) : rawData;
+
+    // Schedule key differs: exhaustive = 'schedule', details = 'type_details'
+    final Map<String, dynamic>? schedule = isExhaustive
+        ? rawData['schedule'] as Map<String, dynamic>?
+        : rawData['type_details'] as Map<String, dynamic>?;
+
+    // --- Core Fields ---
+    data['task_id'] = taskInfo['task_id'];
+    data['title'] = taskInfo['title'];
+    data['description'] = taskInfo['description'] ?? '';
+    data['category'] = taskInfo['category'] ?? 'Academic';
+    data['priority'] = _capitalize(taskInfo['priority'] ?? 'Medium');
+    data['score'] = double.tryParse(taskInfo['score']?.toString() ?? '100.0') ?? 100.0;
+    data['isPackageTask'] = taskInfo['is_package'] ?? false;
+    data['requiresApproval'] = taskInfo['is_approved'] ??
+        (rawData['approval_detail']?['status'] == 'approved');
+    data['origin_type'] = taskInfo['origin_type'];
+
+    // --- Task Category ---
+    if (taskInfo['origin_type'] == 'self-log') {
+      data['taskCategory'] = 'Self Log';
+    } else {
+      data['taskCategory'] = 'Directive Task';
+    }
+
+    // --- Schedule ---
+    if (schedule != null) {
+      data['taskType'] = schedule['task_name'] ?? 'Fixed Time Task';
+      data['startDate'] = _parseDateString(schedule['start_date'] ?? '');
+      data['endDate'] = _parseDateString(schedule['end_date'] ?? '');
+      data['selectedDate'] = data['startDate'];
+      data['activityDate'] = data['startDate'];
+      data['startTime'] = _parseTimeString(schedule['start_time']);
+      data['endTime'] = _parseTimeString(schedule['end_time']);
+      data['recurrenceType'] = _capitalize(schedule['recurrence'] ?? 'none');
+      data['venue_id'] = schedule['venue_id'];
+    }
+
+    // --- Assignees ---
+    // Exhaustive: assignees.all[].assignee | Details: assignees[].user
+    final dynamic rawAssignees = (rawData['assignees'] is Map)
+        ? rawData['assignees']['all']
+        : rawData['assignees'];
+
+    if (rawAssignees != null && rawAssignees is List) {
+      data['selectedAssignees'] = rawAssignees.map((a) {
+        final Map<String, dynamic> user = a['user'] ?? a['assignee'] ?? a;
+        return {
+          'id': user['user_id'],
+          'user_id': user['user_id'],
+          'name': user['name'] ?? 'Unknown',
+          'role': user['role'],
+        };
+      }).toList();
+    }
+
+    // --- Closures ---
+    // New details format: closures[].closure_id
+    // Exhaustive / old format: closure_ids[]
+    if (rawData['closures'] != null && rawData['closures'] is List) {
+      data['closure_ids'] = (rawData['closures'] as List)
+          .map((c) => c['closure_id'])
+          .whereType<int>()
+          .toList();
+    } else if (rawData['closure_ids'] != null && rawData['closure_ids'] is List) {
+      data['closure_ids'] = List<int>.from(rawData['closure_ids']);
+    }
+
+    _taskData = data;
+  }
+
+  String _capitalize(String s) {
+    if (s.isEmpty) return s;
+    return s[0].toUpperCase() + s.substring(1).toLowerCase();
   }
 
   Future<void> _fetchVenues() async {
@@ -166,6 +333,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         // Default stays 'None' — only set a venue if user explicitly picks one
       });
     } catch (e) {
+      debugPrint('Error fetching venues: $e');
       setState(() => _isLoadingVenues = false);
     }
   }
@@ -323,6 +491,16 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingDetails) {
+      return Scaffold(
+        backgroundColor: bodyBg,
+        appBar: _buildAppBar(),
+        body: const Center(
+          child: CircularProgressIndicator(color: Color(0xFF6366F1)),
+        ),
+      );
+    }
+
     final bool isSelfLog = _taskData['taskCategory'] == 'Self Log';
     return Scaffold(
       backgroundColor: bodyBg,
@@ -527,7 +705,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     return [
       _modernDropdown(
         "TASK TYPE",
-        ["Fixed Time Task", "Long Task", "Recurring Task", "Bidding Task"],
+        ["Fixed Time Task", "Floating Task", "Task", "Recurring Task"],
         _taskData['taskType'],
         (v) => setState(() {
           _taskData['taskType'] = v;
@@ -630,18 +808,35 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             ),
           ],
         ),
-      ] else if (_taskData['taskType'] == "Bidding Task") ...[
-        _dateTile("VALID FROM", 'startDate'),
+      ] else if (_taskData['taskType'] == "Floating Task") ...[
+        _dateTile("START DATE", 'startDate'),
         const SizedBox(height: 16),
-        _dateTile("VALID UNTIL", 'endDate'),
+        _dateTile("END DATE", 'endDate'),
         const SizedBox(height: 16),
-        _modernField(
-          label: "MAX ACCEPTANCES",
-          hint: "e.g. 3",
-          icon: Icons.people_alt_outlined,
-          isNumber: true,
-          initialValue: _taskData['maxAcceptances']?.toString() ?? '3',
-          onChanged: (v) => _taskData['maxAcceptances'] = int.tryParse(v) ?? 3,
+        Row(
+          children: [
+            Expanded(
+              child: _timePicker(
+                label: "START TIME",
+                time: _taskData['startTime'],
+                onTimePicked: (v) => setState(() {
+                  _taskData['startTime'] = v;
+                  if (_taskData['isPackageTask']) _updatePackageMaxHours();
+                }),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _timePicker(
+                label: "END TIME",
+                time: _taskData['endTime'],
+                onTimePicked: (v) => setState(() {
+                  _taskData['endTime'] = v;
+                  if (_taskData['isPackageTask']) _updatePackageMaxHours();
+                }),
+              ),
+            ),
+          ],
         ),
       ] else ...[
         _dateTile(
@@ -1699,7 +1894,13 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                 const SizedBox(width: 12),
                 Text(
                   isCreationAllowed
-                      ? (isSelfLog ? "Log Achievement" : "Create Directive")
+                      ? (isSelfLog
+                          ? (_taskData['task_id'] != null
+                              ? "Update Log"
+                              : "Log Achievement")
+                          : (_taskData['task_id'] != null
+                              ? "Update Directive"
+                              : "Create Directive"))
                       : "LOCKED: 08:30-16:30",
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
@@ -1840,10 +2041,22 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         'end_date': DateFormat('yyyy-MM-dd').format(_taskData['endDate']),
         'max_acceptances': _taskData['maxAcceptances'] ?? 3,
       };
-    } else {
-      // Default for Long Task and others
+    } else if (_taskData['taskType'] == 'Floating Task') {
       taskTypeData = {
-        'task_name': _taskData['taskType'],
+        'task_name': 'Floating Task',
+        'start_date': DateFormat('yyyy-MM-dd').format(_taskData['startDate']),
+        'end_date': DateFormat('yyyy-MM-dd').format(_taskData['endDate']),
+        'start_time': _taskData['startTime'] != null
+            ? '${_taskData['startTime'].hour.toString().padLeft(2, '0')}:${_taskData['startTime'].minute.toString().padLeft(2, '0')}:00'
+            : '09:00:00',
+        'end_time': _taskData['endTime'] != null
+            ? '${_taskData['endTime'].hour.toString().padLeft(2, '0')}:${_taskData['endTime'].minute.toString().padLeft(2, '0')}:00'
+            : '17:00:00',
+      };
+    } else {
+      // Default for Task (Long Task) and others
+      taskTypeData = {
+        'task_name': _taskData['taskType'] == 'Task' ? 'Date-Only / Long Task' : _taskData['taskType'],
         'start_date': DateFormat('yyyy-MM-dd').format(_taskData['startDate']),
         'end_date': DateFormat('yyyy-MM-dd').format(_taskData['endDate']),
       };
@@ -1870,26 +2083,6 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         .toList();
 
     final bool isMandatory = _taskData['is_mandatory_flag'] ?? false;
-    final bool isBidding = _taskData['taskType'] == 'Bidding Task';
-
-    // For bidding: build assign__groups from dept/role type assignees
-    // For others: use individual assignee_ids
-    List<Map<String, dynamic>> assignGroups = [];
-    if (isBidding) {
-      for (final a in selected) {
-        if (a['type'] == 'dept' || a['type'] == 'role') {
-          assignGroups.add({
-            'role': (a['role'] ?? 'STUDENT').toString().toUpperCase(),
-            if (a['department_id'] != null) 'department_id': a['department_id'],
-          });
-        } else {
-          // Individual in a bidding task — wrap as group with just role
-          assignGroups.add({
-            'role': (a['role'] ?? 'STUDENT').toString().toUpperCase(),
-          });
-        }
-      }
-    }
 
     // Priority Mapping Logic
     int pVal = 2; // Default Medium
@@ -1908,6 +2101,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
     // Build the full payload matching the unified-create API
     final payload = <String, dynamic>{
+      'title': _taskData['title'], // Explicitly include title
       'task_title_id': _taskData['task_title_id'],
       'description': _taskData['description'] ?? '',
       'category': _taskData['category'],
@@ -1974,24 +2168,28 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       payload['is_faculty'] = false;
     }
 
-    // Bidding tasks use group assignment, others use individual IDs
-    if (isBidding) {
-      payload['assign__groups'] = assignGroups;
-    } else {
-      payload['assignee_ids'] = assigneeIds;
-    }
+    // Only use individual IDs (Bidding Task removed)
+    payload['assignee_ids'] = assigneeIds;
 
     try {
-      print("========== DIRECTIVE CREATE PAYLOAD ==========");
+      final isEdit = _taskData['task_id'] != null;
+      print("========== DIRECTIVE ${isEdit ? 'UPDATE' : 'CREATE'} PAYLOAD ==========");
       print(payload.toString());
       print("==============================================");
       final taskService = TaskService();
-      await taskService.createTaskUnified(payload, filePath: _excelFilePath);
+
+      if (isEdit) {
+        await taskService.updateTaskUnified(_taskData['task_id'], payload,
+            filePath: _excelFilePath);
+      } else {
+        await taskService.createTaskUnified(payload, filePath: _excelFilePath);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Task created successfully!'),
+          SnackBar(
+            content: Text(
+                isEdit ? 'Task updated successfully!' : 'Task created successfully!'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
           ),
@@ -2000,7 +2198,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       }
     } catch (e) {
       if (mounted) {
-        _showErrorSnackBar('Failed to create task: $e');
+        _showErrorSnackBar('Failed to ${(_taskData['task_id'] != null) ? 'update' : 'create'} task: $e');
       }
     }
   }
@@ -2065,6 +2263,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
     // Build the unified-create payload for self-log
     final payload = {
+      'title': _taskData['title'], // Explicitly include title
       'task_title_id': _taskData['task_title_id'], // Added task_title_id
       'description': _taskData['description'] ?? '',
       'category': _taskData['category'] ?? 'Academic',
@@ -2083,16 +2282,25 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     };
 
     try {
-      print("========== SELF LOG CREATE PAYLOAD ==========");
+      final isEdit = _taskData['task_id'] != null;
+      print("========== SELF LOG ${isEdit ? 'UPDATE' : 'CREATE'} PAYLOAD ==========");
       print(payload.toString());
       print("=============================================");
       final taskService = TaskService();
-      await taskService.createTaskUnified(payload, filePath: _excelFilePath);
+      
+      if (isEdit) {
+        await taskService.updateTaskUnified(_taskData['task_id'], payload,
+            filePath: _excelFilePath);
+      } else {
+        await taskService.createTaskUnified(payload, filePath: _excelFilePath);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Activity log submitted successfully!'),
+          SnackBar(
+            content: Text(isEdit
+                ? 'Activity log updated successfully!'
+                : 'Activity log submitted successfully!'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
           ),
@@ -2101,7 +2309,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       }
     } catch (e) {
       if (mounted) {
-        _showErrorSnackBar('Failed to submit log: $e');
+        _showErrorSnackBar(
+            'Failed to ${(_taskData['task_id'] != null) ? 'update' : 'submit'} log: $e');
       }
     }
   }

@@ -19,18 +19,61 @@ class _AdminPageState extends State<AdminPage> {
   final ResourceService _resourceService = ResourceService();
   bool _isDownloading = false;
 
-  Future<void> _handleDownloadReport(bool isVenue) async {
+  DateTime _fromDate = DateTime.now().subtract(const Duration(days: 30));
+  DateTime _toDate = DateTime.now();
+
+  Future<void> _selectDateRange() async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      initialDateRange: DateTimeRange(start: _fromDate, end: _toDate),
+      firstDate: DateTime(2023),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: AppTheme.brandAccent,
+              onPrimary: Colors.white,
+              onSurface: AppTheme.textMain,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() {
+        _fromDate = picked.start;
+        _toDate = picked.end;
+      });
+    }
+  }
+
+  Future<void> _handleDownloadReport(int reportType) async {
+    // 0: Venue Overall, 1: Venue Usage (Timed), 2: Resource Inventory
     setState(() => _isDownloading = true);
     try {
+      String label = "";
+      List<int> bytes;
+      
+      if (reportType == 0) {
+        label = "Overall Venue Report";
+        bytes = await _resourceService.downloadVenueReport();
+      } else if (reportType == 1) {
+        label = "Venue Usage Report";
+        final from = DateFormat('yyyy-MM-dd').format(_fromDate);
+        final to = DateFormat('yyyy-MM-dd').format(_toDate);
+        bytes = await _resourceService.getVenueUsageReport(from, to);
+      } else {
+        label = "Resource Inventory Report";
+        bytes = await _resourceService.downloadResourceReport();
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Generating ${isVenue ? 'Venue' : 'Resource'} Report...")),
+        SnackBar(content: Text("Generating $label...")),
       );
 
-      final List<int> bytes = isVenue 
-          ? await _resourceService.downloadVenueReport()
-          : await _resourceService.downloadResourceReport();
-
-      String? fileName = isVenue 
+      String fileName = (reportType == 0 || reportType == 1)
           ? 'admin_venue_utilisation_${DateTime.now().millisecondsSinceEpoch}.xlsx'
           : 'admin_resource_utilisation_${DateTime.now().millisecondsSinceEpoch}.xlsx';
 
@@ -89,11 +132,23 @@ class _AdminPageState extends State<AdminPage> {
                   const SectionHeader(title: "System Reports"),
                   const SizedBox(height: 16),
                   _buildReportCard(
-                    title: "Venue Utilisation Report",
-                    description: "View occupancy and booking trends across all venues.",
+                    title: "Venue Usage (Custom Range)",
+                    description: "From ${DateFormat('MMM dd, yyyy').format(_fromDate)} to ${DateFormat('MMM dd, yyyy').format(_toDate)}",
+                    icon: Icons.date_range_rounded,
+                    color: Colors.orange,
+                    trailing: TextButton(
+                      onPressed: _isDownloading ? null : _selectDateRange,
+                      child: const Text("CHANGE", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    ),
+                    onTap: () => _handleDownloadReport(1),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildReportCard(
+                    title: "Venue Overall Export",
+                    description: "Full master list and current status of all venues.",
                     icon: Icons.analytics_rounded,
                     color: AppTheme.brandAccent,
-                    onTap: () => _handleDownloadReport(true),
+                    onTap: () => _handleDownloadReport(0),
                   ),
                   const SizedBox(height: 16),
                   _buildReportCard(
@@ -101,7 +156,7 @@ class _AdminPageState extends State<AdminPage> {
                     description: "Full breakdown of resources, statuses, and usage logs.",
                     icon: Icons.inventory_2_rounded,
                     color: AppTheme.success,
-                    onTap: () => _handleDownloadReport(false),
+                    onTap: () => _handleDownloadReport(2),
                   ),
                 ]),
               ),
@@ -117,6 +172,7 @@ class _AdminPageState extends State<AdminPage> {
     required String description,
     required IconData icon,
     required Color color,
+    Widget? trailing,
     required VoidCallback onTap,
   }) {
     return Container(
@@ -151,7 +207,7 @@ class _AdminPageState extends State<AdminPage> {
                   ],
                 ),
               ),
-              Icon(
+              trailing ?? Icon(
                 Icons.file_download_rounded,
                 color: AppTheme.textSub.withOpacity(0.5),
               ),

@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../components/skeleton_loader.dart';
 import '../../models/staff_dashboard_model.dart';
 import '../../services/user_service.dart';
+import '../common/task_detail_page.dart';
 
 class AllStaffSchedulePage extends StatefulWidget {
   const AllStaffSchedulePage({super.key});
@@ -187,76 +188,91 @@ class _AllStaffSchedulePageState extends State<AllStaffSchedulePage> {
                   final task = _tasks[index];
                   final color = _getTaskColor(task.status);
                   final icon = _getTaskIcon(task.title);
-                  return Container(
-                        margin: const EdgeInsets.only(bottom: 16),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: brandPrimary.withOpacity(0.04),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
+                  return GestureDetector(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailsPage(
+                          taskData: {
+                            'task_id': task.taskId,
+                            'title': task.title,
+                          },
                         ),
-                        child: Row(
-                          children: [
-                            Container(
-                              height: 48,
-                              width: 48,
-                              decoration: BoxDecoration(
-                                color: color.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: [
+                              BoxShadow(
+                                color: brandPrimary.withOpacity(0.04),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
                               ),
-                              child: Icon(icon, color: color, size: 22),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    task.title,
-                                    style: TextStyle(
-                                      color: textMain,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                height: 48,
+                                width: 48,
+                                decoration: BoxDecoration(
+                                  color: color.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Icon(icon, color: color, size: 22),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      task.title,
+                                      style: TextStyle(
+                                        color: textMain,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    task.timing,
-                                    style: TextStyle(
-                                      color: textSub,
-                                      fontSize: 12,
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      task.timing,
+                                      style: TextStyle(
+                                        color: textSub,
+                                        fontSize: 12,
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: color.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                task.status.toUpperCase(),
-                                style: TextStyle(
-                                  color: color,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
+                                  ],
                                 ),
                               ),
-                            ),
-                          ],
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: color.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  task.status.toUpperCase(),
+                                  style: TextStyle(
+                                    color: color,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Icon(Icons.chevron_right_rounded, color: textSub, size: 20),
+                            ],
+                          ),
                         ),
-                      )
+                  )
                       .animate()
                       .fadeIn(delay: (60 * index).ms)
                       .slideX(begin: 0.05, end: 0);

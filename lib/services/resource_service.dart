@@ -39,7 +39,7 @@ class ResourceService {
           dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
       final response = await http.get(
-        Uri.parse('${backendUrl}resources/venues'),
+        Uri.parse('${backendUrl}tasks/venues/all'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -47,13 +47,44 @@ class ResourceService {
       );
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        return data.cast<Map<String, dynamic>>();
+        final dynamic body = jsonDecode(response.body);
+        // API returns { success: true, count: N, venues: [...] }
+        if (body is Map && body['venues'] != null) {
+          return (body['venues'] as List).cast<Map<String, dynamic>>();
+        }
+        // Fallback: if it happens to return a plain list
+        if (body is List) return body.cast<Map<String, dynamic>>();
+        return [];
       } else {
         throw Exception('Failed to load venues: ${response.statusCode}');
       }
     } catch (e) {
       throw Exception('Error fetching venues: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> getVenueBasicDetails(int venueId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}tasks/venue/$venueId/basic'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        throw Exception('Failed to load venue details: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching venue details: $e');
     }
   }
 
@@ -359,6 +390,29 @@ class ResourceService {
       }
     } catch (e) {
       throw Exception('Error downloading resource report: $e');
+    }
+  }
+
+  Future<List<int>> getVenueUsageReport(String from, String to) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl = dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}resources/venues/usage-report?from=$from&to=$to'),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return response.bodyBytes;
+      } else {
+        throw Exception('Failed to download usage report: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error downloading usage report: $e');
     }
   }
 }
