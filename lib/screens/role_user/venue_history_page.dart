@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:intl/intl.dart';
 import '../../theme/app_theme.dart';
 import '../../services/task_service.dart';
 import '../../models/venue_history_model.dart';
@@ -144,7 +145,7 @@ class _VenueHistoryViewAllPageState extends State<VenueHistoryViewAllPage> {
             ),
           ),
           Text(
-            item.date,
+            _formatItemDate(item.date),
             style: const TextStyle(
               color: Colors.black,
               fontSize: 12,
@@ -154,6 +155,17 @@ class _VenueHistoryViewAllPageState extends State<VenueHistoryViewAllPage> {
         ],
       ),
     ).animate().fadeIn().slideX(begin: 0.1);
+  }
+
+  String _formatItemDate(String dateStr) {
+    if (dateStr.isEmpty) return "N/A";
+    try {
+      final dt = DateTime.parse(dateStr);
+      return DateFormat('MMM dd, yyyy').format(dt);
+    } catch (e) {
+      debugPrint("Error parsing date: $dateStr - $e");
+      return dateStr;
+    }
   }
 }
 

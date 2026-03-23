@@ -1,3 +1,5 @@
+import 'task_action_button.dart';
+
 class ExhaustiveTaskModel {
   final TaskInfo taskInfo;
   final ScheduleInfo? schedule;
@@ -11,6 +13,7 @@ class ExhaustiveTaskModel {
   final List<HistoryLog> historyLogs;
   final List<Escalation> escalations;
   final List<dynamic> subTasks;
+  final TaskActionButton? actionButton;
 
   ExhaustiveTaskModel({
     required this.taskInfo,
@@ -25,6 +28,7 @@ class ExhaustiveTaskModel {
     required this.historyLogs,
     required this.escalations,
     required this.subTasks,
+    this.actionButton,
   });
 
   factory ExhaustiveTaskModel.fromJson(Map<String, dynamic> json) {
@@ -55,6 +59,7 @@ class ExhaustiveTaskModel {
               .toList() ??
           [],
       subTasks: json['sub_tasks'] ?? [],
+      actionButton: json['action_button'] != null ? TaskActionButton.fromJson(json['action_button']) : null,
     );
   }
 }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/exhaustive_task_model.dart';
+import '../../models/task_action_button.dart';
 import '../../services/task_service.dart';
+import '../../screens/common/user_selection_page.dart';
 
 class TaskViewPage extends StatefulWidget {
   final Map<String, dynamic> taskData;
@@ -31,7 +33,7 @@ class _TaskViewPageState extends State<TaskViewPage> {
 
   Future<void> _fetchDetails() async {
     try {
-      final taskId = widget.taskData['task_id'] ?? widget.taskData['taskId'];
+      final taskId = widget.taskData['task_id'] ?? widget.taskData['taskId'] ?? widget.taskData['id'];
       if (taskId == null) throw Exception("Task ID is missing");
 
       final data = await _taskService.getExhaustiveTaskDetail(
@@ -140,6 +142,12 @@ class _TaskViewPageState extends State<TaskViewPage> {
                 _sectionHeader("Assignees"),
                 _buildAssigneeList(_exhaustiveData!.assignments),
                 const SizedBox(height: 32),
+
+                if (_exhaustiveData!.subTasks.isNotEmpty) ...[
+                  _sectionHeader("Package Sub-Tasks"),
+                  _buildSubTasksList(_exhaustiveData!.subTasks),
+                  const SizedBox(height: 32),
+                ],
 
                 _sectionHeader("History & Timeline"),
                 _buildHistoryTimeline(_exhaustiveData!.historyLogs),
@@ -634,10 +642,18 @@ class _TaskViewPageState extends State<TaskViewPage> {
   }
 
   Widget _buildActionButton(String status) {
+    final TaskActionButton? actionButton = _exhaustiveData?.actionButton;
+    if (actionButton == null) return const SizedBox.shrink();
+
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: () {},
+        onPressed: _isLoading
+            ? null
+            : () => _handleTaskManagement(
+                  isDirective: actionButton.type == 'escalated',
+                  forceReschedule: actionButton.action == 'reschedule',
+                ),
         style: ElevatedButton.styleFrom(
           backgroundColor: accent,
           padding: const EdgeInsets.symmetric(vertical: 20),
@@ -645,14 +661,20 @@ class _TaskViewPageState extends State<TaskViewPage> {
             borderRadius: BorderRadius.circular(20),
           ),
         ),
-        child: const Text(
-          "MANAGE DIRECTIVE",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-            color: Colors.white,
-          ),
-        ),
+        child: _isLoading
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                    color: Colors.white, strokeWidth: 2))
+            : Text(
+                actionButton.label.toUpperCase(),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: Colors.white,
+                ),
+              ),
       ),
     );
   }
@@ -691,5 +713,187 @@ class _TaskViewPageState extends State<TaskViewPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildSubTasksList(List<dynamic> subTasks) {
+    return Column(
+      children: subTasks.map((t) {
+        final title = t['title'] ?? t['task_name'] ?? 'Sub-task';
+        final desc = t['description'] ?? '';
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade100),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.check_circle_outline, color: accent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    if (desc.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4.0),
+                        child: Text(desc, style: TextStyle(color: textLight, fontSize: 12, height: 1.3)),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  bool _isTaskExpired() {
+    if (_exhaustiveData?.schedule == null) return false;
+    try {
+      final schedule = _exhaustiveData!.schedule!;
+      final dateStr = schedule.endDate.split('T')[0]; // Handle T00:00:00.000Z
+      final timeStr = schedule.endTime;
+
+      // Extract hours and minutes from "HH:mm:ss" or "HH:mm"
+      final timeParts = timeStr.split(':');
+      final hour = int.parse(timeParts[0]);
+      final minute = int.parse(timeParts[1]);
+
+      final deadline = DateTime.parse(dateStr).add(Duration(hours: hour, minutes: minute));
+      return DateTime.now().isAfter(deadline);
+    } catch (e) {
+      debugPrint("Error checking expiry: $e");
+      return false;
+    }
+  }
+
+  Future<void> _handleTaskManagement({required bool isDirective, bool forceReschedule = false}) async {
+    final taskId = _exhaustiveData?.taskInfo.taskId ??
+        int.tryParse(widget.taskData['task_id']?.toString() ?? widget.taskData['id']?.toString() ?? '') ??
+        0;
+    if (taskId == 0) return;
+
+    if (forceReschedule || _isTaskExpired()) {
+      bool? confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Task Expired"),
+          content: const Text("This task's scheduled time has passed. Would you like to reschedule it for yourself and execute?"),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
+            ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text("Reschedule")),
+          ],
+        ),
+      );
+
+      if (confirm == true) {
+        if (!mounted) return;
+        await _showRescheduleDialog(taskId);
+      }
+      return;
+    }
+
+    // Direct self-assign if not expired
+    setState(() => _isLoading = true);
+    await _selfAssign(taskId);
+  }
+
+  Future<void> _showRescheduleDialog(int taskId) async {
+    DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 30)),
+    );
+
+    if (pickedDate == null) return;
+    if (!mounted) return;
+
+    TimeOfDay? pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+
+    if (pickedTime == null) return;
+    if (!mounted) return;
+
+    // New: User Selection for "respected assignees"
+    final List<Map<String, dynamic>>? selectedUsers = await Navigator.push<List<Map<String, dynamic>>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const UserSelectionPage(
+          multiSelect: true,
+          // You might want to limit roles here based on hierarchy, 
+          // but for management/escalated we allow broad selection.
+        ),
+      ),
+    );
+    
+    if (!mounted) return;
+
+    // If cancelled, don't proceed
+    if (selectedUsers == null) return;
+
+    final combined = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute);
+    final endDateTime = combined.add(const Duration(hours: 1));
+
+    final String dateStr = DateFormat('yyyy-MM-dd').format(combined);
+    final String timeStr = DateFormat('HH:mm:ss').format(combined);
+    final String endTimeStr = DateFormat('HH:mm:ss').format(endDateTime);
+
+    setState(() => _isLoading = true);
+    try {
+      final List<int> facultyIds = selectedUsers
+          .map((u) => int.tryParse((u['user_id'] ?? u['id']).toString()) ?? 0)
+          .where((id) => id != 0)
+          .toList();
+
+      // Update the task schedule and assignees
+      await _taskService.updateTaskUnified(taskId, {
+        'start_date': dateStr,
+        'end_date': DateFormat('yyyy-MM-dd').format(endDateTime),
+        'start_time': timeStr,
+        'end_time': endTimeStr,
+        'faculty_ids': facultyIds,
+      });
+      
+      // If the current user is in the facultyIds, we don't strictly need selfAssignTask 
+      // as updateTaskUnified with faculty_ids should handle assignment. 
+      // But user said "make the task for themselves AND respected assignees".
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Task rescheduled and assigned successfully!"), backgroundColor: Colors.green),
+        );
+        _fetchDetails();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  Future<void> _selfAssign(int taskId) async {
+    try {
+      await _taskService.selfAssignTask(taskId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Task self-assigned successfully!"), backgroundColor: Colors.green),
+        );
+        _fetchDetails();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red));
+      }
+    }
   }
 }

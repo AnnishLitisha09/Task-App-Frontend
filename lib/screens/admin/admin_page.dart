@@ -7,6 +7,8 @@ import '../../theme/app_theme.dart';
 import '../../components/custom_app_bar.dart';
 import '../../components/section_header.dart';
 import '../../services/resource_service.dart';
+import '../../services/notification_service.dart';
+
 
 class AdminPage extends StatefulWidget {
   const AdminPage({super.key});
@@ -21,6 +23,21 @@ class _AdminPageState extends State<AdminPage> {
 
   DateTime _fromDate = DateTime.now().subtract(const Duration(days: 30));
   DateTime _toDate = DateTime.now();
+  int _unreadNotifications = 0;
+  final NotificationService _notificationService = NotificationService();
+ 
+   @override
+   void initState() {
+     super.initState();
+     _fetchUnreadNotifications();
+   }
+ 
+   Future<void> _fetchUnreadNotifications() async {
+     try {
+       final count = await _notificationService.getUnreadCount();
+       if (mounted) setState(() => _unreadNotifications = count);
+     } catch (_) {}
+   }
 
   Future<void> _selectDateRange() async {
     final DateTimeRange? picked = await showDateRangePicker(
@@ -123,7 +140,7 @@ class _AdminPageState extends State<AdminPage> {
             CustomAppBar(
               title: "Admin Dashboard",
               date: formattedDate,
-              notificationCount: 0,
+              notificationCount: _unreadNotifications,
             ),
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),

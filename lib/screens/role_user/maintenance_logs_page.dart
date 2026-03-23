@@ -19,8 +19,8 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
   
   // Filtering state
   DateTime? _selectedDate = DateTime.now();
-  int? _selectedVenueFilter;
-  bool _isFilterExpanded = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = "";
 
   @override
   void initState() {
@@ -30,10 +30,6 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
 
   Future<void> _initData() async {
     await _fetchVenues();
-    // Auto-select venue if only one is available
-    if (_venues.length == 1) {
-      _selectedVenueFilter = _venues[0]['venue_id'] ?? _venues[0]['id'];
-    }
     _fetchLogs();
   }
 
@@ -56,7 +52,7 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
           : "${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}";
       
       final logs = await _resourceService.getMaintenanceLogs(
-        venueId: _selectedVenueFilter,
+        venueId: null, // Removed venue filter per user request
         date: dateStr,
       );
       setState(() {
@@ -73,9 +69,9 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
     final titleController = TextEditingController();
     final descriptionController = TextEditingController();
     final costController = TextEditingController();
-    // Pre-select venue if filtered or if only one exists
-    int? selectedVenueId = _selectedVenueFilter;
-    if (selectedVenueId == null && _venues.length == 1) {
+    // Pre-select venue if only one exists
+    int? selectedVenueId;
+    if (_venues.length == 1) {
       selectedVenueId = _venues[0]['venue_id'] ?? _venues[0]['id'];
     }
     String selectedCategory = 'general';
@@ -93,7 +89,7 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
             style: AppTheme.h1.copyWith(fontSize: 24),
           ),
           content: SizedBox(
-            width: 600,
+            width: 450,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -164,7 +160,7 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
                 style: TextStyle(
                   color: AppTheme.textSub,
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
+                  fontSize: 11,
                 ),
               ),
             ),
@@ -201,8 +197,8 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
                 backgroundColor: AppTheme.brandAccent,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 20,
+                  horizontal: 24,
+                  vertical: 14,
                 ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
@@ -280,7 +276,7 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: current,
+          initialValue: current,
           items: items
               .map(
                 (e) => DropdownMenuItem(
@@ -353,16 +349,16 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
                     padding: EdgeInsets.all(20),
                     child: DashboardSkeleton(),
                   )
-                : _logs.isEmpty 
+                : _filteredLogs.isEmpty 
                   ? _buildEmptyState()
                   : RefreshIndicator(
                       onRefresh: _fetchLogs,
                       color: AppTheme.brandAccent,
                       child: ListView.builder(
                         padding: const EdgeInsets.fromLTRB(24, 10, 24, 100),
-                        itemCount: _logs.length,
+                        itemCount: _filteredLogs.length,
                         itemBuilder: (context, index) {
-                          final log = _logs[index];
+                          final log = _filteredLogs[index];
                           final String status = (log['status'] ?? 'pending').toLowerCase();
                           final bool isDone = status == 'completed';
                           final color = isDone
@@ -378,7 +374,7 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
                           final String actionTaken = log['description'] ?? 'No details provided.';
 
                           return Container(
-                                margin: const EdgeInsets.only(bottom: 24),
+                                margin: const EdgeInsets.only(bottom: 16),
                                 decoration: AppTheme.cardDecoration,
                                 clipBehavior: Clip.antiAlias,
                                 child: ExpansionTile(
@@ -388,7 +384,7 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
                                   collapsedShape: const RoundedRectangleBorder(
                                     side: BorderSide.none,
                                   ),
-                                  tilePadding: const EdgeInsets.all(20),
+                                  tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                   leading: Container(
                                     padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
@@ -403,7 +399,7 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
                                   ),
                                   title: Text(
                                     title,
-                                    style: AppTheme.h1.copyWith(fontSize: 20),
+                                    style: AppTheme.h1.copyWith(fontSize: 16),
                                   ),
                                   subtitle: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -433,7 +429,7 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
                                     children: [
                                       Text(
                                         cost,
-                                        style: AppTheme.h1.copyWith(fontSize: 20),
+                                        style: AppTheme.h1.copyWith(fontSize: 16),
                                       ),
                                       Text(
                                         status.toUpperCase(),
@@ -449,7 +445,7 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
                                   children: [
                                     Container(
                                       width: double.infinity,
-                                      padding: const EdgeInsets.all(28),
+                                      padding: const EdgeInsets.all(20),
                                       color: AppTheme.surfaceColor.withOpacity(0.5),
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -460,11 +456,11 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
                                               fontSize: 11,
                                             ),
                                           ),
-                                          const SizedBox(height: 20),
+                                           const SizedBox(height: 12),
                                           _detailRow("CATEGORY", (log['category'] ?? 'General').toUpperCase()),
                                           _detailRow("DATE", date),
                                           _detailRow("ID", "#LOG-${log['id'] ?? '??'}"),
-                                          const Divider(height: 40),
+                                           const Divider(height: 32),
                                           Text(
                                             "RECORDS / ACTION TAKEN",
                                             style: AppTheme.overline.copyWith(
@@ -477,7 +473,7 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
                                             style: AppTheme.bodySub.copyWith(
                                               color: AppTheme.textMain,
                                               height: 1.6,
-                                              fontSize: 15,
+                                              fontSize: 14,
                                             ),
                                           ),
                                         ],
@@ -498,6 +494,17 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
     );
   }
 
+  List<Map<String, dynamic>> get _filteredLogs {
+    if (_searchQuery.isEmpty) return _logs;
+    final query = _searchQuery.toLowerCase();
+    return _logs.where((log) {
+      final title = (log['issue_title'] ?? '').toString().toLowerCase();
+      final venue = (log['Venue'] != null ? log['Venue']['name'] : 'Venue ${log['venue_id']}').toString().toLowerCase();
+      final desc = (log['description'] ?? '').toString().toLowerCase();
+      return title.contains(query) || venue.contains(query) || desc.contains(query);
+    }).toList();
+  }
+
   Widget _buildFilterBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -507,123 +514,90 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
       ),
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () async {
-                    final date = await showDatePicker(
-                      context: context,
-                      initialDate: _selectedDate ?? DateTime.now(),
-                      firstDate: DateTime(2024),
-                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                      builder: (context, child) {
-                        return Theme(
-                          data: Theme.of(context).copyWith(
-                            colorScheme: const ColorScheme.light(
-                              primary: AppTheme.brandAccent,
-                              onPrimary: Colors.white,
-                              onSurface: AppTheme.textMain,
-                            ),
-                          ),
-                          child: child!,
-                        );
-                      },
-                    );
-                    if (date != null) {
-                      setState(() => _selectedDate = date);
-                      _fetchLogs();
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceColor,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.calendar_today_rounded, size: 18, color: AppTheme.brandAccent),
-                        const SizedBox(width: 12),
-                        Text(
-                          _selectedDate == null 
-                            ? "All History" 
-                            : "${_selectedDate!.day} ${_selectedDate!.month == 1 ? 'Jan' : _selectedDate!.month == 2 ? 'Feb' : _selectedDate!.month == 3 ? 'Mar' : _selectedDate!.month == 4 ? 'Apr' : _selectedDate!.month == 5 ? 'May' : _selectedDate!.month == 6 ? 'Jun' : _selectedDate!.month == 7 ? 'Jul' : _selectedDate!.month == 8 ? 'Aug' : _selectedDate!.month == 9 ? 'Sep' : _selectedDate!.month == 10 ? 'Oct' : _selectedDate!.month == 11 ? 'Nov' : 'Dec'} ${_selectedDate!.year}",
-                          style: AppTheme.bodyMain.copyWith(
-                            fontSize: 14,
-                            color: _selectedDate == null ? AppTheme.textSub : AppTheme.textMain,
-                          ),
-                        ),
-                        if (_selectedDate != null) ...[
-                          const Spacer(),
-                          GestureDetector(
-                            onTap: () {
-                              setState(() => _selectedDate = null);
-                              _fetchLogs();
-                            },
-                            child: Icon(Icons.close_rounded, size: 16, color: AppTheme.textSub),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ).animate().fadeIn().slideX(begin: -0.1),
-                ),
+          TextField(
+            controller: _searchController,
+            onChanged: (val) => setState(() => _searchQuery = val),
+            decoration: InputDecoration(
+              hintText: "Search maintenance logs...",
+              prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.brandAccent),
+              suffixIcon: _searchQuery.isNotEmpty 
+                ? IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = "");
+                    },
+                  )
+                : null,
+              filled: true,
+              fillColor: AppTheme.surfaceColor,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
               ),
-              const SizedBox(width: 12),
-              IconButton(
-                onPressed: () => setState(() => _isFilterExpanded = !_isFilterExpanded),
-                icon: Icon(
-                  _isFilterExpanded ? Icons.filter_list_off_rounded : Icons.filter_list_rounded,
-                  color: _selectedVenueFilter != null ? AppTheme.brandAccent : AppTheme.textSub,
-                ),
-                style: IconButton.styleFrom(
-                  backgroundColor: AppTheme.surfaceColor,
-                  padding: const EdgeInsets.all(12),
-                ),
+            ),
+          ).animate().fadeIn().slideX(begin: -0.1),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () async {
+              final date = await showDatePicker(
+                context: context,
+                initialDate: _selectedDate ?? DateTime.now(),
+                firstDate: DateTime(2024),
+                lastDate: DateTime.now().add(const Duration(days: 365)),
+                builder: (context, child) {
+                  return Theme(
+                    data: Theme.of(context).copyWith(
+                      colorScheme: const ColorScheme.light(
+                        primary: AppTheme.brandAccent,
+                        onPrimary: Colors.white,
+                        onSurface: AppTheme.textMain,
+                      ),
+                    ),
+                    child: child!,
+                  );
+                },
+              );
+              if (date != null) {
+                setState(() => _selectedDate = date);
+                _fetchLogs();
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceColor,
+                borderRadius: BorderRadius.circular(12),
               ),
-            ],
-          ),
-          if (_isFilterExpanded) ...[
-            const SizedBox(height: 12),
-            Container(
-              height: 40,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
+              child: Row(
                 children: [
-                  _buildFilterChip(null, "All Venues"),
-                  ..._venues.map((v) => _buildFilterChip(v['venue_id'] ?? v['id'], v['name'])),
+                  const Icon(Icons.calendar_today_rounded, size: 18, color: AppTheme.brandAccent),
+                  const SizedBox(width: 12),
+                  Text(
+                    _selectedDate == null 
+                      ? "All History" 
+                      : "${_selectedDate!.day} ${_selectedDate!.month == 1 ? 'Jan' : _selectedDate!.month == 2 ? 'Feb' : _selectedDate!.month == 3 ? 'Mar' : _selectedDate!.month == 4 ? 'Apr' : _selectedDate!.month == 5 ? 'May' : _selectedDate!.month == 6 ? 'Jun' : _selectedDate!.month == 7 ? 'Jul' : _selectedDate!.month == 8 ? 'Aug' : _selectedDate!.month == 9 ? 'Sep' : _selectedDate!.month == 10 ? 'Oct' : _selectedDate!.month == 11 ? 'Nov' : 'Dec'} ${_selectedDate!.year}",
+                    style: AppTheme.bodyMain.copyWith(
+                      fontSize: 14,
+                      color: _selectedDate == null ? AppTheme.textSub : AppTheme.textMain,
+                    ),
+                  ),
+                  if (_selectedDate != null) ...[
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() => _selectedDate = null);
+                        _fetchLogs();
+                      },
+                      child: Icon(Icons.close_rounded, size: 16, color: AppTheme.textSub),
+                    ),
+                  ],
                 ],
               ),
-            ).animate().fadeIn(),
-          ],
+            ),
+          ).animate().fadeIn().slideX(begin: 0.1),
         ],
-      ),
-    );
-  }
-
-  Widget _buildFilterChip(int? id, String label) {
-    final isSelected = _selectedVenueFilter == id;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: isSelected,
-        onSelected: (selected) {
-          setState(() => _selectedVenueFilter = id);
-          _fetchLogs();
-        },
-        selectedColor: AppTheme.brandAccent.withOpacity(0.1),
-        labelStyle: TextStyle(
-          color: isSelected ? AppTheme.brandAccent : AppTheme.textSub,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          fontSize: 12,
-        ),
-        checkmarkColor: AppTheme.brandAccent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        side: BorderSide(
-          color: isSelected ? AppTheme.brandAccent : AppTheme.dividerColor,
-        ),
-        backgroundColor: Colors.white,
       ),
     );
   }
@@ -651,14 +625,14 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
 
   Widget _detailRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
             label,
             style: AppTheme.caption.copyWith(
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -667,7 +641,7 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
             style: AppTheme.bodySub.copyWith(
               color: AppTheme.textMain,
               fontWeight: FontWeight.bold,
-              fontSize: 15,
+              fontSize: 14,
             ),
           ),
         ],

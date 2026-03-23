@@ -16,6 +16,7 @@ class TaskCard extends StatelessWidget {
   final VoidCallback? onTransfer;
   final String? acceptLabel;
   final String? rejectLabel;
+  final Map<String, dynamic>? actionButton;
 
   const TaskCard({
     super.key,
@@ -32,6 +33,7 @@ class TaskCard extends StatelessWidget {
     this.onTransfer,
     this.acceptLabel,
     this.rejectLabel,
+    this.actionButton,
   });
 
   @override
@@ -118,12 +120,13 @@ class TaskCard extends StatelessWidget {
                 isFullWidth: true,
               ),
             ],
-          ] else if (onTransfer != null) ...[
+          ],
+          if (actionButton != null) ...[
             const SizedBox(height: 16),
             _miniActionBtn(
-              "Transfer Task",
-              AppTheme.brandAccent,
-              onTransfer,
+              (actionButton!['label'] as String).toUpperCase(),
+              (actionButton!['label'] as String).contains('proof') ? Colors.blue : AppTheme.brandAccent,
+              onTap, // On dashboard, clicking the button usually goes to details or we can add onAction
               isFullWidth: true,
             ),
           ],

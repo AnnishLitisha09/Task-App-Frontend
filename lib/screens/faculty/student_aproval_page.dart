@@ -188,7 +188,7 @@ class _StudentAprovalPageState extends State<StudentAprovalPage> {
   }
 
   Widget _buildSkeletonApprovals() {
-    Widget _shimmer({
+    Widget shimmer({
       double w = double.infinity,
       double h = 14,
       double r = 8,
@@ -223,30 +223,30 @@ class _StudentAprovalPageState extends State<StudentAprovalPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _shimmer(h: 18, r: 8),
+                      shimmer(h: 18, r: 8),
                       const SizedBox(height: 6),
-                      _shimmer(w: 110, h: 12, r: 6),
+                      shimmer(w: 110, h: 12, r: 6),
                     ],
                   ),
                 ),
                 const SizedBox(width: 12),
-                _shimmer(w: 70, h: 26, r: 8),
+                shimmer(w: 70, h: 26, r: 8),
               ],
             ),
             const SizedBox(height: 24),
             Row(
               children: [
-                _shimmer(w: 60, h: 38, r: 10),
+                shimmer(w: 60, h: 38, r: 10),
                 const SizedBox(width: 12),
-                _shimmer(w: 24, h: 18, r: 6),
+                shimmer(w: 24, h: 18, r: 6),
                 const SizedBox(width: 12),
-                _shimmer(w: 60, h: 38, r: 10),
+                shimmer(w: 60, h: 38, r: 10),
               ],
             ),
             const SizedBox(height: 20),
-            _shimmer(h: 12, r: 6),
+            shimmer(h: 12, r: 6),
             const SizedBox(height: 6),
-            _shimmer(w: 200, h: 12, r: 6),
+            shimmer(w: 200, h: 12, r: 6),
           ],
         ),
       ).animate().fadeIn(delay: (i * 60).ms),

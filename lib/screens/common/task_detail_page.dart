@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../models/task_action_button.dart';
 
 import 'package:intl/intl.dart';
 import '../../models/task_detail_model.dart';
@@ -241,15 +242,42 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         ),
       ),
       actions: [
-        PopupMenuButton<String>(
-          icon: Icon(Icons.more_horiz_rounded, color: textSub),
-          onSelected: _handleMenuAction,
-          itemBuilder: (context) {
-            final bool isPendingProof = widget.taskData['isPendingProof'] == true ||
-                widget.taskData['completionType'] == 'PROOF_SUBMIT';
+        if (_activityStatus != ActivityStatus.COMPLETED &&
+            widget.viewMode != 'viewonly' &&
+            !['student', 'staff'].contains(_currentUserRole?.toLowerCase()))
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_horiz_rounded, color: textSub),
+            onSelected: _handleMenuAction,
+            itemBuilder: (context) {
+              final bool isPendingProof = widget.taskData['isPendingProof'] == true ||
+                  widget.taskData['completionType'] == 'PROOF_SUBMIT';
 
-            if (isPendingProof) {
+              if (isPendingProof) {
+                return [
+                  const PopupMenuItem(
+                    value: 'cancel',
+                    child: Row(
+                      children: [
+                        Icon(Icons.cancel_outlined, size: 20, color: Colors.red),
+                        SizedBox(width: 12),
+                        Text("Cancel Task", style: TextStyle(color: Colors.red)),
+                      ],
+                    ),
+                  ),
+                ];
+              }
+
               return [
+                const PopupMenuItem(
+                  value: 'transfer',
+                  child: Row(
+                    children: [
+                      Icon(Icons.swap_horiz_rounded, size: 20),
+                      SizedBox(width: 12),
+                      Text("Transfer Task"),
+                    ],
+                  ),
+                ),
                 const PopupMenuItem(
                   value: 'cancel',
                   child: Row(
@@ -261,32 +289,8 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                   ),
                 ),
               ];
-            }
-
-            return [
-              const PopupMenuItem(
-                value: 'transfer',
-                child: Row(
-                  children: [
-                    Icon(Icons.swap_horiz_rounded, size: 20),
-                    SizedBox(width: 12),
-                    Text("Transfer Task"),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'cancel',
-                child: Row(
-                  children: [
-                    Icon(Icons.cancel_outlined, size: 20, color: Colors.red),
-                    SizedBox(width: 12),
-                    Text("Cancel Task", style: TextStyle(color: Colors.red)),
-                  ],
-                ),
-              ),
-            ];
-          },
-        ),
+            },
+          ),
         const SizedBox(width: 8),
       ],
     );
@@ -330,8 +334,9 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         } catch (e) {
           if (mounted) {
             setState(() => _isLoading = false);
+            final errorMsg = e.toString().replaceAll('Exception: ', '');
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Transfer failed: $e"), backgroundColor: destructive),
+              SnackBar(content: Text("Transfer failed: $errorMsg"), backgroundColor: destructive),
             );
           }
         }
@@ -351,14 +356,15 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           );
           Navigator.pop(context, "cancelled");
         }
-      } catch (e) {
-        if (mounted) {
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Cancellation failed: $e"), backgroundColor: destructive),
-          );
+        } catch (e) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            final errorMsg = e.toString().replaceAll('Exception: ', '');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Cancellation failed: $errorMsg"), backgroundColor: destructive),
+            );
+          }
         }
-      }
     }
   }
 
@@ -956,6 +962,40 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     );
   }
 
+  /// Approve the task as the designated higher-authority approver.
+  Future<void> _approveTask() async {
+    final taskId =
+        int.tryParse(
+          widget.taskData['task_id']?.toString() ??
+              widget.taskData['id']?.toString() ??
+              '',
+        ) ??
+        0;
+    if (taskId == 0) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await TaskService().approveTask(taskId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Task approved successfully!'),
+            backgroundColor: Color(0xFF22c55e),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        _fetchTaskDetail();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to approve task: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _handleApprovalAction(bool approve) async {
     final taskId =
         int.tryParse(
@@ -989,7 +1029,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e"), backgroundColor: destructive),
+          SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: destructive),
         );
       }
     }
@@ -1027,199 +1067,170 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     );
   }
 
-  Widget _buildActualActionButtons() {
-    final bool isAssignedToMe =
-        _taskDetail?.assignees.any((a) => a.userId == _currentUserId) ?? false;
-    final bool isManager =
-        _currentUserId != null &&
-        (_currentUserId == _taskDetail?.creatorId ||
-            _currentUserId == _taskDetail?.facultyId);
-
-    // Find current user's assignment
-    final myAssign = _taskDetail?.assignees.firstWhere(
-      (a) => a.userId == _currentUserId,
-      orElse: () => _taskDetail!.assignees.first,
-    );
-
-    final String assignStatus = myAssign?.status.toLowerCase() ?? '';
-    final bool isPendingAcceptance =
-        assignStatus == 'pending' || assignStatus == 'requested';
-
-    // 1. Task Request / Directive Approval (Accept/Reject)
-    // Show if explicitly requested via widget data OR if the assignment is genuinely pending
-    if (widget.taskData['isRequest'] == true || isPendingAcceptance) {
-      if (isAssignedToMe && isPendingAcceptance) {
-        return _buildApprovalActions();
-      }
-    }
-
-    // 2. Supervisor / Manager Verification (Review Proofs)
-    // If manager is viewing and there are pending proofs to verify
-    bool hasProofsToVerify = _taskDetail?.assignees.any((a) => a.proof != null && a.proof!.isNotEmpty && (a.status.toLowerCase() == 'submitted' || a.status.toLowerCase() == 'pending_review' || a.status.toLowerCase() == 'verification')) ?? false;
-    
-    if (isManager && (hasProofsToVerify || _taskDetail?.status.toLowerCase() == 'verification')) {
-      return _buildSingleButton(
-        label: "Review Submissions",
-        icon: Icons.fact_check_rounded,
-        color: brandAccent,
-        onPressed: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(
-               builder: (_) => VerifyUsersProofPage(
-                taskId: _taskDetail!.taskId,
-                taskTitle: _taskDetail!.title,
-              ),
+  Widget _buildCompletedBadge() {
+    return Container(
+      width: double.infinity,
+      height: 64,
+      decoration: BoxDecoration(
+        color: successColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: successColor.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.check_circle_rounded,
+            color: successColor,
+            size: 24,
+          ),
+          const SizedBox(width: 12),
+          Text(
+            'Task Completed',
+            style: TextStyle(
+              color: successColor,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
             ),
-          );
-          if (result == 'refreshed' || result == true) {
-            _fetchTaskDetail();
-          }
-        },
-      );
-    }
+          ),
+        ],
+      ),
+    );
+  }
 
-    // 3. Escalated Task Actions (Management Actions: Transfer / Executive Directive / Cancel)
-    final bool isEscalatedStatus =
-        !isAssignedToMe &&
-        (widget.taskData['isEscalated'] == true ||
-            (_taskDetail?.isEscalate ?? false) ||
-            (_taskDetail?.category.toUpperCase() == 'DIRECTIVE'));
+  Widget _buildActualActionButtons() {
+    final TaskActionButton? actionButton = _taskDetail?.actionButton;
 
-    if (isEscalatedStatus) {
-      return _buildEscalatedActions();
-    }
-
-    // 4. Pending Proof Submission (For Assignees who finished but didn't upload or were rejected)
-    if (widget.taskData['isPendingProof'] == true || assignStatus == 'pending_proof') {
-      return _buildSingleButton(
-        label: "Submit Proof & End",
-        icon: Icons.upload_file_rounded,
-        color: Colors.orange,
-        onPressed: _submitPendingProof,
-      );
-    }
-
-    // Managers don't "Start" the activity, assignees do.
-    if (!isAssignedToMe && isManager) {
+    if (actionButton == null) {
       return const SizedBox.shrink();
     }
 
-    switch (_activityStatus) {
-      case ActivityStatus.NOT_STARTED:
-        if (_isMissed()) {
-          return _buildMissedBadge();
-        }
-        if (_isTooEarly()) {
-          return _buildPendingStartBadge();
-        }
+    switch (actionButton.type) {
+      // ── Accept / Reject (pending assignment) ──────────────────────────────
+      case 'request':
+        return _buildApprovalActions();
+
+      // ── Approve Task (designated authority approver) ───────────────────────
+      case 'approve_task':
         return _buildSingleButton(
-          label: "Start Activity",
-          icon: Icons.play_arrow_rounded,
-          color: brandAccent,
-          onPressed: _startActivity,
+          label: 'Approve Task',
+          icon: Icons.verified_rounded,
+          color: successColor,
+          onPressed: _approveTask,
         );
 
-      case ActivityStatus.IN_PROGRESS:
-        bool isProofTask =
-            _taskDetail?.isDocument == true ||
-            (_taskDetail?.closureRules.contains('photo_upload') ?? false);
+      // ── Review Proof Submissions (manager views submitted docs) ────────────
+      case 'verify_proof':
+        return _buildSingleButton(
+          label: actionButton.label,
+          icon: Icons.fact_check_rounded,
+          color: brandAccent,
+          onPressed: () async {
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                 builder: (_) => VerifyUsersProofPage(
+                  taskId: _taskDetail!.taskId,
+                  taskTitle: _taskDetail!.title,
+                ),
+              ),
+            );
+            if (result == 'refreshed' || result == true) {
+              _fetchTaskDetail();
+            }
+          },
+        );
 
-        if (_taskDetail?.isPauseAllowed == true) {
+      // ── Execute Directive (escalated task) ────────────────────────────────
+      case 'escalated':
+        return _buildEscalatedActions();
+
+      // ── Submit Proof (accepted, awaiting proof upload) ────────────────────
+      case 'pending_proof':
+        return _buildSingleButton(
+          label: actionButton.label,
+          icon: Icons.upload_file_rounded,
+          color: Colors.orange,
+          onPressed: _submitPendingProof,
+        );
+
+      // ── Generate OTP ──────────────────────────────────────────────────────
+      case 'generate_otp':
+        return _buildSingleButton(
+          label: actionButton.label,
+          icon: Icons.vpn_key_rounded,
+          color: brandAccent,
+          onPressed: _showOtpDialog,
+        );
+
+      // ── Activity Lifecycle ────────────────────────────────────────────────
+      case 'activity':
+        // State badges (no action button)
+        if (actionButton.action == 'missed') return _buildMissedBadge();
+        if (actionButton.action == 'too_early') return _buildPendingStartBadge();
+        if (actionButton.action == 'completed') return _buildCompletedBadge();
+
+        // ── Long task: Pause/Resume + End/Submit (2 buttons) ─────────────────
+        if (actionButton.action == 'pause' || actionButton.action == 'resume') {
+          final bool isProofTask = _taskDetail?.isDocument == true ||
+              (_taskDetail?.closureRules.contains('photo_upload') ?? false);
           return Row(
             children: [
               Expanded(
                 child: _buildSingleButton(
-                  label: "Pause",
-                  icon: Icons.pause_rounded,
-                  color: Colors.orange,
-                  onPressed: _pauseActivity,
+                  label: actionButton.action == 'pause' ? 'Pause' : 'Resume',
+                  icon: actionButton.action == 'pause'
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded,
+                  color: actionButton.action == 'pause' ? Colors.orange : brandAccent,
+                  onPressed:
+                      actionButton.action == 'pause' ? _pauseActivity : _resumeActivity,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 flex: 2,
                 child: _buildSingleButton(
-                  label: isProofTask ? "Submit Proof & End" : "End Activity",
+                  label: isProofTask ? 'Submit Proof & End' : 'End Activity',
                   icon: isProofTask ? Icons.upload_file_rounded : Icons.stop_rounded,
-                  color: brandAccent,
+                  color: isProofTask ? Colors.blue : brandAccent,
                   onPressed: _endActivity,
                 ),
               ),
             ],
           );
-        } else {
+        }
+
+        // ── Regular in_progress + proof: single combined button ───────────────
+        if (actionButton.action == 'submit_proof') {
           return _buildSingleButton(
-            label: isProofTask ? "Submit Proof & End" : "End Activity",
-            icon: isProofTask ? Icons.upload_file_rounded : Icons.stop_rounded,
+            label: 'Submit Proof & End',
+            icon: Icons.upload_file_rounded,
+            color: Colors.blue,
+            onPressed: _endActivity,
+          );
+        }
+
+        // ── Regular in_progress + no proof: single end button ────────────────
+        if (actionButton.action == 'end') {
+          return _buildSingleButton(
+            label: 'End Activity',
+            icon: Icons.stop_rounded,
             color: brandAccent,
             onPressed: _endActivity,
           );
         }
 
-      case ActivityStatus.PAUSED:
-        bool isProofTaskPaused =
-            _taskDetail?.isDocument == true ||
-            (_taskDetail?.closureRules.contains('photo_upload') ?? false);
-        return Row(
-          children: [
-            Expanded(
-              child: _buildSingleButton(
-                label: "Resume",
-                icon: Icons.play_arrow_rounded,
-                color: brandAccent,
-                onPressed: _resumeActivity,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 2,
-              child: _buildSingleButton(
-                label: isProofTaskPaused ? "Submit Proof & End" : "End Activity",
-                icon: isProofTaskPaused
-                    ? Icons.upload_file_rounded
-                    : Icons.stop_rounded,
-                color: brandAccent,
-                onPressed: _endActivity,
-              ),
-            ),
-          ],
+        // ── Start Activity ───────────────────────────────────────────────────
+        return _buildSingleButton(
+          label: actionButton.label,
+          icon: Icons.play_arrow_rounded,
+          color: brandAccent,
+          onPressed: _startActivity,
         );
 
-      case ActivityStatus.COMPLETED:
-        return Container(
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          decoration: BoxDecoration(
-            color: successColor,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: successColor.withOpacity(0.2),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.check_circle_rounded,
-                color: Colors.white,
-                size: 28,
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'Task Completed',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        );
+      default:
+        return const SizedBox.shrink();
     }
   }
 
@@ -1598,7 +1609,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to start: $e'),
+            content: Text('Failed to start: ${e.toString().replaceAll('Exception: ', '')}'),
             backgroundColor: destructive,
             behavior: SnackBarBehavior.floating,
           ),
@@ -1624,7 +1635,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to pause: $e'),
+          content: Text('Failed to pause: ${e.toString().replaceAll('Exception: ', '')}'),
           backgroundColor: destructive,
           behavior: SnackBarBehavior.floating,
         ),
@@ -1649,7 +1660,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to resume: $e'),
+          content: Text('Failed to resume: ${e.toString().replaceAll('Exception: ', '')}'),
           backgroundColor: destructive,
           behavior: SnackBarBehavior.floating,
         ),
@@ -1764,8 +1775,9 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       _finalizeCompletionLocally();
     } catch (e) {
       if (mounted) {
+        final errorMsg = e.toString().replaceAll('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e"), backgroundColor: destructive),
+          SnackBar(content: Text(errorMsg), backgroundColor: destructive),
         );
       }
     } finally {
@@ -1906,23 +1918,259 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           );
           Navigator.pop(context, "rejected");
         }
-      } catch (e) {
-        if (mounted) {
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Error: $e"), backgroundColor: destructive),
-          );
+        } catch (e) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            final errorMsg = e.toString().replaceAll('Exception: ', '');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(errorMsg), backgroundColor: destructive),
+            );
+          }
         }
-      }
     }
   }
   Widget _buildEscalatedActions() {
     return _buildSingleButton(
-      label: "Executive Directive",
-      icon: Icons.admin_panel_settings_rounded,
+      label: "Execute Directive",
+      icon: Icons.bolt_rounded,
       color: brandAccent,
-      onPressed: _handleExecuteDirective,
+      onPressed: _showEscalationManagementDialog,
     );
+  }
+
+  Future<void> _showEscalationManagementDialog() async {
+    final taskId = _taskDetail?.taskId ??
+        int.tryParse(widget.taskData['task_id']?.toString() ?? '') ??
+        0;
+    if (taskId == 0) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Escalation Management",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "This task has been escalated. Choose how to proceed.",
+              style: TextStyle(color: textSub, fontSize: 14),
+            ),
+            const SizedBox(height: 24),
+            _mgmtOption(
+              "Self-Assign & Execute",
+              "Take responsibility and start working on it now.",
+              Icons.person_add_rounded,
+              brandAccent,
+              () {
+                Navigator.pop(context);
+                _handleExecuteDirective();
+              },
+            ),
+            const SizedBox(height: 12),
+            _mgmtOption(
+              "Transfer Task",
+              "Assign this task to someone else.",
+              Icons.swap_horiz_rounded,
+              Colors.blue,
+              () async {
+                Navigator.pop(context);
+                final List<Map<String, dynamic>>? selected = await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const UserSelectionPage(multiSelect: false)),
+                );
+                if (selected != null && selected.isNotEmpty) {
+                  _transferTask(taskId, selected.first['user_id']);
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            _mgmtOption(
+              "Reschedule",
+              "Change the date and time for this task.",
+              Icons.event_repeat_rounded,
+              Colors.orange,
+              () {
+                Navigator.pop(context);
+                _showRescheduleDialog(taskId);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _mgmtOption(String title, String sub, IconData icon, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+              child: Icon(icon, color: color),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  Text(sub, style: TextStyle(color: textSub, fontSize: 12)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: textSub),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _transferTask(int taskId, int targetUserId) async {
+    setState(() => _isLoading = true);
+    try {
+      await TaskService().transferTask(taskId, targetUserId, "Escalation resolution transfer");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: const Text("Task transferred successfully!"), backgroundColor: successColor),
+        );
+        _fetchTaskDetail();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString()), backgroundColor: destructive),
+        );
+      }
+    }
+  }
+
+  Future<void> _showRescheduleDialog(int taskId) async {
+    DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (pickedDate == null) return;
+
+    TimeOfDay? pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (pickedTime == null) return;
+
+    final combined = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute);
+    
+    setState(() => _isLoading = true);
+    try {
+      // Backend handles rescheduling via specialized endpoint or just update
+      // For now, let's use a common update logic or self-assign with new time
+      await TaskService().rescheduleTask(taskId, combined);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: const Text("Task rescheduled successfully!"), backgroundColor: successColor),
+        );
+        _fetchTaskDetail();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString()), backgroundColor: destructive),
+        );
+      }
+    }
+  }
+
+  Future<void> _showOtpDialog() async {
+    final taskId = _taskDetail?.taskId ??
+        int.tryParse(widget.taskData['task_id']?.toString() ?? '') ??
+        0;
+    if (taskId == 0) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Generate OTP"),
+        content: const Text("Would you like to generate a START or END OTP?"),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              _generateOtp(taskId, "START");
+            },
+            child: const Text("START OTP"),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              _generateOtp(taskId, "END");
+            },
+            child: const Text("END OTP"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _generateOtp(int taskId, String type) async {
+    setState(() => _isLoading = true);
+    try {
+      final result = await TaskService().generateOTP(taskId, type);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text("$type OTP Generated"),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text("Share this code with the assignee:"),
+                const SizedBox(height: 16),
+                Text(
+                  result['otp'].toString(),
+                  style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 4),
+                ),
+                const SizedBox(height: 8),
+                Text("Expires in ${result['expires_in']}", style: TextStyle(color: textSub)),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close")),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString()), backgroundColor: destructive),
+        );
+      }
+    }
   }
 
   Future<void> _handleExecuteDirective() async {
@@ -1948,79 +2196,9 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e"), backgroundColor: destructive),
+          SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: destructive),
         );
       }
-    }
-  }
-
-  bool _isMissed() {
-    if (_taskDetail == null || _taskDetail!.taskTypes.isEmpty) return false;
-
-    // Stricter "Missed" Logic: 
-    // Show "Missed" ONLY if not yet started/completed AND deadline passed.
-    if (_taskDetail!.assignees.isNotEmpty && _currentUserId != null) {
-      final myAssign = _taskDetail!.assignees.where((a) => a.userId == _currentUserId);
-      if (myAssign.isNotEmpty) {
-        final s = myAssign.first.status.toLowerCase();
-        // If it's already in progress, completed, or being verified, it's NOT missed
-        if (s == 'in_progress' || s == 'completed' || s == 'closed' || s == 'verification' || s == 'rejected') {
-          return false;
-        }
-      }
-    }
-
-    final taskType = _taskDetail!.taskTypes.first;
-    String dateStr = taskType.endDate;
-    if (dateStr.isEmpty || dateStr == 'null') dateStr = taskType.startDate;
-    if (dateStr.isEmpty || dateStr == 'null') return false;
-
-    String timeStr = taskType.endTime;
-    if (timeStr.isEmpty || timeStr == 'null') timeStr = "23:59:59";
-
-    try {
-      // 1. Try direct parsing (handles ISO strings from backend)
-      DateTime? endDateTime = DateTime.tryParse(dateStr);
-
-      // 2. If it was just a date part (yyyy-MM-dd), we need to combine with timeStr
-      if (endDateTime != null && !dateStr.contains('T') && !dateStr.contains(':')) {
-        final timeParts = timeStr.split(':');
-        final int hour = int.parse(timeParts[0]);
-        final int minute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
-        
-        endDateTime = DateTime(
-          endDateTime.year,
-          endDateTime.month,
-          endDateTime.day,
-          hour,
-          minute,
-        );
-      }
-
-      if (endDateTime == null) {
-        // Fallback for manual parsing if tryParse failed (unlikely for ISO)
-        final dateParts = dateStr.split('-');
-        if (dateParts.length != 3) return false;
-        
-        final timeParts = timeStr.split(':');
-        final int hour = int.parse(timeParts[0]);
-        final int minute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
-
-        endDateTime = DateTime(
-          int.parse(dateParts[0]),
-          int.parse(dateParts[1]),
-          int.parse(dateParts[2]),
-          hour,
-          minute,
-        );
-      }
-
-      // Only mark as missed after 1 hour past the deadline
-      final missedThreshold = endDateTime.add(const Duration(hours: 1));
-      return DateTime.now().isAfter(missedThreshold);
-    } catch (e) {
-      debugPrint("Error calculating missed status: $e");
-      return false;
     }
   }
 
@@ -2051,59 +2229,6 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     );
   }
 
-  bool _isTooEarly() {
-    if (_taskDetail == null || _taskDetail!.taskTypes.isEmpty) return false;
-
-    final taskType = _taskDetail!.taskTypes.first;
-    String dateStr = taskType.startDate;
-    if (dateStr.isEmpty || dateStr == 'null') return false;
-
-    String timeStr = taskType.startTime;
-    if (timeStr.isEmpty || timeStr == 'null') timeStr = "00:00:00";
-
-    try {
-      // 1. Try direct parsing (handles ISO strings)
-      DateTime? startDateTime = DateTime.tryParse(dateStr);
-
-      // 2. Combine with time if only date was provided
-      if (startDateTime != null && !dateStr.contains('T') && !dateStr.contains(':')) {
-        final timeParts = timeStr.split(':');
-        final int hour = timeParts.length > 0 ? int.parse(timeParts[0]) : 0;
-        final int minute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
-
-        startDateTime = DateTime(
-          startDateTime.year,
-          startDateTime.month,
-          startDateTime.day,
-          hour,
-          minute,
-        );
-      }
-
-      if (startDateTime == null) {
-        final dateParts = dateStr.split('-');
-        if (dateParts.length != 3) return false;
-
-        final timeParts = timeStr.split(':');
-        final int hour = timeParts.length > 0 ? int.parse(timeParts[0]) : 0;
-        final int minute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
-
-        startDateTime = DateTime(
-          int.parse(dateParts[0]),
-          int.parse(dateParts[1]),
-          int.parse(dateParts[2]),
-          hour,
-          minute,
-        );
-      }
-
-      return DateTime.now().isBefore(startDateTime);
-    } catch (e) {
-      debugPrint("Error calculating early status: $e");
-      return false;
-    }
-  }
-
   Widget _buildPendingStartBadge() {
     return Container(
       width: double.infinity,
@@ -2119,7 +2244,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           Icon(Icons.schedule_rounded, color: brandAccent, size: 24),
           const SizedBox(width: 12),
           Text(
-            "Activity Starts Soon",
+            "Start Time Still Yet",
             style: TextStyle(
               fontWeight: FontWeight.w800,
               fontSize: 16,

@@ -191,12 +191,14 @@ class _StudentTasksListPageState extends State<StudentTasksListPage> {
     String sub = '';
     int taskId = 0;
     IconData icon = Icons.task_alt_rounded;
+    Map<String, dynamic>? actionButton;
     bool isEscalated = false;
 
     if (task is TodayTask) {
       taskTitle = task.title;
       sub = "Today • ${task.timing} • ${task.category}";
       taskId = task.taskId;
+      actionButton = task.actionButton;
     } else if (task is OverdueTask) {
       taskTitle = task.title;
       sub = "${task.date} • ${task.category}";
@@ -241,6 +243,7 @@ class _StudentTasksListPageState extends State<StudentTasksListPage> {
             : AppTheme.brandAccent,
         icon: icon,
         heroTag: heroTag,
+        actionButton: actionButton,
         // Allow action buttons for all pending tasks including escalated ones
         isRequest: widget.mode == 'pending',
         onAccept: (widget.mode == 'pending' && widget.onAccept != null)

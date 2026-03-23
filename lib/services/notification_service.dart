@@ -12,10 +12,14 @@ class NotificationService {
     return prefs.getString('authToken');
   }
 
-  Future<List<NotificationModel>> getNotifications() async {
+  Future<List<NotificationModel>> getNotifications({int? venueId}) async {
     try {
       final token = await _getToken();
-      final url = Uri.parse('${_baseUrl}notifications');
+      String urlString = '${_baseUrl}notifications';
+      if (venueId != null) {
+        urlString += '?venue_id=$venueId';
+      }
+      final url = Uri.parse(urlString);
       
       final response = await http.get(
         url,
@@ -81,10 +85,14 @@ class NotificationService {
       rethrow;
     }
   }
-  Future<int> getUnreadCount() async {
+  Future<int> getUnreadCount({int? venueId}) async {
     try {
       final token = await _getToken();
-      final url = Uri.parse('${_baseUrl}notifications');
+      String urlString = '${_baseUrl}notifications';
+      if (venueId != null) {
+        urlString += '?venue_id=$venueId';
+      }
+      final url = Uri.parse(urlString);
       
       final response = await http.get(
         url,

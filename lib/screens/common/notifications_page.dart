@@ -4,7 +4,8 @@ import '../../services/notification_service.dart';
 import 'package:intl/intl.dart';
 
 class NotificationsPage extends StatefulWidget {
-  const NotificationsPage({super.key});
+  final int? venueId;
+  const NotificationsPage({super.key, this.venueId});
 
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
@@ -25,7 +26,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Future<void> _fetchNotifications() async {
     setState(() => _isLoading = true);
     try {
-      final notifications = await _notificationService.getNotifications();
+      final notifications = await _notificationService.getNotifications(venueId: widget.venueId);
       setState(() {
         _notifications = notifications;
         _isLoading = false;

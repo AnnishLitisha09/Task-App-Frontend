@@ -16,6 +16,8 @@ import 'all_new_task_page.dart';
 import '../common/task_detail_page.dart';
 import '../common/generic_view_all_page.dart';
 import '../common/score_performance_page.dart';
+import '../../services/notification_service.dart';
+
 
 
 class StudentPage extends StatefulWidget {
@@ -37,7 +39,9 @@ class _StudentPageState extends State<StudentPage> {
   bool _isLoading = true;
   StudentDashboard? _dashboard;
   List<dynamic> _pendingProofs = [];
+  int _unreadNotifications = 0;
   final StudentService _studentService = StudentService();
+  final NotificationService _notificationService = NotificationService();
 
   @override
   void initState() {
@@ -48,11 +52,17 @@ class _StudentPageState extends State<StudentPage> {
   Future<void> _fetchDashboard() async {
     setState(() => _isLoading = true);
     try {
-      final dashboard = await _studentService.getStudentDashboard();
-      final proofs = await TaskService().getPendingProofs();
+      final results = await Future.wait([
+        _studentService.getStudentDashboard(),
+        TaskService().getPendingProofs(),
+        _notificationService.getUnreadCount(),
+      ]);
+
       if (mounted) {
         setState(() {
-          _dashboard = dashboard;
+          _dashboard = results[0] as StudentDashboard;
+          final proofs = results[1];
+          _unreadNotifications = results[2] as int;
           if (proofs is List) {
             _pendingProofs = proofs;
           } else if (proofs is Map) {
@@ -242,7 +252,7 @@ class _StudentPageState extends State<StudentPage> {
                   CustomAppBar(
                     title: "Annish Litisha",
                     date: formattedDate,
-                    notificationCount: 4,
+                    notificationCount: _unreadNotifications,
                     profileImageUrl:
                         'https://img.freepik.com/premium-vector/purple-circle-with-white-person-icon_876006-6.jpg?w=360',
                   ),
@@ -358,6 +368,7 @@ class _StudentPageState extends State<StudentPage> {
                                   accent: AppTheme.brandAccent,
                                   icon: Icons.calendar_today,
                                   heroTag: heroTag,
+                                  actionButton: task.actionButton,
                                   onTap: () {
                                     Navigator.push(
                                       context,

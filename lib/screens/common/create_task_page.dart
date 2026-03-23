@@ -85,7 +85,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'selectedDate': DateTime.now(), // NEW: Initialize for Fixed Time Task
       'startDate': DateTime.now(), // NEW: Initialize for other task types
       'isFaculty': false,
-      'facultyInCharge': null, // NEW
+      'facultyInCharge': <Map<String, dynamic>>[], // Changed to List
       'selectedAssignees': <Map<String, dynamic>>[],
       // Self Log specific fields
       'activityDate': DateTime.now(),
@@ -732,120 +732,135 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           });
         },
       ),
-      const SizedBox(height: 32),
-      Text(
-        "TIME CONFIGURATION",
-        style: TextStyle(
-          color: accent,
-          fontWeight: FontWeight.bold,
-          fontSize: 11,
-          letterSpacing: 1.2,
+      if (!(_taskData['isPackageTask'] ?? false)) ...[
+        const SizedBox(height: 32),
+        Text(
+          "TIME CONFIGURATION",
+          style: TextStyle(
+            color: accent,
+            fontWeight: FontWeight.bold,
+            fontSize: 11,
+            letterSpacing: 1.2,
+          ),
         ),
-      ),
-      const Divider(height: 32),
-      if (_taskData['taskType'] == "Fixed Time Task") ...[
-        _dateTile("SELECT DATE", 'selectedDate'),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _timePicker(
-                label: "START TIME",
-                time: _taskData['startTime'],
-                onTimePicked: (v) => setState(() {
-                  _taskData['startTime'] = v;
-                  if (_taskData['isPackageTask']) _updatePackageMaxHours();
-                }),
+        const Divider(height: 32),
+        if (_taskData['taskType'] == "Fixed Time Task") ...[
+          _dateTile("SELECT DATE", 'selectedDate'),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _timePicker(
+                  label: "START TIME",
+                  time: _taskData['startTime'],
+                  onTimePicked: (v) => setState(() {
+                    _taskData['startTime'] = v;
+                    if (_taskData['isPackageTask']) _updatePackageMaxHours();
+                  }),
+                ),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _timePicker(
-                label: "END TIME",
-                time: _taskData['endTime'],
-                onTimePicked: (v) => setState(() {
-                  _taskData['endTime'] = v;
-                  if (_taskData['isPackageTask']) _updatePackageMaxHours();
-                }),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _timePicker(
+                  label: "END TIME",
+                  time: _taskData['endTime'],
+                  onTimePicked: (v) => setState(() {
+                    _taskData['endTime'] = v;
+                    if (_taskData['isPackageTask']) _updatePackageMaxHours();
+                  }),
+                ),
               ),
-            ),
-          ],
-        ),
-      ] else if (_taskData['taskType'] == "Recurring Task") ...[
-        _modernDropdown(
-          "RECURRENCE",
-          ["Daily", "Weekly", "Monthly"],
-          _taskData['recurrenceType'],
-          (v) => setState(() => _taskData['recurrenceType'] = v),
-        ),
-        const SizedBox(height: 16),
-        _dateTile("VALID FROM", 'startDate'),
-        const SizedBox(height: 16),
-        _dateTile("VALID UNTIL", 'endDate'),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _timePicker(
-                label: "START TIME",
-                time: _taskData['startTime'],
-                onTimePicked: (v) => setState(() {
-                  _taskData['startTime'] = v;
-                  if (_taskData['isPackageTask']) _updatePackageMaxHours();
-                }),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _timePicker(
-                label: "END TIME",
-                time: _taskData['endTime'],
-                onTimePicked: (v) => setState(() {
-                  _taskData['endTime'] = v;
-                  if (_taskData['isPackageTask']) _updatePackageMaxHours();
-                }),
-              ),
-            ),
-          ],
-        ),
-      ] else if (_taskData['taskType'] == "Floating Task") ...[
-        _dateTile("START DATE", 'startDate'),
-        const SizedBox(height: 16),
-        _dateTile("END DATE", 'endDate'),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _timePicker(
-                label: "START TIME",
-                time: _taskData['startTime'],
-                onTimePicked: (v) => setState(() {
-                  _taskData['startTime'] = v;
-                  if (_taskData['isPackageTask']) _updatePackageMaxHours();
-                }),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _timePicker(
-                label: "END TIME",
-                time: _taskData['endTime'],
-                onTimePicked: (v) => setState(() {
-                  _taskData['endTime'] = v;
-                  if (_taskData['isPackageTask']) _updatePackageMaxHours();
-                }),
-              ),
-            ),
-          ],
-        ),
-      ] else ...[
-        _dateTile(
-          _taskData['isPackageTask'] ? "START DATE" : "VALID FROM",
-          'startDate',
-        ),
-        if (!_taskData['isPackageTask']) ...[
+            ],
+          ),
+        ] else if (_taskData['taskType'] == "Recurring Task") ...[
+          _modernDropdown(
+            "RECURRENCE",
+            ["Daily", "Weekly", "Monthly"],
+            _taskData['recurrenceType'],
+            (v) => setState(() => _taskData['recurrenceType'] = v),
+          ),
+          const SizedBox(height: 16),
+          _dateTile("VALID FROM", 'startDate'),
           const SizedBox(height: 16),
           _dateTile("VALID UNTIL", 'endDate'),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _timePicker(
+                  label: "START TIME",
+                  time: _taskData['startTime'],
+                  onTimePicked: (v) => setState(() {
+                    _taskData['startTime'] = v;
+                    if (_taskData['isPackageTask']) _updatePackageMaxHours();
+                  }),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _timePicker(
+                  label: "END TIME",
+                  time: _taskData['endTime'],
+                  onTimePicked: (v) => setState(() {
+                    _taskData['endTime'] = v;
+                    if (_taskData['isPackageTask']) _updatePackageMaxHours();
+                  }),
+                ),
+              ),
+            ],
+          ),
+        ] else if (_taskData['taskType'] == "Floating Task") ...[
+          _dateTile("START DATE", 'startDate'),
+          const SizedBox(height: 16),
+          _dateTile("END DATE", 'endDate'),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _timePicker(
+                  label: "START TIME",
+                  time: _taskData['startTime'],
+                  onTimePicked: (v) => setState(() {
+                    _taskData['startTime'] = v;
+                    if (_taskData['isPackageTask']) _updatePackageMaxHours();
+                  }),
+                ),
+              ),
+              const SizedBox(width: 16),
+              if (_taskData['taskCategory'] == 'Self Log')
+                Expanded(
+                  child: _timePicker(
+                    label: "END TIME",
+                    time: _taskData['endTime'],
+                    onTimePicked: (v) => setState(() {
+                      _taskData['endTime'] = v;
+                      if (_taskData['isPackageTask']) _updatePackageMaxHours();
+                    }),
+                  ),
+                )
+              else
+                Expanded(
+                  child: _modernField(
+                    label: "DURATION (HOURS)",
+                    hint: "2.5",
+                    isNumber: true,
+                    initialValue: (_taskData['maxHours'] ?? 2.0).toString(),
+                    onChanged: (v) => setState(() {
+                      _taskData['maxHours'] = double.tryParse(v) ?? 0.0;
+                    }),
+                  ),
+                ),
+            ],
+          ),
+        ] else ...[
+          _dateTile(
+            _taskData['isPackageTask'] ? "START DATE" : "VALID FROM",
+            'startDate',
+          ),
+          if (!_taskData['isPackageTask']) ...[
+            const SizedBox(height: 16),
+            _dateTile("VALID UNTIL", 'endDate'),
+          ],
         ],
       ],
       const SizedBox(height: 24),
@@ -1382,31 +1397,58 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   }
 
   Widget _facultyInChargePicker() {
-    final Map<String, dynamic>? faculty = _taskData['facultyInCharge'];
-    return _userPickerTile(
-      label: "FACULTY IN-CHARGE",
-      subtitle: faculty != null
-          ? faculty['name']
-          : "Select Responsible Faculty",
-      icon: Icons.person_search_rounded,
-      onTap: () async {
-        final List<Map<String, dynamic>>? result = await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => UserSelectionPage(
-              initialSelection: faculty != null ? [faculty] : [],
-              multiSelect: false,
-              allowedRoles: _getFacultyInChargeRoles(),
-            ),
-          ),
-        );
+    final List<Map<String, dynamic>> faculty = List<Map<String, dynamic>>.from(
+      _taskData['facultyInCharge'] ?? [],
+    );
+    return Column(
+      children: [
+        _userPickerTile(
+          label: "FACULTY IN-CHARGE",
+          subtitle: faculty.isEmpty
+              ? "Select Responsible Faculty"
+              : "${faculty.length} faculty selected",
+          icon: Icons.person_search_rounded,
+          onTap: () async {
+            final List<Map<String, dynamic>>? result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => UserSelectionPage(
+                  initialSelection: faculty,
+                  multiSelect: true,
+                  allowedRoles: _getFacultyInChargeRoles(),
+                ),
+              ),
+            );
 
-        if (result != null && result.isNotEmpty) {
-          setState(() {
-            _taskData['facultyInCharge'] = result.first;
-          });
-        }
-      },
+            if (result != null) {
+              setState(() {
+                _taskData['facultyInCharge'] = result;
+              });
+            }
+          },
+        ),
+        if (faculty.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: faculty.map((f) {
+              return Chip(
+                label: Text(f['name'] ?? "Faculty", style: const TextStyle(fontSize: 10)),
+                backgroundColor: Colors.orange.withOpacity(0.1),
+                onDeleted: () {
+                  setState(() {
+                    _taskData['facultyInCharge'].remove(f);
+                  });
+                },
+                deleteIconColor: Colors.orange,
+                side: BorderSide.none,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              );
+            }).toList(),
+          ),
+        ],
+      ],
     );
   }
 
@@ -1955,7 +1997,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'staff',
     ];
     int userIndex = hierarchy.indexOf(role);
-    if (userIndex == -1) return ['admin', 'principal', 'dean', 'hods'];
+    if (userIndex == -1) return ['principal', 'dean', 'hods'];
 
     final Map<String, String> keyMap = {
       'hod': 'hods',
@@ -1967,7 +2009,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'dean': 'dean',
     };
 
-    return hierarchy.sublist(0, userIndex).map((r) => keyMap[r] ?? r).toList();
+    if (userIndex <= 1) return []; // Admin or Principal have no higher selectable roles
+    return hierarchy.sublist(1, userIndex).map((r) => keyMap[r] ?? r).toList();
   }
 
   List<String> _getFacultyInChargeRoles() {
@@ -2032,7 +2075,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             : '09:00:00',
         'end_time': _taskData['endTime'] != null
             ? '${_taskData['endTime'].hour.toString().padLeft(2, '0')}:${_taskData['endTime'].minute.toString().padLeft(2, '0')}:00'
-            : '17:00:00',
+            : null,
+        'time_quota_hours': _taskData['maxHours'] ?? 2.0,
       };
     } else if (_taskData['taskType'] == 'Bidding Task') {
       taskTypeData = {
@@ -2051,7 +2095,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             : '09:00:00',
         'end_time': _taskData['endTime'] != null
             ? '${_taskData['endTime'].hour.toString().padLeft(2, '0')}:${_taskData['endTime'].minute.toString().padLeft(2, '0')}:00'
-            : '17:00:00',
+            : null,
+        'time_quota_hours': _taskData['maxHours'] ?? 2.0,
       };
     } else {
       // Default for Task (Long Task) and others
@@ -2116,6 +2161,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'is_pause_allowed': _taskData['allowPause'],
       'closure_ids': closureIds,
       'task_type_data': taskTypeData,
+      'requires_approval': _taskData['requiresApproval'] ?? false,
+      'approver_id': _taskData['approvalAuthority'] != null
+          ? (_taskData['approvalAuthority']!['id'] ??
+              _taskData['approvalAuthority']!['user_id'])
+          : null,
     };
 
     // Explicitly add due_date at root for package tracking
@@ -2154,18 +2204,19 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     }
 
     // Add faculty information if present
-    if (_taskData['facultyInCharge'] != null) {
+    final List<Map<String, dynamic>> facultyList = List<Map<String, dynamic>>.from(
+      _taskData['facultyInCharge'] ?? [],
+    );
+    if (facultyList.isNotEmpty) {
       payload['is_faculty'] = true;
-      final fId =
-          _taskData['facultyInCharge']['id'] ??
-          _taskData['facultyInCharge']['user_id'];
-      if (fId is String) {
-        payload['faculty_id'] = int.tryParse(fId) ?? 0;
-      } else {
-        payload['faculty_id'] = fId as int? ?? 0;
-      }
+      payload['faculty_ids'] = facultyList.map((f) {
+        final id = f['id'] ?? f['user_id'];
+        if (id is String) return int.tryParse(id) ?? 0;
+        return id as int? ?? 0;
+      }).toList();
     } else {
       payload['is_faculty'] = false;
+      payload['faculty_ids'] = [];
     }
 
     // Only use individual IDs (Bidding Task removed)

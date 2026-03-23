@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../faculty/student_detail_page.dart';
 import '../../services/user_service.dart';
 import '../../models/department_users_model.dart';
 
@@ -321,96 +322,107 @@ class _DeptDirectoryPageState extends State<DeptDirectoryPage> {
         ? "Year ${user.year}"
         : (user.designation ?? "Faculty");
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: dividerColor.withOpacity(0.6)),
-        boxShadow: [
-          BoxShadow(
-            color: brandPrimary.withOpacity(0.02),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => StudentDetailPage(studentId: user.userId),
           ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: brandAccent.withOpacity(0.08),
-                child: Icon(leadingIcon, color: brandAccent, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      user.name,
-                      style: TextStyle(
-                        color: textMain,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
+        );
+      },
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: dividerColor.withOpacity(0.6)),
+          boxShadow: [
+            BoxShadow(
+              color: brandPrimary.withOpacity(0.02),
+              blurRadius: 15,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: brandAccent.withOpacity(0.08),
+                  child: Icon(leadingIcon, color: brandAccent, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        user.name,
+                        style: TextStyle(
+                          color: textMain,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                    Text(
-                      user.regNo,
-                      style: TextStyle(
-                        color: textSub,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
+                      Text(
+                        user.regNo,
+                        style: TextStyle(
+                          color: textSub,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: surfaceColor,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  tag,
-                  style: TextStyle(
-                    color: brandAccent,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
+                    ],
                   ),
                 ),
-              ),
-            ],
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 14),
-            child: Divider(height: 1, thickness: 1),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildMetric(
-                "Score",
-                user.score,
-                successColor,
-                Icons.insights_rounded,
-              ),
-              Container(height: 20, width: 1, color: dividerColor),
-              _buildMetric(
-                "Penalties",
-                user.penalty,
-                penaltyVal > 0 ? errorRed : textSub.withOpacity(0.3),
-                Icons.gavel_rounded,
-              ),
-            ],
-          ),
-        ],
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: surfaceColor,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    tag,
+                    style: TextStyle(
+                      color: brandAccent,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 14),
+              child: Divider(height: 1, thickness: 1),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildMetric(
+                  "Score",
+                  user.score,
+                  successColor,
+                  Icons.insights_rounded,
+                ),
+                Container(height: 20, width: 1, color: dividerColor),
+                _buildMetric(
+                  "Penalties",
+                  user.penalty,
+                  penaltyVal > 0 ? errorRed : textSub.withOpacity(0.3),
+                  Icons.gavel_rounded,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     ).animate().fadeIn().slideY(begin: 0.1, end: 0);
   }

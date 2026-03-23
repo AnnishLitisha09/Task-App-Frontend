@@ -7,6 +7,7 @@ class CustomAppBar extends StatelessWidget {
   final String? date;
   final int notificationCount;
   final String? profileImageUrl;
+  final int? venueId;
 
   final List<Widget>? actions;
 
@@ -16,6 +17,7 @@ class CustomAppBar extends StatelessWidget {
     this.date,
     this.notificationCount = 0,
     this.profileImageUrl,
+    this.venueId,
     this.actions,
   });
 
@@ -74,7 +76,7 @@ class CustomAppBar extends StatelessWidget {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const NotificationsPage()),
+          MaterialPageRoute(builder: (context) => NotificationsPage(venueId: venueId)),
         );
       },
       child: Container(

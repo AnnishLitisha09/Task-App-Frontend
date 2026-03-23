@@ -12,6 +12,7 @@ import '../../components/section_header.dart';
 import '../../components/skeleton_loader.dart';
 import '../../components/unified_reject_dialog.dart';
 import '../common/task_detail_page.dart';
+import '../../services/notification_service.dart';
 import '../../models/faculty_dashboard_stats.dart';
 import '../../models/faculty_info.dart';
 import '../common/user_selection_page.dart';
@@ -49,7 +50,9 @@ class _FacultyPageState extends State<FacultyPage>
   List<dynamic> _authorityApprovals = [];
   String? _userRole;
   List<String> _allRoles = [];
+  int _unreadNotifications = 0;
   bool _isLoading = true;
+  final NotificationService _notificationService = NotificationService();
 
   @override
   void initState() {
@@ -66,8 +69,16 @@ class _FacultyPageState extends State<FacultyPage>
       _fetchPendingVerifications(),
       _fetchEscalations(),
       _fetchAuthorityApprovals(),
+      _fetchUnreadNotifications(),
     ]);
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _fetchUnreadNotifications() async {
+    try {
+      final count = await _notificationService.getUnreadCount();
+      if (mounted) setState(() => _unreadNotifications = count);
+    } catch (_) {}
   }
 
   Future<void> _fetchUserRole() async {
@@ -226,9 +237,10 @@ class _FacultyPageState extends State<FacultyPage>
       }
     } catch (e) {
       if (mounted) {
+        final errorMsg = e.toString().replaceAll('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Error accepting task: $e"),
+            content: Text("Error accepting task: $errorMsg"),
             backgroundColor: AppTheme.danger,
           ),
         );
@@ -303,9 +315,10 @@ class _FacultyPageState extends State<FacultyPage>
       } catch (e) {
         if (mounted) {
           Navigator.pop(context);
+          final errorMsg = e.toString().replaceAll('Exception: ', '');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text("Error transferring task: $e"),
+              content: Text("Error transferring task: $errorMsg"),
               backgroundColor: AppTheme.danger,
             ),
           );
@@ -336,7 +349,8 @@ class _FacultyPageState extends State<FacultyPage>
         } catch (e) {
           if (mounted) {
             Navigator.pop(context);
-            _snack("Error rejecting task: $e", AppTheme.danger);
+            final errorMsg = e.toString().replaceAll('Exception: ', '');
+            _snack("Error rejecting task: $errorMsg", AppTheme.danger);
           }
         }
       },
@@ -470,6 +484,7 @@ class _FacultyPageState extends State<FacultyPage>
                 accent: AppTheme.success,
                 icon: Icons.calendar_today_rounded,
                 heroTag: heroTag,
+                actionButton: item['action_button'],
                 onTap: () => Navigator.push(context, MaterialPageRoute(
                   builder: (_) => TaskDetailsPage(taskData: {
                     'task_id': item['task_id'], 'title': item['title'],
@@ -518,6 +533,7 @@ class _FacultyPageState extends State<FacultyPage>
                 accent: AppTheme.brandAccent,
                 icon: Icons.assignment_turned_in_rounded,
                 heroTag: heroTag,
+                actionButton: data['action_button'],
                 isRequest: true,
                 onAccept: () {
                   if (widget.isBlocked) { _blockedSnack(); return; }
@@ -571,6 +587,7 @@ class _FacultyPageState extends State<FacultyPage>
                 accent: AppTheme.danger,
                 icon: Icons.priority_high_rounded,
                 heroTag: heroTag,
+                actionButton: esc['action_button'],
                 onTap: () => Navigator.push(context, MaterialPageRoute(
                   builder: (_) => TaskDetailsPage(taskData: {
                     'task_id': esc['task_id'], 'title': esc['title'],
@@ -607,8 +624,11 @@ class _FacultyPageState extends State<FacultyPage>
                       accentColor: AppTheme.warning,
                       onTaskAction: (taskId, approve) async {
                         try {
-                          if (approve) await TaskService().acceptTask(taskId);
-                          else await TaskService().rejectTask(taskId, "Rejected by Authority");
+                          if (approve) {
+                            await TaskService().acceptTask(taskId);
+                          } else {
+                            await TaskService().rejectTask(taskId, "Rejected by Authority");
+                          }
                           _refreshAll();
                         } catch (e) { debugPrint("Error in authority action: $e"); }
                       },
@@ -781,7 +801,7 @@ class _FacultyPageState extends State<FacultyPage>
                   CustomAppBar(
                     title: info?.name ?? "Faculty",
                     date: formattedDate,
-                    notificationCount: pending.length,
+                    notificationCount: _unreadNotifications,
                     profileImageUrl: info != null
                         ? 'https://ui-avatars.com/api/?name=${info.name.replaceAll(' ', '+')}&background=random'
                         : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',

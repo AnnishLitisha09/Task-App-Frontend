@@ -171,6 +171,7 @@ class _AllSchedulePageState extends State<AllSchedulePage> {
                     accent: AppTheme.success,
                     icon: Icons.calendar_today_rounded,
                     heroTag: heroTag,
+                    actionButton: data['action_button'],
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(

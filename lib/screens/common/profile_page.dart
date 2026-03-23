@@ -11,7 +11,7 @@ import '../faculty/students_page.dart';
 import '../role_user/all_department_page.dart';
 import '../role_user/all_faculty_page.dart';
 import '../role_user/dept_directory_page.dart';
-import '../role_user/view_dept_tasks.dart';
+import '../role_user/leader_board.dart';
 import '../student/on_duty_wallet_page.dart';
 import '../student/self_log_history_page.dart';
 import '../role_user/venue_availability_page.dart';
@@ -205,14 +205,14 @@ class _ProfilePageState extends State<ProfilePage> {
                   },
                 ),
                 _settingsTile(
-                  Icons.assignment_turned_in_outlined,
-                  "Departmental Directives",
-                  "View all tasks assigned to this dept",
+                  Icons.leaderboard_outlined,
+                  "Department Scoreboard",
+                  "View top performers in your department",
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const ViewDeptTasks(),
+                        builder: (context) => const LeaderBoardPage(),
                       ),
                     );
                   },

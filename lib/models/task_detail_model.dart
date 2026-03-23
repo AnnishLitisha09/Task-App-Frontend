@@ -1,3 +1,5 @@
+import 'task_action_button.dart';
+
 class TaskDetailModel {
   final int taskId;
   final String title;
@@ -31,6 +33,7 @@ class TaskDetailModel {
   final AssignmentStats assignmentStats;
   final List<String> closureRules;
   final String createdAt;
+  final TaskActionButton? actionButton;
 
   TaskDetailModel({
     required this.taskId,
@@ -64,6 +67,7 @@ class TaskDetailModel {
     required this.assignmentStats,
     required this.closureRules,
     required this.createdAt,
+    this.actionButton,
   });
 
   factory TaskDetailModel.fromJson(Map<String, dynamic> json) {
@@ -117,6 +121,7 @@ class TaskDetailModel {
           (json['closure_rules'] as List?)?.map((e) => e.toString()).toList() ??
           [],
       createdAt: json['created_at'] ?? '',
+      actionButton: json['action_button'] != null ? TaskActionButton.fromJson(json['action_button']) : null,
     );
   }
 }

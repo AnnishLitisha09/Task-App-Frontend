@@ -79,8 +79,9 @@ class _TaskOtpPageState extends State<TaskOtpPage> {
     });
     try {
       // Uses taskId for generating OTP
-      if (widget.taskId == null)
+      if (widget.taskId == null) {
         throw Exception("Task ID is missing for generation");
+      }
       final res = await TaskService().generateOTP(
         widget.taskId!,
         widget.otpType,

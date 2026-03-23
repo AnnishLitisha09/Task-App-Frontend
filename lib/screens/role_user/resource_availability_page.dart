@@ -5,7 +5,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../services/resource_service.dart';
 import '../../components/stat_card.dart';
 import '../../components/section_header.dart';
-import '../../components/task_card.dart';
 
 class ResourceAvailabilityPage extends StatefulWidget {
   const ResourceAvailabilityPage({super.key});
@@ -143,8 +142,8 @@ class _ResourceAvailabilityPageState extends State<ResourceAvailabilityPage> {
                       keyboardType: TextInputType.number,
                       style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                       decoration: InputDecoration(
-                        labelText: "Faulty / Damaged Items",
-                        hintText: "Enter quantity to flag as faulty",
+                        labelText: "Total Faulty Items",
+                        hintText: "Enter total number of faulty items",
                         prefixIcon: const Icon(Icons.warning_amber_rounded, size: 20, color: AppTheme.danger),
                         filled: true,
                         fillColor: Colors.white,
@@ -174,7 +173,7 @@ class _ResourceAvailabilityPageState extends State<ResourceAvailabilityPage> {
                         child: ElevatedButton(
                           onPressed: () async {
                             final newTotal = int.tryParse(totalQtyController.text);
-                            final fQty = int.tryParse(faultyQtyController.text) ?? 0;
+                            final int finalFaultyQty = int.tryParse(faultyQtyController.text) ?? 0;
 
                             if (newTotal == null) {
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -188,9 +187,9 @@ class _ResourceAvailabilityPageState extends State<ResourceAvailabilityPage> {
                                 'venue_id': _venueData!['venue_id'],
                                 'name': groupedResource['name'],
                                 'new_total_quantity': newTotal,
-                                'faulty_report': fQty > 0
+                                'faulty_report': finalFaultyQty > 0
                                     ? {
-                                        'quantity': fQty,
+                                        'quantity': finalFaultyQty,
                                         'status': 'damaged',
                                       }
                                     : null,
@@ -233,7 +232,7 @@ class _ResourceAvailabilityPageState extends State<ResourceAvailabilityPage> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text("Venue Inventory", 
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, letterSpacing: -0.2)),
+          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: -0.2)),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -269,7 +268,13 @@ class _ResourceAvailabilityPageState extends State<ResourceAvailabilityPage> {
           ),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
-            sliver: SliverList(
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                mainAxisExtent: 180,
+              ),
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   final r = groupedResources[index] as Map<String, dynamic>;
@@ -302,23 +307,29 @@ class _ResourceAvailabilityPageState extends State<ResourceAvailabilityPage> {
                 color: AppTheme.brandAccent,
               ),
             ),
-            const SizedBox(width: 12),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
             Expanded(
               child: StatCard(
-                label: "Current Status",
+                label: "Status",
                 value: status,
                 icon: Icons.circle_notifications_rounded,
                 color: isAvailable ? AppTheme.success : AppTheme.warning,
               ),
             ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: StatCard(
+                label: "Resource Types",
+                value: totalCount.toString(),
+                icon: Icons.inventory_2_rounded,
+                color: AppTheme.info,
+              ),
+            ),
           ],
-        ),
-        const SizedBox(height: 12),
-        StatCard(
-          label: "Total Resource Types",
-          value: totalCount.toString(),
-          icon: Icons.inventory_2_rounded,
-          color: AppTheme.info,
         ),
         const SizedBox(height: 32),
         const SectionHeader(title: "Deployed Inventory"),
@@ -333,22 +344,90 @@ class _ResourceAvailabilityPageState extends State<ResourceAvailabilityPage> {
     final broken = items.firstWhere((i) => i['status'] == 'broken', orElse: () => {'quantity': 0})['quantity'];
     final maintenance = items.firstWhere((i) => i['status'] == 'under maintenance', orElse: () => {'quantity': 0})['quantity'];
 
-    final List<String> statusAlerts = [];
-    if (damaged > 0) statusAlerts.add("$damaged Damaged");
-    if (broken > 0) statusAlerts.add("$broken Broken");
-    if (maintenance > 0) statusAlerts.add("$maintenance In Repair");
+    final int faultyCount = damaged + broken + maintenance;
 
-    final String statusInfo = statusAlerts.isNotEmpty 
-        ? " • ${statusAlerts.join(", ")}" 
-        : "";
-
-    return TaskCard(
-      title: r['name'] ?? 'Asset',
-      sub: "Available: $available / Total: ${r['total_quantity']}$statusInfo",
-      accent: statusAlerts.isNotEmpty ? AppTheme.warning : AppTheme.brandAccent,
-      icon: Icons.layers_rounded,
+    return InkWell(
       onTap: () => _showManageResourceDialog(r),
-      heroTag: "resource_${r['name']}",
-    ).animate().fadeIn(duration: 400.ms).slideX(begin: 0.05);
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppTheme.surfaceColor, width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.brandAccent.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: (faultyCount > 0 ? AppTheme.warning : AppTheme.brandAccent).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.inventory_2_rounded,
+                color: faultyCount > 0 ? AppTheme.warning : AppTheme.brandAccent,
+                size: 20,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              r['name'] ?? 'Asset',
+              style: const TextStyle(
+                color: AppTheme.textMain,
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "Total: ${r['total_quantity']}",
+              style: TextStyle(
+                color: AppTheme.textSub.withOpacity(0.7),
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _buildCountBadge(available.toString(), AppTheme.success),
+                if (faultyCount > 0) ...[
+                  const SizedBox(width: 8),
+                  _buildCountBadge(faultyCount.toString(), AppTheme.danger),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(duration: 400.ms).scale(begin: const Offset(0.9, 0.9));
+  }
+
+  Widget _buildCountBadge(String count, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        count,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.bold,
+          fontSize: 12,
+        ),
+      ),
+    );
   }
 }

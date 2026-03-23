@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:intl/intl.dart';
 import '../models/task_detail_model.dart';
 import '../models/daily_report_model.dart';
 import '../models/venue_dashboard_model.dart';
@@ -547,10 +548,36 @@ class TaskService {
       );
 
       if (response.statusCode != 200 && response.statusCode != 201) {
-        throw Exception('Failed to accept task: ${response.statusCode}');
+        final errBody = jsonDecode(response.body);
+        throw Exception(errBody['message'] ?? 'Failed to accept task: ${response.statusCode}');
       }
     } catch (e) {
       throw Exception('Error accepting task: $e');
+    }
+  }
+
+  /// Approve a task as the designated higher-authority approver (approver_id).
+  Future<void> approveTask(int taskId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.put(
+        Uri.parse('${backendUrl}tasks/$taskId/approve'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        final errBody = jsonDecode(response.body);
+        throw Exception(errBody['message'] ?? 'Failed to approve task: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error approving task: $e');
     }
   }
 
@@ -570,7 +597,8 @@ class TaskService {
       );
 
       if (response.statusCode != 200 && response.statusCode != 201) {
-        throw Exception('Failed to self-assign task: ${response.statusCode}');
+        final errBody = jsonDecode(response.body);
+        throw Exception(errBody['message'] ?? 'Failed to self-assign task: ${response.statusCode}');
       }
     } catch (e) {
       throw Exception('Error self-assigning task: $e');
@@ -603,7 +631,8 @@ class TaskService {
       );
 
       if (response.statusCode != 200) {
-        throw Exception('Failed to reject task: ${response.statusCode}');
+        final errBody = jsonDecode(response.body);
+        throw Exception(errBody['message'] ?? 'Failed to reject task: ${response.statusCode}');
       }
     } catch (e) {
       throw Exception('Error rejecting task: $e');
@@ -642,7 +671,8 @@ class TaskService {
       );
 
       if (response.statusCode != 200 && response.statusCode != 201) {
-        throw Exception('Failed to close task: ${response.statusCode}');
+        final errBody = jsonDecode(response.body);
+        throw Exception(errBody['message'] ?? 'Failed to close task: ${response.statusCode}');
       }
     } catch (e) {
       throw Exception('Error closing task: $e');
@@ -668,8 +698,9 @@ class TaskService {
         final data = jsonDecode(response.body);
         return ExhaustiveTaskModel.fromJson(data);
       } else {
+        final errBody = jsonDecode(response.body);
         throw Exception(
-          'Failed to load exhaustive details: ${response.statusCode}',
+          errBody['message'] ?? 'Failed to load exhaustive details: ${response.statusCode}',
         );
       }
     } catch (e) {
@@ -846,7 +877,8 @@ class TaskService {
         final data = jsonDecode(response.body);
         return data;
       } else {
-        throw Exception('Failed to generate: ${response.body}');
+        final errBody = jsonDecode(response.body);
+        throw Exception(errBody['message'] ?? 'Failed to generate: ${response.body}');
       }
     } catch (e) {
       throw Exception('Error generating OTP: $e');
@@ -1079,6 +1111,35 @@ class TaskService {
       }
     } catch (e) {
       throw Exception('Cancellation Error: $e');
+    }
+  }
+
+  Future<void> rescheduleTask(int taskId, DateTime newTime) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.put(
+        Uri.parse('${backendUrl}tasks/$taskId/reschedule'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'new_date': DateFormat('yyyy-MM-dd').format(newTime),
+          'new_time': DateFormat('HH:mm:ss').format(newTime),
+          'self_assign': true,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        final errBody = jsonDecode(response.body);
+        throw Exception(errBody['message'] ?? 'Reschedule failed');
+      }
+    } catch (e) {
+      throw Exception('Reschedule Error: $e');
     }
   }
 }

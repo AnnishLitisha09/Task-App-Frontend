@@ -14,6 +14,7 @@ import '../../services/resource_service.dart';
 import './resource_availability_page.dart';
 import './maintenance_logs_page.dart';
 import './venue_availability_page.dart';
+import 'package:intl/intl.dart';
 
 class VenueDetailsPage extends StatefulWidget {
   final int? venueId;
@@ -234,7 +235,7 @@ class _VenueDetailsPageState extends State<VenueDetailsPage> {
                                     ),
                                     child: Center(
                                       child: Text(
-                                        "+${_venueResources.length - 2} More",
+                                        "+${_venueResources.length - 2} more",
                                         style: const TextStyle(
                                           color: AppTheme.brandAccent,
                                           fontWeight: FontWeight.w800,
@@ -434,10 +435,20 @@ class _VenueDetailsPageState extends State<VenueDetailsPage> {
   }
 
   Widget _buildSliverAppBar() {
-    final backendUrl =
+    final rawBackendUrl =
         dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
-    final photoUrl = _selectedVenue?.photo != null
-        ? (backendUrl.replaceAll('/api/', '') + _selectedVenue!.photo!)
+    final backendUrl = rawBackendUrl.replaceAll('/api/', '');
+    final cleanBackend = backendUrl.endsWith('/') ? backendUrl.substring(0, backendUrl.length - 1) : backendUrl;
+    
+    String? cleanPhoto;
+    if (_selectedVenue?.photo != null) {
+      cleanPhoto = _selectedVenue!.photo!.startsWith('/') 
+          ? _selectedVenue!.photo!.substring(1) 
+          : _selectedVenue!.photo!;
+    }
+
+    final photoUrl = cleanPhoto != null
+        ? '$cleanBackend/$cleanPhoto'
         : 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTTGGNugQWH_yx2ZaReTajVjGsZLoUVK9SpkA&s';
 
     return SliverAppBar(
@@ -674,7 +685,7 @@ class _VenueDetailsPageState extends State<VenueDetailsPage> {
             ),
           ),
           Text(
-            date,
+            _formatItemDate(date),
             style: const TextStyle(
               color: Colors.black,
               fontSize: 12,
@@ -684,5 +695,15 @@ class _VenueDetailsPageState extends State<VenueDetailsPage> {
         ],
       ),
     );
+  }
+  String _formatItemDate(String dateStr) {
+    if (dateStr.isEmpty) return "N/A";
+    try {
+      final dt = DateTime.parse(dateStr);
+      return DateFormat('EEEE, MMM dd').format(dt);
+    } catch (e) {
+      debugPrint("Error parsing date: $dateStr - $e");
+      return dateStr;
+    }
   }
 }

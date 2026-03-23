@@ -72,7 +72,7 @@ class _VerifyUsersProofPageState extends State<VerifyUsersProofPage> {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e"), backgroundColor: AppTheme.danger),
+          SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: AppTheme.danger),
         );
       }
     }
@@ -122,7 +122,9 @@ class _VerifyUsersProofPageState extends State<VerifyUsersProofPage> {
     if (proofPath == null || proofPath.isEmpty) return;
     
     final backendUrl = dotenv.env['BACKEND_URL']?.replaceAll('/api/', '') ?? 'http://localhost:3002';
-    final proofUrl = proofPath.startsWith('http') ? proofPath : '$backendUrl/$proofPath';
+    final String cleanBackend = backendUrl.endsWith('/') ? backendUrl.substring(0, backendUrl.length - 1) : backendUrl;
+    final String cleanProof = proofPath.startsWith('/') ? proofPath.substring(1) : proofPath;
+    final proofUrl = proofPath.startsWith('http') ? proofPath : '$cleanBackend/$cleanProof';
 
     showDialog(
       context: context,

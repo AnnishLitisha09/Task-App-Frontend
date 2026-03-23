@@ -190,6 +190,7 @@ class TodayTask {
   final String category;
   final String timing;
   final String status;
+  final Map<String, dynamic>? actionButton;
 
   TodayTask({
     required this.taskId,
@@ -197,6 +198,7 @@ class TodayTask {
     required this.category,
     required this.timing,
     required this.status,
+    this.actionButton,
   });
 
   factory TodayTask.fromJson(Map<String, dynamic> json) {
@@ -206,6 +208,7 @@ class TodayTask {
       category: json['category'] ?? '',
       timing: _parseTimingString(json),
       status: json['status'] ?? json['assignment_status'] ?? '',
+      actionButton: json['action_button'],
     );
   }
 }
