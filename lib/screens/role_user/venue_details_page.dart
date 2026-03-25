@@ -12,7 +12,6 @@ import './venue_schedule_page.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../../services/resource_service.dart';
 import './resource_availability_page.dart';
-import './maintenance_logs_page.dart';
 import './venue_availability_page.dart';
 import 'package:intl/intl.dart';
 import '../../services/venue_notifier.dart';
@@ -292,33 +291,6 @@ class _VenueDetailsPageState extends State<VenueDetailsPage> {
                             },
                           ),
                         ),
-                      const SizedBox(height: 24),
-                      _buildSectionHeader(
-                        "Maintenance & Issues",
-                        "View Logs",
-                        onAction: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const MaintenanceLogsPage(),
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: surfaceColor,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.build_circle_outlined, color: Colors.orange),
-                            const SizedBox(width: 12),
-                            const Text("Reporting a new issue or view history", style: TextStyle(fontSize: 12)),
-                            const Spacer(),
-                            Icon(Icons.chevron_right, size: 16, color: textSub),
-                          ],
-                        ),
-                      ),
                       const SizedBox(height: 24),
                       _buildSectionHeader(
                         "Booking History",
