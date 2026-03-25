@@ -283,7 +283,7 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(height: 10),
                 _buildTextField(
                   controller: _emailController,
-                  hint: 'student@gmail.com',
+                  hint: 'student@bitsathy.ac.in',
                   icon: Icons.alternate_email_rounded,
                 ),
                 const SizedBox(height: 24),

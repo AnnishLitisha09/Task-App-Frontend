@@ -315,6 +315,10 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
   Widget _buildLightEventCard(Map<String, dynamic> task, double maxWidth) {
     double start = (task['start'] as num).toDouble();
     double duration = (task['dur'] as num).toDouble() / 60;
+    
+    // Skip if totally outside 8-17
+    if (start >= 18 || (start + duration) <= 8) return const SizedBox.shrink();
+
     Color taskColor = task['color'] ?? brandAccent;
 
     int colIndex = task['colIndex'] ?? 0;
@@ -325,12 +329,21 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
     double cardWidth = availableWidth / totalCols;
     double left = 10 + (colIndex * cardWidth);
 
-    // FIX: Ensure minimum height and prevent overflow for short tasks
+    double adjustedStart = start - 8.0;
+    if (adjustedStart < 0) {
+      duration += adjustedStart;
+      adjustedStart = 0;
+    }
     double cardHeight = (duration * hourHeight) - 4;
+    
+    if (adjustedStart + (cardHeight/hourHeight) > 10) {
+       cardHeight = (10 - adjustedStart) * hourHeight - 4;
+    }
+
     if (cardHeight < 30) cardHeight = 30; // Minimum usable height
 
     return Positioned(
-      top: start * hourHeight + 2,
+      top: adjustedStart * hourHeight + 2,
       left: left,
       width: cardWidth,
       height: cardHeight,
@@ -412,19 +425,22 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
       padding: const EdgeInsets.only(top: 8),
       child: Column(
         children: List.generate(
-          24,
-          (i) => Container(
-            height: hourHeight,
-            alignment: Alignment.topCenter,
-            child: Text(
-              "${i.toString().padLeft(2, '0')}:00",
-              style: TextStyle(
-                color: slate500.withOpacity(0.3),
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
+          10,
+          (index) {
+            final int hour = index + 8;
+            return Container(
+              height: hourHeight,
+              alignment: Alignment.topCenter,
+              child: Text(
+                "${hour.toString().padLeft(2, '0')}:00",
+                style: TextStyle(
+                  color: slate500.withOpacity(0.3),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
@@ -433,7 +449,7 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
   Widget _buildRefinedGrid() {
     return Column(
       children: List.generate(
-        24,
+        10,
         (index) => Container(
           height: hourHeight,
           decoration: BoxDecoration(
@@ -451,7 +467,14 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
 
   Widget _buildModernTimeIndicator() {
     final now = DateTime.now();
-    final double top = (now.hour + (now.minute / 60)) * hourHeight;
+    final double adjustedHour = now.hour - 8.0;
+    
+    // Hide indicator if outside 8 AM to 5:59 PM window
+    if (adjustedHour < 0 || adjustedHour >= 10) {
+      return const SizedBox.shrink();
+    }
+
+    final double top = (adjustedHour + (now.minute / 60)) * hourHeight;
     return Positioned(
       top: top,
       left: 0,

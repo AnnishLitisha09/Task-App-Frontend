@@ -353,9 +353,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
     // Fallback if API hasn't loaded yet
     if (_userProfile == null) {
-      name = isStaff
-          ? "Robert Jenkins"
-          : (isFaculty ? "Dr. Alan Turing" : "Annish Litisha");
+      name = "Loading...";
     }
 
     String idLabel;

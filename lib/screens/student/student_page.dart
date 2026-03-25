@@ -14,7 +14,6 @@ import '../../models/student_dashboard_model.dart';
 import 'student_tasks_list_page.dart';
 import 'all_new_task_page.dart';
 import '../common/task_detail_page.dart';
-import '../common/generic_view_all_page.dart';
 import '../common/score_performance_page.dart';
 import '../../services/notification_service.dart';
 
@@ -38,7 +37,6 @@ class StudentPage extends StatefulWidget {
 class _StudentPageState extends State<StudentPage> {
   bool _isLoading = true;
   StudentDashboard? _dashboard;
-  List<dynamic> _pendingProofs = [];
   int _unreadNotifications = 0;
   final StudentService _studentService = StudentService();
   final NotificationService _notificationService = NotificationService();
@@ -54,24 +52,13 @@ class _StudentPageState extends State<StudentPage> {
     try {
       final results = await Future.wait([
         _studentService.getStudentDashboard(),
-        TaskService().getPendingProofs(),
         _notificationService.getUnreadCount(),
       ]);
 
       if (mounted) {
         setState(() {
           _dashboard = results[0] as StudentDashboard;
-          final proofs = results[1];
-          _unreadNotifications = results[2] as int;
-          if (proofs is List) {
-            _pendingProofs = proofs;
-          } else if (proofs is Map) {
-            if (proofs.containsKey('items')) {
-              _pendingProofs = proofs['items'];
-            } else if (proofs.containsKey('data')) {
-              _pendingProofs = proofs['data'];
-            }
-          }
+          _unreadNotifications = results[1] as int;
           _isLoading = false;
         });
       }
@@ -247,10 +234,10 @@ class _StudentPageState extends State<StudentPage> {
               onRefresh: _fetchDashboard,
               color: AppTheme.brandAccent,
               child: CustomScrollView(
-                physics: const BouncingScrollPhysics(),
+                physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                 slivers: [
                   CustomAppBar(
-                    title: "Annish Litisha",
+                    title: _isLoading ? "Loading..." : (_dashboard?.studentDetails.name ?? "Student"),
                     date: formattedDate,
                     notificationCount: _unreadNotifications,
                     profileImageUrl:
@@ -664,57 +651,7 @@ class _StudentPageState extends State<StudentPage> {
 
                             const SizedBox(height: 32),
 
-                            // 5. Pending Proofs
-                            SectionHeader(
-                              title: "Pending Proofs",
-                              count: _pendingProofs.length,
-                              onViewAll: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => GenericViewAllPage(
-                                    title: "Pending Proofs",
-                                    tasks: _pendingProofs,
-                                    viewMode: 'viewonly',
-                                    accentColor: AppTheme.success,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (_pendingProofs.isEmpty)
-                              const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 20),
-                                  child: Text(
-                                    "No pending proofs",
-                                    style: TextStyle(color: AppTheme.textSub),
-                                  ),
-                                ),
-                              )
-                            else
-                              ..._pendingProofs.take(2).map((proof) {
-                                return TaskCard(
-                                  title: proof['title'] ?? 'Proof Review',
-                                  sub:
-                                      "Status: ${proof['status'] ?? 'Pending'}",
-                                  accent: AppTheme.success,
-                                  icon: Icons.verified_rounded,
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => TaskDetailsPage(
-                                          taskData: {
-                                            'task_id': proof['task_id'],
-                                            'title': proof['title'],
-                                            'status': proof['status'],
-                                            'isPendingProof': true,
-                                          },
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                );
-                              }),
+                            // Removed Pending Proofs
                           ],
                         ]),
                       ),

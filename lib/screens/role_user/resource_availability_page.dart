@@ -187,12 +187,10 @@ class _ResourceAvailabilityPageState extends State<ResourceAvailabilityPage> {
                                 'venue_id': _venueData!['venue_id'],
                                 'name': groupedResource['name'],
                                 'new_total_quantity': newTotal,
-                                'faulty_report': finalFaultyQty > 0
-                                    ? {
+                                'faulty_report': {
                                         'quantity': finalFaultyQty,
                                         'status': 'damaged',
-                                      }
-                                    : null,
+                                      },
                               };
 
                               await _resourceService.manageResource(payload);
@@ -269,11 +267,11 @@ class _ResourceAvailabilityPageState extends State<ResourceAvailabilityPage> {
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
             sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 200,
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
-                mainAxisExtent: 180,
+                mainAxisExtent: 160,
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
@@ -398,13 +396,13 @@ class _ResourceAvailabilityPageState extends State<ResourceAvailabilityPage> {
               ),
             ),
             const SizedBox(height: 12),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
               children: [
                 _buildCountBadge(available.toString(), AppTheme.success),
-                if (faultyCount > 0) ...[
-                  const SizedBox(width: 8),
+                if (faultyCount > 0)
                   _buildCountBadge(faultyCount.toString(), AppTheme.danger),
-                ],
               ],
             ),
           ],

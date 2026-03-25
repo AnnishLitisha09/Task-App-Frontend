@@ -1174,6 +1174,11 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         if (actionButton.action == 'pause' || actionButton.action == 'resume') {
           final bool isProofTask = _taskDetail?.isDocument == true ||
               (_taskDetail?.closureRules.contains('photo_upload') ?? false);
+          final bool requiresOtp = _taskDetail?.closureRules.contains('otp') ?? false;
+
+          String endLabel = isProofTask ? 'Submit Proof & End' : 'End Activity';
+          if (requiresOtp) endLabel += ' OTP';
+
           return Row(
             children: [
               Expanded(
@@ -1191,13 +1196,33 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
               Expanded(
                 flex: 2,
                 child: _buildSingleButton(
-                  label: isProofTask ? 'Submit Proof & End' : 'End Activity',
+                  label: endLabel,
                   icon: isProofTask ? Icons.upload_file_rounded : Icons.stop_rounded,
                   color: isProofTask ? Colors.blue : brandAccent,
-                  onPressed: _endActivity,
+                  onPressed: requiresOtp ? () => _openOtpPage(OtpPageMode.verify, overrideOtpType: 'END') : _endActivity,
                 ),
               ),
             ],
+          );
+        }
+
+        // ── OTP Tasks: Start & End ───────────────────────────────────────────
+        if (actionButton.action == 'start_otp') {
+          return _buildSingleButton(
+            label: actionButton.label,
+            icon: Icons.vpn_key_rounded,
+            color: brandAccent,
+            onPressed: () => _openOtpPage(OtpPageMode.verify, overrideOtpType: 'START'),
+          );
+        }
+        
+        if (actionButton.action == 'end_otp') {
+          final bool isProofTask = actionButton.label.contains('Submit Proof');
+          return _buildSingleButton(
+            label: actionButton.label,
+            icon: isProofTask ? Icons.upload_file_rounded : Icons.verified_rounded,
+            color: isProofTask ? Colors.blue : brandAccent,
+            onPressed: () => _openOtpPage(OtpPageMode.verify, overrideOtpType: 'END'),
           );
         }
 
