@@ -165,7 +165,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         children: [
           SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(24, 8, 24, isRequest ? 24 : 140),
+            padding: EdgeInsets.fromLTRB(24, 8, 24, widget.viewMode == 'viewonly' ? 24 : 140),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -197,8 +197,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
               ],
             ),
           ),
-          if ((widget.viewMode == 'incharge' && isRequest) ||
-              (widget.viewMode != 'incharge' && !isRequest))
+          if ('Standard' != 'NoAction' && widget.viewMode != 'viewonly')
             _buildFloatingBottomAction(
               isApprovalWorkflow ||
                   (widget.viewMode == 'incharge' && isRequest),
@@ -642,7 +641,22 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     final bool isPendingProof = widget.taskData['isPendingProof'] == true ||
         widget.taskData['completionType'] == 'PROOF_SUBMIT';
 
-    bool canShowOtpManager = isManager && hasOtpUsersAssigned && !isPendingProof;
+    bool isTaskToday() {
+      final taskType = (_taskDetail?.taskTypes.isNotEmpty == true) ? _taskDetail!.taskTypes.first : null;
+      final dateStr = taskType?.startDate ?? widget.taskData['startDate']?.toString();
+      if (dateStr == null) return false;
+      try {
+        final taskDate = DateTime.parse(dateStr);
+        final now = DateTime.now();
+        return taskDate.year == now.year &&
+               taskDate.month == now.month &&
+               taskDate.day == now.day;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    bool canShowOtpManager = isManager && hasOtpUsersAssigned && !isPendingProof && isTaskToday();
 
     if (canExecute) {
       return Row(
@@ -1607,11 +1621,11 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   // Activity Lifecycle Methods
   Future<void> _startActivity() async {
     // Check if OTP is required for starting
-    List<String> rules = _taskDetail?.closureRules ?? [];
-    final role = _currentUserRole?.toLowerCase() ?? '';
-    bool needsOtp = role == 'student' || role == 'staff';
 
-    if (needsOtp && rules.contains('otp')) {
+    final role = _currentUserRole?.toLowerCase() ?? '';
+    final bool isStudent = role == 'student';
+    // Students ALWAYS need OTP for starting (as per new objective)
+    if (isStudent) {
       // Use the new TaskOtpPage for Start Activity Verification
       await _openOtpPage(OtpPageMode.verify);
     } else {
@@ -2070,7 +2084,48 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     );
   }
 
+  bool _isTaskInPast() {
+    final type = _taskDetail?.taskTypes.firstOrNull;
+    if (type == null) return false;
+
+    // Model guarantees non-null strings (defaults to empty)
+    final dateStr = type.endDate.isNotEmpty ? type.endDate : type.startDate;
+    final timeStr = type.endTime.isNotEmpty ? type.endTime : type.startTime;
+
+    if (dateStr.isEmpty) return false;
+
+    DateTime? dt = DateTime.tryParse(dateStr);
+    if (dt == null) return false;
+
+    if (timeStr.isNotEmpty) {
+      final parts = timeStr.split(':');
+      final h = int.tryParse(parts[0]) ?? 0;
+      final m = int.tryParse(parts[1]) ?? 59;
+      dt = DateTime(dt.year, dt.month, dt.day, h, m);
+    } else {
+      dt = DateTime(dt.year, dt.month, dt.day, 23, 59);
+    }
+
+    return dt.isBefore(DateTime.now());
+  }
+
   Future<void> _transferTask(int taskId, int targetUserId) async {
+    // --- NEW: Escalation Timing Logic ---
+    final bool isEscalated = (_taskDetail?.actionButton?.type == 'escalated') ||
+        (widget.taskData['status']?.toString().toLowerCase() == 'escalated') ||
+        (widget.taskData['is_escalate'] == true);
+
+    if (isEscalated && _isTaskInPast()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Escalated tasks must be rescheduled to a future time before assignment."),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      _showRescheduleDialog(taskId);
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
       await TaskService().transferTask(taskId, targetUserId, "Escalation resolution transfer");
@@ -2091,27 +2146,57 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   }
 
   Future<void> _showRescheduleDialog(int taskId) async {
+    // 1. Pick new start date
     DateTime? pickedDate = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
+      helpText: "SET NEW START DATE",
     );
     if (pickedDate == null) return;
 
-    TimeOfDay? pickedTime = await showTimePicker(
+    // 2. Pick new start time
+    TimeOfDay? startT = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.now(),
+      helpText: "SET NEW START TIME",
     );
-    if (pickedTime == null) return;
+    if (startT == null) return;
 
-    final combined = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute);
+    // 3. Pick new end time (on the same day)
+    TimeOfDay? endT = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: (startT.hour + 2) % 24, minute: startT.minute),
+      helpText: "SET NEW END TIME (SAME DAY)",
+    );
+    if (endT == null) return;
+
+    final startDT = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, startT.hour, startT.minute);
+    final endDT = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, endT.hour, endT.minute);
+
+    if (startDT.isBefore(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Start time must be in the future!"), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
+    if (endDT.isBefore(startDT)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("End time must be after start time!"), backgroundColor: Colors.orange),
+      );
+      return;
+    }
     
     setState(() => _isLoading = true);
     try {
-      // Backend handles rescheduling via specialized endpoint or just update
-      // For now, let's use a common update logic or self-assign with new time
-      await TaskService().rescheduleTask(taskId, combined);
+      await TaskService().rescheduleTaskExtended(
+        taskId: taskId, 
+        newStart: startDT, 
+        newEnd: endDT,
+        selfAssign: true,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: const Text("Task rescheduled successfully!"), backgroundColor: successColor),
@@ -2203,6 +2288,18 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         int.tryParse(widget.taskData['task_id']?.toString() ?? '') ??
         0;
     if (taskId == 0) return;
+
+    // --- NEW: Escalation Timing Logic ---
+    if (_isTaskInPast()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Escalated tasks must be rescheduled to a future time before execution."),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      _showRescheduleDialog(taskId);
+      return;
+    }
 
     setState(() => _isLoading = true);
     try {

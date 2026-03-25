@@ -5,6 +5,7 @@ import '../../services/task_service.dart';
 import '../../services/resource_service.dart';
 import '../../models/venue_dashboard_model.dart';
 import '../../components/skeleton_loader.dart';
+import '../../services/venue_notifier.dart';
 
 class VenueAvailabilityPage extends StatefulWidget {
   const VenueAvailabilityPage({super.key});
@@ -27,6 +28,13 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
   void initState() {
     super.initState();
     _fetchData();
+    VenueNotifier.venueNotifier.addListener(_fetchData);
+  }
+
+  @override
+  void dispose() {
+    VenueNotifier.venueNotifier.removeListener(_fetchData);
+    super.dispose();
   }
 
   Future<void> _fetchData() async {

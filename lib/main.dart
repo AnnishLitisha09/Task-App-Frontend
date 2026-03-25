@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'root_wrapper.dart';
+import 'services/venue_notifier.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -11,6 +12,9 @@ void main() async {
   await dotenv.load(fileName: ".env");
 
   final prefs = await SharedPreferences.getInstance();
+
+  // Seed global reactive venue state from persisted session
+  await VenueNotifier.init();
 
   // 1. Initial State Detection
   bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;

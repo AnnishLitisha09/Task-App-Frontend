@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import './venue_notifier.dart';
 
 class ResourceService {
   Future<Map<String, dynamic>?> getMyVenue() async {
@@ -11,8 +12,14 @@ class ResourceService {
       final backendUrl =
           dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
+      final selectedVenueId = VenueNotifier.currentVenueId;
+      String url = '${backendUrl}resources/venue/my-venue';
+      if (selectedVenueId != null) {
+        url += '?venue_id=$selectedVenueId';
+      }
+
       final response = await http.get(
-        Uri.parse('${backendUrl}resources/venue/my-venue'),
+        Uri.parse(url),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -123,8 +130,10 @@ class ResourceService {
           dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
       String url = '${backendUrl}resources/maintenance/logs';
-      if (venueId != null) {
-        url = '${backendUrl}resources/venues/$venueId/maintenance-logs';
+      int? effectiveVenueId = venueId ?? VenueNotifier.currentVenueId;
+      
+      if (effectiveVenueId != null) {
+        url = '${backendUrl}resources/venues/$effectiveVenueId/maintenance-logs';
       }
 
       // Add query parameters for date

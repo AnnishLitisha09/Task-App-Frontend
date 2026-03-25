@@ -111,11 +111,15 @@ class TaskDetailModel {
               ?.map((e) => TaskType.fromJson(e))
               .toList() ??
           [],
-      assignees:
-          (json['assignees'] as List?)
-              ?.map((e) => TaskAssignee.fromJson(e))
-              .toList() ??
-          [],
+      assignees: (json['assignees'] is Map)
+          ? ((json['assignees']['all'] as List?)
+                  ?.map((e) => TaskAssignee.fromJson(e))
+                  .toList() ??
+              [])
+          : (json['assignees'] as List?)
+                  ?.map((e) => TaskAssignee.fromJson(e))
+                  .toList() ??
+              [],
       assignmentStats: AssignmentStats.fromJson(json['assignment_stats'] ?? {}),
       closureRules:
           (json['closure_rules'] as List?)?.map((e) => e.toString()).toList() ??

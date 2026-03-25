@@ -3,7 +3,6 @@ import 'package:intl/intl.dart';
 import '../../models/exhaustive_task_model.dart';
 import '../../models/task_action_button.dart';
 import '../../services/task_service.dart';
-import '../../screens/common/user_selection_page.dart';
 
 class TaskViewPage extends StatefulWidget {
   final Map<String, dynamic> taskData;
@@ -720,23 +719,55 @@ class _TaskViewPageState extends State<TaskViewPage> {
       children: subTasks.map((t) {
         final title = t['title'] ?? t['task_name'] ?? 'Sub-task';
         final desc = t['description'] ?? '';
+        final status = (t['status'] ?? 'Inactive').toString().toUpperCase();
+        
+        final bool isActive = status == 'ACTIVE' || status == 'IN_PROGRESS';
+        
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade100),
+            border: Border.all(
+              color: isActive ? accent.withOpacity(0.3) : Colors.grey.shade100,
+              width: isActive ? 1.5 : 1.0,
+            ),
           ),
           child: Row(
             children: [
-              Icon(Icons.check_circle_outline, color: accent),
+              Icon(
+                isActive ? Icons.play_circle_fill_rounded : Icons.lock_outline_rounded, 
+                color: isActive ? accent : Colors.grey.shade300
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isActive ? Colors.green.shade50 : Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            status,
+                            style: TextStyle(
+                              color: isActive ? Colors.green.shade700 : Colors.grey.shade600,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                     if (desc.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 4.0),
@@ -804,71 +835,62 @@ class _TaskViewPageState extends State<TaskViewPage> {
   }
 
   Future<void> _showRescheduleDialog(int taskId) async {
+    // 1. Pick new start date
     DateTime? pickedDate = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
       firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 30)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      helpText: "SET NEW START DATE",
     );
-
     if (pickedDate == null) return;
-    if (!mounted) return;
 
-    TimeOfDay? pickedTime = await showTimePicker(
+    // 2. Pick new start time
+    TimeOfDay? startT = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.now(),
+      helpText: "SET NEW START TIME",
     );
+    if (startT == null) return;
 
-    if (pickedTime == null) return;
-    if (!mounted) return;
-
-    // New: User Selection for "respected assignees"
-    final List<Map<String, dynamic>>? selectedUsers = await Navigator.push<List<Map<String, dynamic>>>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const UserSelectionPage(
-          multiSelect: true,
-          // You might want to limit roles here based on hierarchy, 
-          // but for management/escalated we allow broad selection.
-        ),
-      ),
+    // 3. Pick new end time (on the same day)
+    TimeOfDay? endT = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: (startT.hour + 2) % 24, minute: startT.minute),
+      helpText: "SET NEW END TIME (SAME DAY)",
     );
-    
-    if (!mounted) return;
+    if (endT == null) return;
 
-    // If cancelled, don't proceed
-    if (selectedUsers == null) return;
+    final startDT = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, startT.hour, startT.minute);
+    final endDT = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, endT.hour, endT.minute);
 
-    final combined = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute);
-    final endDateTime = combined.add(const Duration(hours: 1));
+    if (startDT.isBefore(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Start time must be in the future!"), backgroundColor: Colors.orange),
+      );
+      return;
+    }
 
-    final String dateStr = DateFormat('yyyy-MM-dd').format(combined);
-    final String timeStr = DateFormat('HH:mm:ss').format(combined);
-    final String endTimeStr = DateFormat('HH:mm:ss').format(endDateTime);
+    if (endDT.isBefore(startDT)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("End time must be after start time!"), backgroundColor: Colors.orange),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
     try {
-      final List<int> facultyIds = selectedUsers
-          .map((u) => int.tryParse((u['user_id'] ?? u['id']).toString()) ?? 0)
-          .where((id) => id != 0)
-          .toList();
-
-      // Update the task schedule and assignees
-      await _taskService.updateTaskUnified(taskId, {
-        'start_date': dateStr,
-        'end_date': DateFormat('yyyy-MM-dd').format(endDateTime),
-        'start_time': timeStr,
-        'end_time': endTimeStr,
-        'faculty_ids': facultyIds,
-      });
-      
-      // If the current user is in the facultyIds, we don't strictly need selfAssignTask 
-      // as updateTaskUnified with faculty_ids should handle assignment. 
-      // But user said "make the task for themselves AND respected assignees".
+      // Use the extended rescheduling logic which includes self-assignment
+      await _taskService.rescheduleTaskExtended(
+        taskId: taskId, 
+        newStart: startDT, 
+        newEnd: endDT,
+        selfAssign: true,
+      );
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Task rescheduled and assigned successfully!"), backgroundColor: Colors.green),
+          const SnackBar(content: Text("Task rescheduled and self-assigned successfully!"), backgroundColor: Colors.green),
         );
         _fetchDetails();
       }

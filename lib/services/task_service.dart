@@ -7,6 +7,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/intl.dart';
 import '../models/task_detail_model.dart';
 import '../models/daily_report_model.dart';
+import '../services/venue_notifier.dart';
 import '../models/venue_dashboard_model.dart';
 import '../models/venue_history_model.dart';
 import '../models/managed_venues_model.dart';
@@ -215,8 +216,14 @@ class TaskService {
       final backendUrl =
           dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
+      final selectedVenueId = VenueNotifier.currentVenueId;
+      String urlStr = '${backendUrl}users/faculty/stats/daily';
+      if (selectedVenueId != null) {
+        urlStr += '?venue_id=$selectedVenueId';
+      }
+
       final response = await http.get(
-        Uri.parse('${backendUrl}users/faculty/stats/daily'),
+        Uri.parse(urlStr),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -398,9 +405,10 @@ class TaskService {
       final backendUrl =
           dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
+      int? vId = venueId ?? prefs.getInt('selectedVenueId');
       String url = '${backendUrl}tasks/venue-details';
-      if (venueId != null) {
-        url += '?venue_id=$venueId';
+      if (vId != null) {
+        url += '?venue_id=$vId';
       }
 
       final response = await http.get(
@@ -429,8 +437,14 @@ class TaskService {
       final backendUrl =
           dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
+      int? vId = prefs.getInt('selectedVenueId');
+      String url = '${backendUrl}tasks/venue-dashboard';
+      if (vId != null) {
+        url += '?venue_id=$vId';
+      }
+
       final response = await http.get(
-        Uri.parse('${backendUrl}tasks/venue-dashboard'),
+        Uri.parse(url),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -833,9 +847,10 @@ class TaskService {
       final backendUrl =
           dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
+      int? vId = venueId ?? prefs.getInt('selectedVenueId');
       String url = '${backendUrl}tasks/venue-history?days=$days';
-      if (venueId != null) {
-        url += '&venue_id=$venueId';
+      if (vId != null) {
+        url += '&venue_id=$vId';
       }
 
       final response = await http.get(
@@ -1114,12 +1129,16 @@ class TaskService {
     }
   }
 
-  Future<void> rescheduleTask(int taskId, DateTime newTime) async {
+  Future<void> rescheduleTaskExtended({
+    required int taskId,
+    required DateTime newStart,
+    required DateTime newEnd,
+    required bool selfAssign,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken') ?? '';
-      final backendUrl =
-          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+      final backendUrl = dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
       final response = await http.put(
         Uri.parse('${backendUrl}tasks/$taskId/reschedule'),
@@ -1128,9 +1147,11 @@ class TaskService {
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
-          'new_date': DateFormat('yyyy-MM-dd').format(newTime),
-          'new_time': DateFormat('HH:mm:ss').format(newTime),
-          'self_assign': true,
+          'new_date': DateFormat('yyyy-MM-dd').format(newStart),
+          'new_time': DateFormat('HH:mm:ss').format(newStart),
+          'new_end_date': DateFormat('yyyy-MM-dd').format(newEnd),
+          'new_end_time': DateFormat('HH:mm:ss').format(newEnd),
+          'self_assign': selfAssign,
         }),
       );
 
@@ -1141,5 +1162,15 @@ class TaskService {
     } catch (e) {
       throw Exception('Reschedule Error: $e');
     }
+  }
+
+  Future<void> rescheduleTask(int taskId, DateTime newTime) async {
+    // Legacy support
+    return rescheduleTaskExtended(
+      taskId: taskId, 
+      newStart: newTime, 
+      newEnd: newTime.add(const Duration(hours: 2)), 
+      selfAssign: true,
+    );
   }
 }

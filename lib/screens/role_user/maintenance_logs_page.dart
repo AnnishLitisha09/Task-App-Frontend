@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../theme/app_theme.dart';
 import '../../components/skeleton_loader.dart';
 import '../../services/resource_service.dart';
+import '../../services/venue_notifier.dart';
 
 class MaintenanceLogsPage extends StatefulWidget {
   const MaintenanceLogsPage({super.key});
@@ -26,6 +27,14 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
   void initState() {
     super.initState();
     _initData();
+    VenueNotifier.venueNotifier.addListener(_fetchLogs);
+  }
+
+  @override
+  void dispose() {
+    VenueNotifier.venueNotifier.removeListener(_fetchLogs);
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _initData() async {
@@ -69,9 +78,9 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
     final titleController = TextEditingController();
     final descriptionController = TextEditingController();
     final costController = TextEditingController();
-    // Pre-select venue if only one exists
-    int? selectedVenueId;
-    if (_venues.length == 1) {
+    // Pre-select venue if only one exists or use global selection
+    int? selectedVenueId = VenueNotifier.currentVenueId;
+    if (selectedVenueId == null && _venues.length == 1) {
       selectedVenueId = _venues[0]['venue_id'] ?? _venues[0]['id'];
     }
     String selectedCategory = 'general';
@@ -96,10 +105,12 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
                 children: [
                   _buildDropdown(
                     "Venue",
-                    _venues.map((v) => v['name'] as String).toList(),
+                    _venues
+                        .where((v) => (v['venue_id'] ?? v['id']) == selectedVenueId)
+                        .map((v) => v['name'] as String)
+                        .toList(),
                     (v) {
-                      final venue = _venues.firstWhere((ven) => ven['name'] == v);
-                      setDialogState(() => selectedVenueId = venue['venue_id'] ?? venue['id']);
+                      // Handled by lock
                     },
                     selectedVenueId != null 
                         ? _venues.firstWhere((v) => (v['venue_id'] ?? v['id']) == selectedVenueId)['name'] 

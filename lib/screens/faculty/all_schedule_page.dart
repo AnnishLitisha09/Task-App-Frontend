@@ -4,6 +4,7 @@ import '../../theme/app_theme.dart';
 import '../../components/task_card.dart';
 import '../../components/skeleton_loader.dart';
 import '../common/task_detail_page.dart';
+import '../../services/venue_notifier.dart';
 
 class AllSchedulePage extends StatefulWidget {
   final String userRole;
@@ -22,6 +23,13 @@ class _AllSchedulePageState extends State<AllSchedulePage> {
   void initState() {
     super.initState();
     _fetch();
+    VenueNotifier.venueNotifier.addListener(_fetch);
+  }
+
+  @override
+  void dispose() {
+    VenueNotifier.venueNotifier.removeListener(_fetch);
+    super.dispose();
   }
 
   void _processTasks(List<dynamic> tasks) {

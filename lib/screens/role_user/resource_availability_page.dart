@@ -4,6 +4,7 @@ import '../../components/skeleton_loader.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../services/resource_service.dart';
 import '../../components/stat_card.dart';
+import '../../services/venue_notifier.dart';
 import '../../components/section_header.dart';
 
 class ResourceAvailabilityPage extends StatefulWidget {
@@ -23,6 +24,13 @@ class _ResourceAvailabilityPageState extends State<ResourceAvailabilityPage> {
   void initState() {
     super.initState();
     _fetchData();
+    VenueNotifier.venueNotifier.addListener(_fetchData);
+  }
+
+  @override
+  void dispose() {
+    VenueNotifier.venueNotifier.removeListener(_fetchData);
+    super.dispose();
   }
 
   Future<void> _fetchData() async {

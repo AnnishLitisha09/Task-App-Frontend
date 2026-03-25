@@ -12,6 +12,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import '../../services/resource_service.dart';
 import '../../services/task_service.dart';
+import '../../services/venue_notifier.dart';
 import '../../models/venue_dashboard_model.dart';
 import '../../models/venue_history_model.dart';
 import '../../models/institutional_dashboard_model.dart';
@@ -67,10 +68,24 @@ class _RoleUserPageState extends State<RoleUserPage> {
     final String scope = widget.scope.toLowerCase();
     if (scope == 'infrastructure') {
       _fetchVenueDashboard();
+      // Re-fetch whenever venue is switched globally
+      VenueNotifier.venueNotifier.addListener(_onVenueChanged);
     } else if (scope == 'department') {
       _fetchDepartmentalDashboard();
     } else if (scope == 'institution') {
       _fetchInstitutionalDashboard();
+    }
+  }
+
+  @override
+  void dispose() {
+    VenueNotifier.venueNotifier.removeListener(_onVenueChanged);
+    super.dispose();
+  }
+
+  void _onVenueChanged() {
+    if (widget.scope.toLowerCase() == 'infrastructure') {
+      _fetchVenueDashboard();
     }
   }
 
@@ -167,14 +182,16 @@ class _RoleUserPageState extends State<RoleUserPage> {
           }
         }
 
-        if (_venueDetails!.venues.isNotEmpty && _selectedRoleVenue == null) {
-          _selectedRoleVenue = _venueDetails!.venues.first;
-        } else if (_venueDetails!.venues.isNotEmpty &&
-            _selectedRoleVenue != null) {
-          _selectedRoleVenue = _venueDetails!.venues.firstWhere(
-            (v) => v.venueId == _selectedRoleVenue!.venueId,
-            orElse: () => _venueDetails!.venues.first,
-          );
+        final currentId = VenueNotifier.currentVenueId;
+        if (_venueDetails!.venues.isNotEmpty) {
+          if (currentId != null) {
+            _selectedRoleVenue = _venueDetails!.venues.firstWhere(
+              (v) => v.venueId == currentId,
+              orElse: () => _venueDetails!.venues.first,
+            );
+          } else {
+            _selectedRoleVenue = _venueDetails!.venues.first;
+          }
         }
         _isLoading = false;
       });
@@ -298,7 +315,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
                                 textAlign: TextAlign.center,
                                 style: TextStyle(color: AppTheme.textSub),
                               ),
-                              const SizedBox(height: 24),
+                                const SizedBox(height: 24),
                               ElevatedButton.icon(
                                 onPressed: _refresh,
                                 icon: const Icon(Icons.refresh_rounded),
@@ -1343,63 +1360,65 @@ class _RoleUserPageState extends State<RoleUserPage> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.brandAccent.withOpacity(0.05),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: AppTheme.brandAccent.withOpacity(0.2),
+          color: AppTheme.brandAccent.withOpacity(0.15),
           width: 1.5,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.brandAccent.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.stadium_rounded,
+            color: AppTheme.brandAccent,
+            size: 22,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Assigned Workplace",
+                  style: AppTheme.caption.copyWith(
+                    color: AppTheme.brandAccent,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (_venueDetails != null && _venueDetails!.venues.length > 1)
+                  DropdownButtonHideUnderline(
+                    child: DropdownButton<VenueDetailItem>(
+                      value: _selectedRoleVenue,
+                      isDense: true,
+                      icon: const Icon(Icons.arrow_drop_down_rounded, color: AppTheme.brandAccent),
+                      onChanged: (VenueDetailItem? newValue) {
+                        if (newValue != null) {
+                          VenueNotifier.switchVenue(newValue.venueId, newValue.name);
+                        }
+                      },
+                      items: _venueDetails!.venues.map((VenueDetailItem venue) {
+                        return DropdownMenuItem<VenueDetailItem>(
+                          value: venue,
+                          child: Text(
+                            venue.name,
+                            style: AppTheme.h2.copyWith(fontSize: 16),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  )
+                else
+                  Text(
+                    _selectedRoleVenue?.name ?? "Venue",
+                    style: AppTheme.h2.copyWith(fontSize: 16),
+                  ),
+              ],
+            ),
           ),
         ],
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<VenueDetailItem>(
-          value: _selectedRoleVenue,
-          isExpanded: true,
-          icon: const Icon(
-            Icons.unfold_more_rounded,
-            color: AppTheme.brandAccent,
-            size: 20,
-          ),
-          items: _venueDetails!.venues.map((venue) {
-            return DropdownMenuItem(
-              value: venue,
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.stadium_rounded,
-                    size: 18,
-                    color: AppTheme.brandAccent.withOpacity(0.7),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    venue.name,
-                    style: const TextStyle(
-                      color: AppTheme.textMain,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-          onChanged: (val) {
-            if (val != null) {
-              setState(() {
-                _selectedRoleVenue = val;
-              });
-              _fetchScopedHistory(venueId: val.venueId);
-            }
-          },
-        ),
       ),
     );
   }

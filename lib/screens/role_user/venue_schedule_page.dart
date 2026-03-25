@@ -4,6 +4,7 @@ import '../../services/task_service.dart';
 import '../../models/venue_dashboard_model.dart';
 import '../../components/task_card.dart';
 import '../../components/skeleton_loader.dart';
+import '../../services/venue_notifier.dart';
 import '../common/task_detail_page.dart';
 
 class VenueSchedulePage extends StatefulWidget {
@@ -22,6 +23,13 @@ class _VenueSchedulePageState extends State<VenueSchedulePage> {
   void initState() {
     super.initState();
     _fetchSchedule();
+    VenueNotifier.venueNotifier.addListener(_fetchSchedule);
+  }
+
+  @override
+  void dispose() {
+    VenueNotifier.venueNotifier.removeListener(_fetchSchedule);
+    super.dispose();
   }
 
   void _processBookings(List<BookingWithVenue> bookings) {

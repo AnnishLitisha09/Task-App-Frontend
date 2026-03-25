@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,6 +19,7 @@ import '../role_user/venue_availability_page.dart';
 import '../role_user/resource_availability_page.dart';
 import '../role_user/maintenance_logs_page.dart';
 import 'score_performance_page.dart';
+import '../../services/venue_notifier.dart';
 
 
 class ProfilePage extends StatefulWidget {
@@ -36,6 +38,9 @@ class _ProfilePageState extends State<ProfilePage> {
   List<String> _availableRoles = [];
   String _currentScopeDetails = 'none';
   DepartmentUsersResponse? _hodData;
+
+  List<dynamic> _inchargeVenues = [];
+  int? _selectedVenueId;
 
   final Color brandAccent = const Color(0xFF6366F1);
   final Color slate900 = const Color(0xFF0F172A);
@@ -69,10 +74,15 @@ class _ProfilePageState extends State<ProfilePage> {
       final allRolesString = prefs.getString('allRoles') ?? '';
       _currentScopeDetails = prefs.getString('scopeDetails') ?? 'none';
 
-      final roles = allRolesString
-          .split(',')
-          .where((e) => e.isNotEmpty)
-          .toList();
+      final roles =
+          allRolesString.split(',').where((e) => e.isNotEmpty).toList();
+
+      // NEW: Load incharge venues
+      final venuesJson = prefs.getString('inchargeVenues');
+      if (venuesJson != null) {
+        _inchargeVenues = jsonDecode(venuesJson);
+      }
+      _selectedVenueId = prefs.getInt('selectedVenueId');
 
       final service = UserService();
       final profile = await service.getUserProfile();
@@ -92,6 +102,8 @@ class _ProfilePageState extends State<ProfilePage> {
       debugPrint("Error fetching profile: $e");
     }
   }
+
+  // Venue switcher is now an inline dropdown in the Active Venue section.
 
   @override
   Widget build(BuildContext context) {
@@ -216,6 +228,83 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     );
                   },
+                ),
+              ]),
+
+            if (widget.scope == 'infrastructure' && _inchargeVenues.length > 1)
+              _buildSettingsGroup("Active Workplace", [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: brandAccent.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(Icons.storefront_rounded, color: brandAccent, size: 20),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Selected Operational Venue",
+                              style: TextStyle(
+                                color: slate900,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            DropdownButtonHideUnderline(
+                              child: DropdownButton<int>(
+                                value: _selectedVenueId,
+                                isDense: true,
+                                icon: Icon(Icons.keyboard_arrow_down_rounded, color: slate500, size: 18),
+                                items: _inchargeVenues.map((v) {
+                                  return DropdownMenuItem<int>(
+                                    value: int.tryParse(v['venue_id'].toString()),
+                                    child: Text(
+                                      v['name'] ?? 'Unnamed',
+                                      style: TextStyle(
+                                        color: slate900,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                                onChanged: (val) async {
+                                  if (val == null) return;
+                                  final selected = _inchargeVenues.firstWhere(
+                                    (v) => int.tryParse(v['venue_id'].toString()) == val,
+                                  );
+                                  // Notify all pages globally
+                                  await VenueNotifier.switchVenue(
+                                    val,
+                                    selected['name']?.toString() ?? '',
+                                  );
+                                  setState(() => _selectedVenueId = val);
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text("Workplace switched to ${selected['name']}"),
+                                        behavior: SnackBarBehavior.floating,
+                                        backgroundColor: brandAccent,
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ]),
 

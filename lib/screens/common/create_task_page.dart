@@ -95,7 +95,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'activityTags': <String>[],
       'attachDocuments': false,
       'selectedDocuments': <String>[],
-      'is_document': true,
+      'is_document': false, // Changed from hardcoded true
       'closure_ids': [1],
     };
 
@@ -353,17 +353,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     setState(() => _isLoadingTitles = true);
     try {
       final titles = await _taskService.getTaskTitles();
-
-      // Filter titles according to target_role
-      final String userRoleLower = _userRole?.toLowerCase() ?? '';
-      final filteredTitles = titles.where((t) {
-        final targetRole =
-            (t['target_role'] as String?)?.toLowerCase() ?? 'all';
-        return targetRole == 'all' || targetRole == userRoleLower;
-      }).toList();
-
       setState(() {
-        _taskTitles = filteredTitles;
+        _taskTitles = titles; // Removed role filtering: all roles' titles should come
         _isLoadingTitles = false;
         // Auto-select first item if current title is empty
         if (_taskTitles.isNotEmpty &&
@@ -975,6 +966,12 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         "REQUIRED DOCUMENTATION",
         _taskData['mandatoryDocumentation'],
         (v) => setState(() => _taskData['mandatoryDocumentation'] = v),
+      ),
+      const SizedBox(height: 16),
+      _modernToggle(
+        "IS DOCUMENT BASED",
+        _taskData['is_document'] ?? false,
+        (v) => setState(() => _taskData['is_document'] = v),
       ),
       const SizedBox(height: 16),
       _modernToggle(
@@ -2157,7 +2154,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'is_mandatory': isMandatory,
       'is_package': _taskData['isPackageTask'],
       'max_hours': _taskData['maxHours'] ?? 0.0,
-      'is_document': _taskData['is_document'] ?? true,
+      'is_document': _taskData['is_document'] ?? false,
       'is_pause_allowed': _taskData['allowPause'],
       'closure_ids': closureIds,
       'task_type_data': taskTypeData,
@@ -2183,7 +2180,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         totalStepsHours += d;
         return {
           'title': s['title'],
-          'assignee_id': s['assignee_id'],
+          'user_id': s['assignee_id'], // Changed from assignee_id to user_id
           'order_index': s['order'],
           'allocated_hours': d,
         };
@@ -2220,6 +2217,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     }
 
     // Only use individual IDs (Bidding Task removed)
+    // Pass as user_id for the assignees in a flat list of integers
     payload['assignee_ids'] = assigneeIds;
 
     try {
@@ -2321,7 +2319,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'priority': 'Medium',
       'priority_level': 2,
       'origin_type': 'self-log',
-      'is_document': _taskData['is_document'] ?? true,
+      'is_document': _taskData['attachDocuments'] ?? false,
       'closure_ids': _taskData['closure_ids'] ?? [1],
       'task_type_data': {
         'task_name': 'Self Log',

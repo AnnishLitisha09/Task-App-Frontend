@@ -15,6 +15,7 @@ import './resource_availability_page.dart';
 import './maintenance_logs_page.dart';
 import './venue_availability_page.dart';
 import 'package:intl/intl.dart';
+import '../../services/venue_notifier.dart';
 
 class VenueDetailsPage extends StatefulWidget {
   final int? venueId;
@@ -29,8 +30,8 @@ class _VenueDetailsPageState extends State<VenueDetailsPage> {
   bool _isLoading = true;
   bool _isHistoryLoading = false;
 
-  VenueDetailsResponse? _detailsData;
   VenueDetailItem? _selectedVenue;
+  VenueDetailsResponse? _allVenuesData;
   VenueHistoryResponse? _historyData;
 
   // --- Design Tokens ---
@@ -45,6 +46,13 @@ class _VenueDetailsPageState extends State<VenueDetailsPage> {
   void initState() {
     super.initState();
     _fetchInitialData();
+    VenueNotifier.venueNotifier.addListener(_fetchInitialData);
+  }
+
+  @override
+  void dispose() {
+    VenueNotifier.venueNotifier.removeListener(_fetchInitialData);
+    super.dispose();
   }
 
   Future<void> _fetchInitialData() async {
@@ -52,16 +60,15 @@ class _VenueDetailsPageState extends State<VenueDetailsPage> {
     try {
       final details = await _taskService.getVenueDashboard();
       setState(() {
-        _detailsData = details;
+        _allVenuesData = details;
         if (details.venues.isNotEmpty) {
-          if (_selectedVenue != null) {
-            // Try to find the same venue in the new data
+          final currentId = VenueNotifier.currentVenueId;
+          if (currentId != null) {
             _selectedVenue = details.venues.firstWhere(
-              (v) => v.venueId == _selectedVenue!.venueId,
+              (v) => v.venueId == currentId,
               orElse: () => details.venues.first,
             );
           } else if (widget.venueId != null) {
-            // Use the venueId passed in the constructor
             _selectedVenue = details.venues.firstWhere(
               (v) => v.venueId == widget.venueId,
               orElse: () => details.venues.first,
@@ -130,7 +137,8 @@ class _VenueDetailsPageState extends State<VenueDetailsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildVenueSelector(),
+                    if (_allVenuesData != null && _allVenuesData!.venues.length > 1)
+                      _buildVenueSelector(),
                     const SizedBox(height: 24),
                     if (_selectedVenue != null) ...[
                       _buildStatusRow(),
@@ -374,65 +382,6 @@ class _VenueDetailsPageState extends State<VenueDetailsPage> {
     );
   }
 
-  Widget _buildVenueSelector() {
-    if (_detailsData == null || _detailsData!.totalVenuesManaged <= 1) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: brandAccent.withOpacity(0.2), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: brandAccent.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<VenueDetailItem>(
-          value: _selectedVenue,
-          isExpanded: true,
-          icon: Icon(Icons.unfold_more_rounded, color: brandAccent, size: 20),
-          items: _detailsData!.venues.map((venue) {
-            return DropdownMenuItem(
-              value: venue,
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.stadium_rounded,
-                    size: 18,
-                    color: brandAccent.withOpacity(0.7),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    venue.name,
-                    style: TextStyle(
-                      color: textMain,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-          onChanged: (val) {
-            if (val != null) {
-              setState(() {
-                _selectedVenue = val;
-              });
-              _fetchHistory(val.venueId);
-            }
-          },
-        ),
-      ),
-    );
-  }
 
   Widget _buildSliverAppBar() {
     final rawBackendUrl =
@@ -705,5 +654,71 @@ class _VenueDetailsPageState extends State<VenueDetailsPage> {
       debugPrint("Error parsing date: $dateStr - $e");
       return dateStr;
     }
+  }
+
+  Widget _buildVenueSelector() {
+    if (_allVenuesData == null || _allVenuesData!.venues.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: brandAccent.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: brandAccent.withOpacity(0.1),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.stadium_rounded, color: brandAccent, size: 24),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "ACTIVE WORKPLACE",
+                  style: TextStyle(
+                    color: brandAccent,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+                DropdownButtonHideUnderline(
+                  child: DropdownButton<VenueDetailItem>(
+                    value: _selectedVenue,
+                    isDense: true,
+                    icon: Icon(Icons.arrow_drop_down_rounded, color: brandAccent),
+                    items: _allVenuesData!.venues.map((v) {
+                      return DropdownMenuItem(
+                        value: v,
+                        child: Text(
+                          v.name,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: textMain,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (v) {
+                      if (v != null) {
+                        VenueNotifier.switchVenue(v.venueId, v.name);
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

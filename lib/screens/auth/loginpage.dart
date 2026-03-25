@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_service.dart';
+import '../../services/venue_notifier.dart';
 
 class LoginPage extends StatefulWidget {
   // Matches the parameter name used in your RootWrapper
@@ -108,6 +110,7 @@ class _LoginPageState extends State<LoginPage> {
         token: result['token']?.toString(),
         allRoles: allRolesSaved,
         scopeDetails: scopeDetailsSaved,
+        inchargeVenues: user['incharge_venues'],
       );
       debugPrint('Login success and session saved');
     } catch (e) {
@@ -132,6 +135,7 @@ class _LoginPageState extends State<LoginPage> {
     String? token,
     String allRoles = '',
     String scopeDetails = 'none',
+    List<dynamic>? inchargeVenues,
   }) async {
     await prefs.setBool('isLoggedIn', true);
     await prefs.setInt('userId', userId);
@@ -148,13 +152,25 @@ class _LoginPageState extends State<LoginPage> {
     }
     await prefs.setString('scopeDetails', scopeDetails);
 
+    // NEW: Handle Incharge Venues
+    if (inchargeVenues != null && inchargeVenues.isNotEmpty) {
+      await prefs.setString('inchargeVenues', jsonEncode(inchargeVenues));
+      final first = inchargeVenues.first;
+      final venueId = int.tryParse(first['venue_id'].toString()) ?? 0;
+      final venueName = first['name']?.toString() ?? 'Default Venue';
+      await prefs.setInt('selectedVenueId', venueId);
+      await prefs.setString('selectedVenueName', venueName);
+      // Seed reactive notifier immediately
+      VenueNotifier.venueNotifier.value = venueId;
+    }
+
     if (name.isNotEmpty) {
       await prefs.setString('userName', name);
     }
     if (token != null) {
       await prefs.setString('authToken', token);
     }
-
+    
     widget.onLoginSuccess();
   }
 
@@ -224,6 +240,7 @@ class _LoginPageState extends State<LoginPage> {
         token: result['token']?.toString(),
         allRoles: allRolesSaved,
         scopeDetails: scopeDetailsSaved,
+        inchargeVenues: user['incharge_venues'],
       );
       debugPrint('Google Sign-In success and session saved');
     } catch (e) {

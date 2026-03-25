@@ -123,8 +123,7 @@ class _FacultyPageState extends State<FacultyPage>
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken');
-      final backendUrl =
-          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+      final backendUrl = dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
       final response = await http.get(
         Uri.parse('${backendUrl}users/faculty/stats/daily'),
         headers: {
@@ -140,10 +139,18 @@ class _FacultyPageState extends State<FacultyPage>
                 ? FacultyDashboardStats.fromJson(data[0])
                 : FacultyDashboardStats.fromJson(data);
 
-            // Sync other lists if they are present in the response
             if (_stats != null) {
-              _pendingProofs = _stats!.pendingProofs;
-              _escalations = _stats!.escalatedTasks;
+              List<dynamic> rawEsc = _stats!.escalatedTasks;
+              
+              final authorityRoles = ['hod', 'dean', 'principal', 'admin'];
+              bool isAuthority = _allRoles.any((r) => authorityRoles.contains(r.toLowerCase())) ||
+                                (_userRole != null && authorityRoles.contains(_userRole!.toLowerCase()));
+
+              if (!isAuthority && (_userRole?.toLowerCase() == 'faculty')) {
+                _escalations = rawEsc.where((t) => t['assignee_role']?.toString().toLowerCase() == 'faculty').toList();
+              } else {
+                _escalations = rawEsc;
+              }
             }
           });
         }
@@ -160,18 +167,21 @@ class _FacultyPageState extends State<FacultyPage>
       final dynamic response = await taskService.getPendingProofs();
       if (mounted) {
         setState(() {
+          List<dynamic> raw = [];
           if (response is Map) {
-            if (response.containsKey('items')) {
-              _pendingProofs = response['items'] as List;
-            } else if (response.containsKey('tasks')) {
-              _pendingProofs = response['tasks'] as List;
-            } else {
-              _pendingProofs = [];
-            }
+            raw = (response['items'] as List?) ?? (response['tasks'] as List?) ?? [];
           } else if (response is List) {
-            _pendingProofs = response;
+            raw = response;
+          }
+
+          final authorityRoles = ['hod', 'dean', 'principal', 'admin'];
+          bool isAuthority = _allRoles.any((r) => authorityRoles.contains(r.toLowerCase())) ||
+                            (_userRole != null && authorityRoles.contains(_userRole!.toLowerCase()));
+
+          if (!isAuthority && (_userRole?.toLowerCase() == 'faculty')) {
+            _pendingProofs = raw.where((t) => t['assignee_role']?.toString().toLowerCase() == 'faculty').toList();
           } else {
-            _pendingProofs = [];
+            _pendingProofs = raw;
           }
         });
       }
@@ -186,10 +196,16 @@ class _FacultyPageState extends State<FacultyPage>
       final dynamic response = await taskService.getPendingVerifications();
       if (mounted) {
         setState(() {
-          if (response is List) {
-            _pendingVerifications = response;
+          List<dynamic> raw = response is List ? response : [];
+          
+          final authorityRoles = ['hod', 'dean', 'principal', 'admin'];
+          bool isAuthority = _allRoles.any((r) => authorityRoles.contains(r.toLowerCase())) ||
+                            (_userRole != null && authorityRoles.contains(_userRole!.toLowerCase()));
+
+          if (!isAuthority && (_userRole?.toLowerCase() == 'faculty')) {
+            _pendingVerifications = raw.where((t) => t['assignee_role']?.toString().toLowerCase() == 'faculty').toList();
           } else {
-            _pendingVerifications = [];
+            _pendingVerifications = raw;
           }
         });
       }
@@ -492,7 +508,7 @@ class _FacultyPageState extends State<FacultyPage>
                     'icon': Icons.calendar_today_rounded, 'heroTag': heroTag,
                     'startDate': item['start_date'] ?? "N/A",
                     'deadline': item['end_date'] ?? "N/A",
-                    'completionType': "INFO", 'isRequest': false, 'userRole': 'Faculty',
+                    'completionType': "INFO", 'isRequest': false, 'userRole': _userRole ?? 'Faculty',
                   }),
                 )),
               )
@@ -551,7 +567,7 @@ class _FacultyPageState extends State<FacultyPage>
                     'startDate': data['start_date'] ?? "N/A",
                     'deadline': data['end_date'] ?? "N/A",
                     'completionType': data['type'] ?? "APPROVAL",
-                    'isRequest': true, 'authority': "Administration", 'userRole': 'Faculty',
+                    'isRequest': true, 'authority': "Administration", 'userRole': _userRole ?? 'Faculty',
                   }),
                 )),
               )
@@ -755,9 +771,15 @@ class _FacultyPageState extends State<FacultyPage>
     final pending = _stats?.pendingTasks ?? [];
     final allTasks = _stats?.allTasksToday ?? [];
 
+    // Filter schedule by role: "if faculty just the faculty"
+    List<dynamic> filteredSchedule = allTasks;
+    if (_userRole?.toLowerCase() == 'faculty') {
+      filteredSchedule = allTasks.where((t) => t['assignee_role']?.toString().toLowerCase() == 'faculty').toList();
+    }
+
     final pendingPreview = pending.take(2).toList();
     final escalationsPreview = _escalations.take(2).toList();
-    final schedulePreview = allTasks.take(2).toList();
+    final schedulePreview = filteredSchedule.take(2).toList();
     final proofsPreview = _pendingProofs.take(2).toList();
 
     final formattedDate = DateFormat('EEEE, MMM dd').format(DateTime.now());
@@ -813,7 +835,7 @@ class _FacultyPageState extends State<FacultyPage>
                   else
                     _buildAnimatedContent(
                       pending: pending,
-                      allTasks: allTasks,
+                      allTasks: filteredSchedule,
                       pendingPreview: pendingPreview,
                       escalationsPreview: escalationsPreview,
                       schedulePreview: schedulePreview,
