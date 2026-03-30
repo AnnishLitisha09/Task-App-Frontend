@@ -38,8 +38,11 @@ class _AllSchedulePageState extends State<AllSchedulePage> {
       return;
     }
 
+    // Convert to a new list before sorting to avoid modifying read-only list
+    List<dynamic> modifiableTasks = List.from(tasks);
+
     // Sort by start_time
-    tasks.sort((a, b) {
+    modifiableTasks.sort((a, b) {
       final aTiming = a['timing'] as Map<String, dynamic>? ?? {};
       final bTiming = b['timing'] as Map<String, dynamic>? ?? {};
       String tA = aTiming['start_time'] ?? '23:59';
@@ -50,13 +53,13 @@ class _AllSchedulePageState extends State<AllSchedulePage> {
     List<dynamic> result = [];
     String currentHeader = '';
 
-    for (var t in tasks) {
+    for (var t in modifiableTasks) {
       final timing = t['timing'] as Map<String, dynamic>? ?? {};
       String start = timing['start_time'] ?? 'Time TBD';
       String end = timing['end_time'] ?? '';
 
-      if (start.length > 5) start = start.substring(0, 5);
-      if (end.length > 5) end = end.substring(0, 5);
+      if (start.length > 5 && start.contains(':')) start = start.substring(0, 5);
+      if (end.length > 5 && end.contains(':')) end = end.substring(0, 5);
 
       String header = end.isNotEmpty ? '$start - $end' : start;
       if (header != currentHeader) {
@@ -73,21 +76,13 @@ class _AllSchedulePageState extends State<AllSchedulePage> {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
+      // Use the dedicated today's tasks endpoint instead of the removed getFacultyDashboardStats
       final TaskService taskService = TaskService();
-      final dynamic response = await taskService.getFacultyDashboardStats();
-      debugPrint("AllSchedulePage: Received response: $response");
+      final List<dynamic> raw = await taskService.getAllTasksToday();
+      debugPrint("AllSchedulePage: Received ${raw.length} tasks");
 
       if (mounted) {
         setState(() {
-          List<dynamic> raw = [];
-          final data = response is List ? response[0] : response;
-          if (data is Map) {
-            raw =
-                (data['todays_schedule'] as List?) ??
-                (data['all_tasks_today'] as List?) ??
-                (data['tasks'] as List?) ??
-                [];
-          }
           _processTasks(raw);
           _isLoading = false;
         });

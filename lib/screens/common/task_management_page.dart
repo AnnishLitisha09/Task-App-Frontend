@@ -488,7 +488,7 @@ class _TaskManagementPageState extends State<TaskManagementPage>
                 MaterialPageRoute(
                   builder: (context) => SelfLogDetailPage(log: log),
                 ),
-              );
+              ).then((result) { if (mounted && result == true) _fetchDailyReport(); });
             },
             child: Padding(
               padding: const EdgeInsets.all(24),
@@ -606,7 +606,7 @@ class _TaskManagementPageState extends State<TaskManagementPage>
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const CreateTaskPage()),
-              );
+              ).then((result) { if (mounted && result == true) _fetchDailyReport(); });
             },
             child: const Padding(
               padding: EdgeInsets.all(16.0),
@@ -748,7 +748,7 @@ class _TaskManagementPageState extends State<TaskManagementPage>
                 MaterialPageRoute(
                   builder: (context) => TaskViewPage(taskData: taskData),
                 ),
-              );
+              ).then((result) { if (mounted && result == true) _fetchDailyReport(); });
             },
             child: Padding(
               padding: const EdgeInsets.all(24),

@@ -191,7 +191,7 @@ class _StaffPageState extends State<StaffPage> {
                               MaterialPageRoute(
                                 builder: (_) => const AllStaffSchedulePage(),
                               ),
-                            ),
+                            ).then((result) { if (mounted && result == true) _fetchDashboardData(); }),
                           ),
                           if (_staffDashboard?.todaysSchedule.isEmpty ?? true)
                             Center(
@@ -258,7 +258,7 @@ class _StaffPageState extends State<StaffPage> {
                                   accentColor: successColor,
                                 ),
                               ),
-                            ),
+                            ).then((result) { if (mounted && result == true) _fetchDashboardData(); }),
                           ),
                           if (_pendingProofs.isEmpty)
                             Center(
@@ -290,7 +290,7 @@ class _StaffPageState extends State<StaffPage> {
                               MaterialPageRoute(
                                 builder: (_) => const StaffHistoryPage(),
                               ),
-                            ),
+                            ).then((result) { if (mounted && result == true) _fetchDashboardData(); }),
                           ),
                           Container(
                             padding: const EdgeInsets.all(20),

@@ -287,7 +287,7 @@ class _StudentTasksListPageState extends State<StudentTasksListPage> {
                   },
                 ),
               ),
-            );
+            ).then((result) { if (mounted && result == true) _refresh(); });
           }
         },
       ),

@@ -1,9 +1,6 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../theme/app_theme.dart';
 import '../../components/custom_app_bar.dart';
@@ -12,12 +9,9 @@ import '../../components/section_header.dart';
 import '../../components/skeleton_loader.dart';
 import '../../components/unified_reject_dialog.dart';
 import '../common/task_detail_page.dart';
-import '../../services/notification_service.dart';
-import '../../models/faculty_dashboard_stats.dart';
 import '../../models/faculty_info.dart';
 import '../common/user_selection_page.dart';
 import '../../services/task_service.dart';
-import '../../services/user_service.dart';
 import 'all_directives_page.dart';
 import 'all_escalations_page.dart';
 import 'all_schedule_page.dart';
@@ -27,6 +21,7 @@ import 'verify_users_proof_page.dart';
 import '../common/score_performance_page.dart';
 import '../common/generic_view_all_page.dart';
 import '../../components/stat_card.dart';
+import '../../store/app_store.dart';
 
 class FacultyPage extends StatefulWidget {
   final bool isBlocked;
@@ -43,202 +38,59 @@ class FacultyPage extends StatefulWidget {
 
 class _FacultyPageState extends State<FacultyPage>
     with SingleTickerProviderStateMixin {
-  FacultyDashboardStats? _stats;
-  List<dynamic> _pendingProofs = [];
-  List<dynamic> _pendingVerifications = [];
-  List<dynamic> _escalations = [];
-  List<dynamic> _authorityApprovals = [];
-  String? _userRole;
-  List<String> _allRoles = [];
-  int _unreadNotifications = 0;
-  bool _isLoading = true;
-  final NotificationService _notificationService = NotificationService();
+  // Store is the single source of truth — no local duplicates.
+  // We only keep UI-only state here (accept optimistic update index).
 
   @override
   void initState() {
     super.initState();
-    _refreshAll();
+    // Schedule lazy background fetches AFTER the first frame so the page
+    // renders immediately with whatever is already cached.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _hydrate());
   }
 
-  Future<void> _refreshAll() async {
-    setState(() => _isLoading = true);
+  AppStore get _store => context.read<AppStore>();
+
+  /// Lazy hydration — only fetches sections that aren't already fresh.
+  Future<void> _hydrate() async {
+    await _store.ensureUserRole();
     await Future.wait([
-      _fetchUserRole(),
-      _fetchStats(),
-      _fetchPendingProofs(),
-      _fetchPendingVerifications(),
-      _fetchEscalations(),
-      _fetchAuthorityApprovals(),
-      _fetchUnreadNotifications(),
+      _store.fetchFacultyStats(),
+      _store.fetchPendingProofs(),
+      _store.fetchPendingVerifications(),
+      _store.fetchAuthorityApprovals(),
+      _store.fetchUnreadNotifications(),
     ]);
-    if (mounted) setState(() => _isLoading = false);
   }
 
-  Future<void> _fetchUnreadNotifications() async {
-    try {
-      final count = await _notificationService.getUnreadCount();
-      if (mounted) setState(() => _unreadNotifications = count);
-    } catch (_) {}
-  }
-
-  Future<void> _fetchUserRole() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final String? allRolesJson = prefs.getString('allRoles');
-      if (allRolesJson != null) {
-        _allRoles = List<String>.from(jsonDecode(allRolesJson));
-      }
-      
-      final profile = await UserService().getUserProfile();
-      if (mounted) setState(() => _userRole = profile.role);
-    } catch (_) {}
-  }
-
-  Future<void> _fetchAuthorityApprovals() async {
-    try {
-      // Check if user has an authority role
-      final authorityRoles = ['hod', 'dean', 'principal'];
-      bool isAuthority = _allRoles.any((r) => authorityRoles.contains(r.toLowerCase())) ||
-                        (_userRole != null && authorityRoles.contains(_userRole!.toLowerCase()));
-
-      if (!isAuthority) {
-        if (mounted) setState(() => _authorityApprovals = []);
-        return;
-      }
-
-      final userService = UserService();
-      final dashboard = await userService.getDepartmentalDashboard();
-      if (mounted) {
-        setState(() {
-          _authorityApprovals = dashboard.pendingApprovals;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _authorityApprovals = []);
-    }
-  }
-
-
-  Future<void> _fetchStats() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('authToken');
-      final backendUrl = dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
-      final response = await http.get(
-        Uri.parse('${backendUrl}users/faculty/stats/daily'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (mounted) {
-          setState(() {
-            _stats = data is List
-                ? FacultyDashboardStats.fromJson(data[0])
-                : FacultyDashboardStats.fromJson(data);
-
-            if (_stats != null) {
-              List<dynamic> rawEsc = _stats!.escalatedTasks;
-              
-              final authorityRoles = ['hod', 'dean', 'principal', 'admin'];
-              bool isAuthority = _allRoles.any((r) => authorityRoles.contains(r.toLowerCase())) ||
-                                (_userRole != null && authorityRoles.contains(_userRole!.toLowerCase()));
-
-              if (!isAuthority && (_userRole?.toLowerCase() == 'faculty')) {
-                _escalations = rawEsc.where((t) => t['assignee_role']?.toString().toLowerCase() == 'faculty').toList();
-              } else {
-                _escalations = rawEsc;
-              }
-            }
-          });
-        }
-      }
-    } catch (e) {
-      debugPrint("Error fetching faculty stats: $e");
-      if (mounted) setState(() {});
-    }
-  }
-
-  Future<void> _fetchPendingProofs() async {
-    try {
-      final TaskService taskService = TaskService();
-      final dynamic response = await taskService.getPendingProofs();
-      if (mounted) {
-        setState(() {
-          List<dynamic> raw = [];
-          if (response is Map) {
-            raw = (response['items'] as List?) ?? (response['tasks'] as List?) ?? [];
-          } else if (response is List) {
-            raw = response;
-          }
-
-          final authorityRoles = ['hod', 'dean', 'principal', 'admin'];
-          bool isAuthority = _allRoles.any((r) => authorityRoles.contains(r.toLowerCase())) ||
-                            (_userRole != null && authorityRoles.contains(_userRole!.toLowerCase()));
-
-          if (!isAuthority && (_userRole?.toLowerCase() == 'faculty')) {
-            _pendingProofs = raw.where((t) => t['assignee_role']?.toString().toLowerCase() == 'faculty').toList();
-          } else {
-            _pendingProofs = raw;
-          }
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _pendingProofs = []);
-    }
-  }
-
-  Future<void> _fetchPendingVerifications() async {
-    try {
-      final TaskService taskService = TaskService();
-      final dynamic response = await taskService.getPendingVerifications();
-      if (mounted) {
-        setState(() {
-          List<dynamic> raw = response is List ? response : [];
-          
-          final authorityRoles = ['hod', 'dean', 'principal', 'admin'];
-          bool isAuthority = _allRoles.any((r) => authorityRoles.contains(r.toLowerCase())) ||
-                            (_userRole != null && authorityRoles.contains(_userRole!.toLowerCase()));
-
-          if (!isAuthority && (_userRole?.toLowerCase() == 'faculty')) {
-            _pendingVerifications = raw.where((t) => t['assignee_role']?.toString().toLowerCase() == 'faculty').toList();
-          } else {
-            _pendingVerifications = raw;
-          }
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _pendingVerifications = []);
-    }
-  }
-
-  Future<void> _fetchEscalations() async {
-    try {
-      final TaskService taskService = TaskService();
-      final escalations = await taskService.getEscalations();
-      if (mounted) setState(() => _escalations = escalations);
-    } catch (e) {
-      if (mounted) setState(() => _escalations = []);
-    }
+  /// Pull-to-refresh: force-reload all faculty sections in parallel.
+  Future<void> _refreshAll() async {
+    await _store.ensureUserRole(force: true);
+    await Future.wait([
+      _store.fetchFacultyStats(force: true),
+      _store.fetchPendingProofs(force: true),
+      _store.fetchPendingVerifications(force: true),
+      _store.fetchAuthorityApprovals(force: true),
+      _store.fetchUnreadNotifications(),
+    ]);
   }
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
   Future<void> _acceptTask(int index) async {
-    if (_stats == null) return;
-    final task = _stats!.pendingTasks[index];
+    final store = _store;
+    final stats = store.facultyStats;
+    if (stats == null) return;
+    final task = stats.pendingTasks[index];
     final taskId = task['task_id'];
     if (taskId == null) return;
 
-    // Fast reflex: Optimistically update local state
-    setState(() {
-      final task = _stats!.pendingTasks.removeAt(index);
-      _stats!.allTasksToday.insert(0, task);
-      _stats!.dailyStats.totalTasksAssignedToday = _stats!.allTasksToday.length;
-      _stats!.dailyStats.pendingTasksCount = _stats!.pendingTasks.length;
-    });
+    // Optimistic update on the store's list directly
+    stats.pendingTasks.removeAt(index);
+    stats.allTasksToday.insert(0, task);
+    stats.dailyStats.totalTasksAssignedToday = stats.allTasksToday.length;
+    stats.dailyStats.pendingTasksCount = stats.pendingTasks.length;
+    store.triggerUpdate(); // AppStore exposes this public wrapper
 
     try {
       await TaskService().acceptTask(taskId);
@@ -249,7 +101,8 @@ class _FacultyPageState extends State<FacultyPage>
             backgroundColor: AppTheme.success,
           ),
         );
-        _refreshAll();
+        // Only re-fetch the stats section, not the whole page
+        await store.fetchFacultyStats(force: true);
       }
     } catch (e) {
       if (mounted) {
@@ -260,15 +113,21 @@ class _FacultyPageState extends State<FacultyPage>
             backgroundColor: AppTheme.danger,
           ),
         );
-        _refreshAll(); // Revert/Sync with server
+        await store.fetchFacultyStats(force: true); // Revert/Sync
       }
     }
   }
 
   List<String> _getTransferableRoles() {
-    final role = _userRole?.toLowerCase() ?? '';
+    final role = context.read<AppStore>().userRole?.toLowerCase() ?? '';
     const hierarchy = [
-      'admin', 'principal', 'dean', 'hod', 'faculty', 'student', 'staff'
+      'admin',
+      'principal',
+      'dean',
+      'hod',
+      'faculty',
+      'student',
+      'staff',
     ];
     int userIndex = hierarchy.indexOf(role);
     if (userIndex == -1) return ['students', 'staff'];
@@ -294,7 +153,8 @@ class _FacultyPageState extends State<FacultyPage>
       context,
       MaterialPageRoute(
         builder: (_) => UserSelectionPage(
-          multiSelect: false, allowedRoles: _getTransferableRoles(),
+          multiSelect: false,
+          allowedRoles: _getTransferableRoles(),
         ),
       ),
     );
@@ -307,7 +167,7 @@ class _FacultyPageState extends State<FacultyPage>
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
+        builder: (context) => const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]),
       );
 
       try {
@@ -344,8 +204,9 @@ class _FacultyPageState extends State<FacultyPage>
   }
 
   void _showRejectDialog(int index) {
-    if (_stats == null) return;
-    final task = _stats!.pendingTasks[index];
+    final stats = context.read<AppStore>().facultyStats;
+    if (stats == null) return;
+    final task = stats.pendingTasks[index];
     final taskId = task['task_id'];
     final taskTitle = task['title'] ?? 'Task';
     if (taskId == null) return;
@@ -375,70 +236,81 @@ class _FacultyPageState extends State<FacultyPage>
 
   // ─── Micro helpers ────────────────────────────────────────────────────────
   void _loadingDialog() => showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
-      );
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]),
+  );
 
-  void _snack(String msg, Color color) =>
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), backgroundColor: color),
-      );
+  void _snack(String msg, Color color) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: color));
 
-  void _blockedSnack() => _snack(
-      "Please acknowledge your schedule first.", AppTheme.warning);
-
+  void _blockedSnack() =>
+      _snack("Please acknowledge your schedule first.", AppTheme.warning);
 
   // ─── Real content ─────────────────────────────────────────────────────────
 
   Widget _sectionDivider() => Container(
-        margin: const EdgeInsets.only(bottom: 28),
-        height: 1,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [
-            AppTheme.brandAccent.withValues(alpha: 0.0),
-            AppTheme.brandAccent.withValues(alpha: 0.12),
-            AppTheme.brandAccent.withValues(alpha: 0.0),
-          ]),
-        ),
-      );
+    margin: const EdgeInsets.only(bottom: 28),
+    height: 1,
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        colors: [
+          AppTheme.brandAccent.withValues(alpha: 0.0),
+          AppTheme.brandAccent.withValues(alpha: 0.12),
+          AppTheme.brandAccent.withValues(alpha: 0.0),
+        ],
+      ),
+    ),
+  );
 
   Widget _emptyHint(String text) => Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.info_outline_rounded,
-                  color: AppTheme.textSub.withValues(alpha: 0.4), size: 16),
-              const SizedBox(width: 6),
-              Text(text,
-                  style: const TextStyle(
-                      color: AppTheme.textSub,
-                      fontStyle: FontStyle.italic,
-                      fontSize: 13)),
-            ],
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            color: AppTheme.textSub.withValues(alpha: 0.4),
+            size: 16,
           ),
-        ),
-      );
-
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: const TextStyle(
+              color: AppTheme.textSub,
+              fontStyle: FontStyle.italic,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 
   Widget _buildAnimatedContent({
+    required String? userRole,
     required List<dynamic> pending,
     required List<dynamic> allTasks,
     required List<dynamic> pendingPreview,
     required List<dynamic> escalationsPreview,
     required List<dynamic> schedulePreview,
     required List<dynamic> proofsPreview,
+    required List<dynamic> authorityApprovals,
+    required List<dynamic> pendingVerifications,
     required dynamic daily,
     required FacultyInfo? info,
+    required bool isInitialLoad,
   }) {
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
       sliver: SliverList(
         delegate: SliverChildListDelegate([
           // ── Stat cards ───────────────────────────────────────────────────
-          GridView.count(
+          isInitialLoad
+          ? const SkeletonStatGrid()
+          : GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             crossAxisCount: 2,
@@ -448,29 +320,43 @@ class _FacultyPageState extends State<FacultyPage>
             children: [
               StatCard(
                 label: "Total Penalty",
-                value: "₹${info?.penalty ?? '0.00'}",
+                value: isInitialLoad ? "..." : "₹${info?.penalty ?? '0.00'}",
                 icon: Icons.money_off_csred_rounded,
                 color: AppTheme.danger,
                 onTap: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const ScorePerformancePage()),
-                ),
+                  MaterialPageRoute(
+                    builder: (_) => const ScorePerformancePage(),
+                  ),
+                ).then((result) { if (mounted && result == true) _refreshAll(); }),
               ),
               StatCard(
                 label: "Pending",
-                value: (daily?.pendingTasksCount ?? 0).toString().padLeft(2, '0'),
+                value: isInitialLoad
+                    ? "..."
+                    : (daily?.pendingTasksCount ?? 0).toString().padLeft(
+                        2,
+                        '0',
+                      ),
                 icon: Icons.schedule_rounded,
                 color: AppTheme.warning,
               ),
               StatCard(
                 label: "Mentees",
-                value: (info?.menteeCount ?? 0).toString().padLeft(2, '0'),
+                value: isInitialLoad
+                    ? "..."
+                    : (info?.menteeCount ?? 0).toString().padLeft(2, '0'),
                 icon: Icons.people_alt_rounded,
                 color: AppTheme.brandAccent,
               ),
               StatCard(
                 label: "Tasks Today",
-                value: (daily?.totalTasksAssignedToday ?? 0).toString().padLeft(2, '0'),
+                value: isInitialLoad
+                    ? "..."
+                    : (daily?.totalTasksAssignedToday ?? 0).toString().padLeft(
+                        2,
+                        '0',
+                      ),
                 icon: Icons.assignment_rounded,
                 color: AppTheme.success,
               ),
@@ -481,101 +367,135 @@ class _FacultyPageState extends State<FacultyPage>
           // ── Today's Schedule ─────────────────────────────────────────────
           SectionHeader(
             title: "Today's Schedule",
-            onViewAll: () => Navigator.push(context, MaterialPageRoute(
-              builder: (_) => AllSchedulePage(userRole: _userRole ?? 'faculty'),
-            )),
+            onViewAll: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    AllSchedulePage(userRole: userRole ?? 'faculty'),
+              ),
+            ).then((result) { if (mounted && result == true) _refreshAll(); }),
           ).animate().fadeIn(delay: 300.ms).slideX(begin: -0.04),
 
-          if (schedulePreview.isEmpty)
-            _emptyHint("No tasks scheduled for today")
-                .animate().fadeIn(delay: 340.ms)
+          if (isInitialLoad)
+            const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()])
+          else if (schedulePreview.isEmpty)
+            _emptyHint(
+              "No tasks scheduled for today",
+            ).animate().fadeIn(delay: 340.ms)
           else
             ...schedulePreview.asMap().entries.map((e) {
               final idx = e.key;
               final item = e.value;
               final heroTag = "task_${item['task_id']}_today";
               return TaskCard(
-                title: item['title'] ?? 'Task',
-                sub: item['status'] ?? 'Scheduled',
-                accent: AppTheme.success,
-                icon: Icons.calendar_today_rounded,
-                heroTag: heroTag,
-                actionButton: item['action_button'],
-                onTap: () => Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => TaskDetailsPage(taskData: {
-                    'task_id': item['task_id'], 'title': item['title'],
-                    'sub': item['status'], 'accent': AppTheme.success,
-                    'icon': Icons.calendar_today_rounded, 'heroTag': heroTag,
-                    'startDate': item['start_date'] ?? "N/A",
-                    'deadline': item['end_date'] ?? "N/A",
-                    'completionType': "INFO", 'isRequest': false, 'userRole': _userRole ?? 'Faculty',
-                  }),
-                )),
-              )
+                    title: item['title'] ?? 'Task',
+                    sub: item['status'] ?? 'Scheduled',
+                    accent: AppTheme.success,
+                    icon: Icons.calendar_today_rounded,
+                    heroTag: heroTag,
+                    actionButton: item['action_button'],
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailsPage(
+                          taskData: {
+                            'task_id': item['task_id'],
+                            'title': item['title'],
+                            'sub': item['status'],
+                            'accent': AppTheme.success,
+                            'icon': Icons.calendar_today_rounded,
+                            'heroTag': heroTag,
+                            'startDate': item['start_date'] ?? "N/A",
+                            'deadline': item['end_date'] ?? "N/A",
+                            'completionType': "INFO",
+                            'isRequest': false,
+                            'userRole': userRole ?? 'Faculty',
+                          },
+                        ),
+                      ),
+                    ).then((result) { if (mounted && result == true) _refreshAll(); }),
+                  )
                   .animate()
                   .fadeIn(delay: (340 + idx * 70).ms, duration: 400.ms)
                   .slideX(begin: 0.06, curve: Curves.easeOutCubic);
             }),
 
-
           _sectionDivider(),
-
 
           // ── Incoming Directives ──────────────────────────────────────────
           SectionHeader(
             title: "Incoming Directives",
             isStatus: true,
             count: pending.length,
-            onViewAll: () => Navigator.push(context, MaterialPageRoute(
-              builder: (_) => AllDirectivesPage(
-                isBlocked: widget.isBlocked,
-                userRole: _userRole ?? 'faculty',
-                onRefreshParent: _refreshAll,
+            onViewAll: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AllDirectivesPage(
+                  isBlocked: widget.isBlocked,
+                  userRole: userRole ?? 'faculty',
+                  onRefreshParent: _refreshAll,
+                ),
               ),
-            )),
+            ).then((result) { if (mounted && result == true) _refreshAll(); }),
           ).animate().fadeIn(delay: 360.ms).slideX(begin: -0.04),
 
-          if (pendingPreview.isEmpty)
-            _emptyHint("No pending directives")
-                .animate().fadeIn(delay: 400.ms)
+          if (isInitialLoad)
+            const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()])
+          else if (pendingPreview.isEmpty)
+            _emptyHint("No pending directives").animate().fadeIn(delay: 400.ms)
           else
             ...pendingPreview.asMap().entries.map((e) {
               final idx = e.key;
               final data = e.value;
               final heroTag = "directive_${data['task_id']}_$idx";
               return TaskCard(
-                title: data['title'] ?? 'Task',
-                sub: data['description'] ?? 'No description',
-                accent: AppTheme.brandAccent,
-                icon: Icons.assignment_turned_in_rounded,
-                heroTag: heroTag,
-                actionButton: data['action_button'],
-                isRequest: true,
-                onAccept: () {
-                  if (widget.isBlocked) { _blockedSnack(); return; }
-                  _acceptTask(idx);
-                },
-                onReject: () {
-                  if (widget.isBlocked) { _blockedSnack(); return; }
-                  _showRejectDialog(idx);
-                },
-                onTap: () => Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => TaskDetailsPage(taskData: {
-                    'task_id': data['task_id'], 'title': data['title'],
-                    'sub': data['description'], 'accent': AppTheme.brandAccent,
-                    'icon': Icons.assignment_turned_in_rounded, 'heroTag': heroTag,
-                    'startDate': data['start_date'] ?? "N/A",
-                    'deadline': data['end_date'] ?? "N/A",
-                    'completionType': data['type'] ?? "APPROVAL",
-                    'isRequest': true, 'authority': "Administration", 'userRole': _userRole ?? 'Faculty',
-                  }),
-                )),
-              )
+                    title: data['title'] ?? 'Task',
+                    sub: data['description'] ?? 'No description',
+                    accent: AppTheme.brandAccent,
+                    icon: Icons.assignment_turned_in_rounded,
+                    heroTag: heroTag,
+                    actionButton: data['action_button'],
+                    isRequest: true,
+                    onAccept: () {
+                      if (widget.isBlocked) {
+                        _blockedSnack();
+                        return;
+                      }
+                      _acceptTask(idx);
+                    },
+                    onReject: () {
+                      if (widget.isBlocked) {
+                        _blockedSnack();
+                        return;
+                      }
+                      _showRejectDialog(idx);
+                    },
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailsPage(
+                          taskData: {
+                            'task_id': data['task_id'],
+                            'title': data['title'],
+                            'sub': data['description'],
+                            'accent': AppTheme.brandAccent,
+                            'icon': Icons.assignment_turned_in_rounded,
+                            'heroTag': heroTag,
+                            'startDate': data['start_date'] ?? "N/A",
+                            'deadline': data['end_date'] ?? "N/A",
+                            'completionType': data['type'] ?? "APPROVAL",
+                            'isRequest': true,
+                            'authority': "Administration",
+                            'userRole': userRole ?? 'Faculty',
+                          },
+                        ),
+                      ),
+                    ).then((result) { if (mounted && result == true) _refreshAll(); }),
+                  )
                   .animate()
                   .fadeIn(delay: (400 + idx * 70).ms, duration: 400.ms)
                   .slideX(begin: 0.06, curve: Curves.easeOutCubic);
             }),
-
 
           _sectionDivider(),
 
@@ -583,79 +503,99 @@ class _FacultyPageState extends State<FacultyPage>
           SectionHeader(
             title: "Escalated Tasks",
             isStatus: true,
-            count: _escalations.length,
-            onViewAll: () => Navigator.push(context, MaterialPageRoute(
-              builder: (_) => AllEscalationsPage(userRole: _userRole ?? 'faculty'),
-            )),
+            count: escalationsPreview.length,
+            onViewAll: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    AllEscalationsPage(userRole: userRole ?? 'faculty'),
+              ),
+            ).then((result) { if (mounted && result == true) _refreshAll(); }),
           ).animate().fadeIn(delay: 420.ms).slideX(begin: -0.04),
 
-          if (escalationsPreview.isEmpty)
-            _emptyHint("No escalated tasks")
-                .animate().fadeIn(delay: 460.ms)
+          if (isInitialLoad)
+            const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()])
+          else if (escalationsPreview.isEmpty)
+            _emptyHint("No escalated tasks").animate().fadeIn(delay: 460.ms)
           else
             ...escalationsPreview.asMap().entries.map((e) {
               final idx = e.key;
               final esc = e.value;
               final heroTag = "escalation_${esc['task_id']}_$idx";
               return TaskCard(
-                title: esc['title'] ?? "Escalated Task",
-                sub: esc['escalated_reason'] ?? esc['description'] ?? "High Priority",
-                accent: AppTheme.danger,
-                icon: Icons.priority_high_rounded,
-                heroTag: heroTag,
-                actionButton: esc['action_button'],
-                onTap: () => Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => TaskDetailsPage(taskData: {
-                    'task_id': esc['task_id'], 'title': esc['title'],
-                    'sub': esc['description'], 'accent': AppTheme.danger,
-                    'icon': Icons.priority_high_rounded, 'heroTag': heroTag,
-                    'startDate': esc['start_date'] ?? "N/A",
-                    'deadline': esc['end_date'] ?? "N/A",
-                    'completionType': esc['type'] ?? "INFO",
-                    'isRequest': false, 'isEscalated': true, 'authority': "Administration", 'userRole': 'Faculty',
-                  }),
-                )),
-              )
+                    title: esc['title'] ?? "Escalated Task",
+                    sub:
+                        esc['escalated_reason'] ??
+                        esc['description'] ??
+                        "High Priority",
+                    accent: AppTheme.danger,
+                    icon: Icons.priority_high_rounded,
+                    heroTag: heroTag,
+                    actionButton: esc['action_button'],
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailsPage(
+                          taskData: {
+                            'task_id': esc['task_id'],
+                            'title': esc['title'],
+                            'sub': esc['description'],
+                            'accent': AppTheme.danger,
+                            'icon': Icons.priority_high_rounded,
+                            'heroTag': heroTag,
+                            'startDate': esc['start_date'] ?? "N/A",
+                            'deadline': esc['end_date'] ?? "N/A",
+                            'completionType': esc['type'] ?? "INFO",
+                            'isRequest': false,
+                            'isEscalated': true,
+                            'authority': "Administration",
+                            'userRole': 'Faculty',
+                          },
+                        ),
+                      ),
+                    ).then((result) { if (mounted && result == true) _refreshAll(); }),
+                  )
                   .animate()
                   .fadeIn(delay: (460 + idx * 70).ms, duration: 400.ms)
                   .slideX(begin: 0.06, curve: Curves.easeOutCubic);
             }),
 
-
           _sectionDivider(),
 
-          // ── Authority Needed Tasks ───────────────────────────────────────
-          if (_authorityApprovals.isNotEmpty || _pendingVerifications.isNotEmpty) ...[
+          // ── Authority Approvals ───────────────────────────────────────
+          if (authorityApprovals.isNotEmpty) ...[
             SectionHeader(
-              title: "Authority Needed Tasks",
+              title: "Authority Approvals",
               isStatus: true,
-              count: _authorityApprovals.length + _pendingVerifications.length,
-              onViewAll: () {
-                if (_authorityApprovals.isNotEmpty) {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => GenericViewAllPage(
-                      title: "Authority Approvals",
-                      tasks: _authorityApprovals,
-                      viewMode: 'approver',
-                      accentColor: AppTheme.warning,
-                      onTaskAction: (taskId, approve) async {
-                        try {
-                          if (approve) {
-                            await TaskService().acceptTask(taskId);
-                          } else {
-                            await TaskService().rejectTask(taskId, "Rejected by Authority");
-                          }
-                          _refreshAll();
-                        } catch (e) { debugPrint("Error in authority action: $e"); }
-                      },
-                    ),
-                  ));
-                } else {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const TaskVerificationPage()));
-                }
-              },
+              count: authorityApprovals.length,
+              onViewAll: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => GenericViewAllPage(
+                    title: "Authority Approvals",
+                    tasks: authorityApprovals,
+                    viewMode: 'approver',
+                    accentColor: AppTheme.warning,
+                    onTaskAction: (taskId, approve) async {
+                      try {
+                        if (approve) {
+                          await TaskService().acceptTask(taskId);
+                        } else {
+                          await TaskService().rejectTask(
+                            taskId,
+                            "Rejected by Authority",
+                          );
+                        }
+                        _refreshAll();
+                      } catch (e) {
+                        debugPrint("Error in authority action: $e");
+                      }
+                    },
+                  ),
+                ),
+              ).then((result) { if (mounted && result == true) _refreshAll(); }),
             ).animate().fadeIn(delay: 480.ms).slideX(begin: -0.04),
-            ..._authorityApprovals.take(1).map<Widget>((task) {
+            ...authorityApprovals.take(1).map<Widget>((task) {
               return TaskCard(
                 title: task['title']?.toString() ?? "Approval Request",
                 sub: "Requested by: ${task['requested_by'] ?? 'N/A'}",
@@ -667,25 +607,48 @@ class _FacultyPageState extends State<FacultyPage>
                   _refreshAll();
                 },
                 onReject: () async {
-                  await TaskService().rejectTask(task['task_id'], "Rejected by Authority");
+                  await TaskService().rejectTask(
+                    task['task_id'],
+                    "Rejected by Authority",
+                  );
                   _refreshAll();
                 },
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => TaskDetailsPage(
-                      taskData: {'task_id': task['task_id'], 'title': task['title']},
+                      taskData: {
+                        'task_id': task['task_id'],
+                        'title': task['title'],
+                      },
                       viewMode: 'approver',
                     ),
                   ),
-                ),
+                ).then((result) { if (mounted && result == true) _refreshAll(); }),
               );
             }),
-            ..._pendingVerifications.take(1).map((verify) {
+            _sectionDivider(),
+          ],
+
+          // ── Pending Verifications ───────────────────────────────────────
+          if (pendingVerifications.isNotEmpty) ...[
+            SectionHeader(
+              title: "Pending Verifications",
+              isStatus: true,
+              count: pendingVerifications.length,
+              onViewAll: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const TaskVerificationPage(),
+                ),
+              ).then((result) { if (mounted && result == true) _refreshAll(); }),
+            ).animate().fadeIn(delay: 500.ms).slideX(begin: -0.04),
+            ...pendingVerifications.take(1).map((verify) {
               final heroTag = "verify_${verify['assignment_id']}_dash";
               return TaskCard(
                 title: verify['title'] ?? 'Task Review',
-                sub: 'By: ${verify['assignee_name']} (${verify['assignee_role']})',
+                sub:
+                    'By: ${verify['assignee_name']} (${verify['assignee_role']})',
                 accent: AppTheme.brandAccent,
                 icon: Icons.fact_check_rounded,
                 heroTag: heroTag,
@@ -698,7 +661,7 @@ class _FacultyPageState extends State<FacultyPage>
                         taskTitle: verify['title'] ?? 'Task Review',
                       ),
                     ),
-                  );
+                  ).then((result) { if (mounted && result == true) _refreshAll(); });
                   if (result == 'refreshed') _refreshAll();
                 },
               );
@@ -710,15 +673,19 @@ class _FacultyPageState extends State<FacultyPage>
           SectionHeader(
             title: "Pending Proofs",
             isStatus: true,
-            count: _pendingProofs.length,
-            onViewAll: () => Navigator.push(context, MaterialPageRoute(
-              builder: (_) => const AllProofsPage(),
-            )),
+            count: proofsPreview.length,
+            onViewAll: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AllProofsPage()),
+            ).then((result) { if (mounted && result == true) _refreshAll(); }),
           ).animate().fadeIn(delay: 540.ms).slideX(begin: -0.04),
 
-          if (proofsPreview.isEmpty)
-            _emptyHint("No pending proofs to review")
-                .animate().fadeIn(delay: 580.ms)
+          if (isInitialLoad)
+            const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()])
+          else if (proofsPreview.isEmpty)
+            _emptyHint(
+              "No pending proofs to review",
+            ).animate().fadeIn(delay: 580.ms)
           else
             ...proofsPreview.asMap().entries.map((e) {
               final idx = e.key;
@@ -729,32 +696,43 @@ class _FacultyPageState extends State<FacultyPage>
                   ? "${dl['end_date'] ?? 'N/A'} ${dl['end_time'] ?? ''}"
                   : "N/A";
               return TaskCard(
-                title: proof['title'] ?? 'Proof Task',
-                sub: proof['description'] ??
-                    'Proof Status: ${proof['proof_status'] ?? 'Pending'}',
-                accent: Colors.orange,
-                icon: Icons.photo_camera_rounded,
-                heroTag: heroTag,
-                onTap: () => Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => TaskDetailsPage(taskData: {
-                    'task_id': proof['task_id'],
-                    'assignment_id': proof['assignment_id'],
-                    'title': proof['title'],
-                    'sub': proof['description'] ?? 'Awaiting proof verification',
-                    'accent': Colors.orange,
-                    'icon': Icons.photo_camera_rounded, 'heroTag': heroTag,
-                    'deadline': dlStr, 'completionType': "PROOF_REVIEW",
-                    'isRequest': false, 'userRole': 'Faculty',
-                    'is_document': proof['is_document'],
-                    'status': proof['status'], 'proof_status': proof['proof_status'],
-                  }),
-                )),
-              )
+                    title: proof['title'] ?? 'Proof Task',
+                    sub:
+                        proof['description'] ??
+                        'Proof Status: ${proof['proof_status'] ?? 'Pending'}',
+                    accent: Colors.orange,
+                    icon: Icons.photo_camera_rounded,
+                    heroTag: heroTag,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailsPage(
+                          taskData: {
+                            'task_id': proof['task_id'],
+                            'assignment_id': proof['assignment_id'],
+                            'title': proof['title'],
+                            'sub':
+                                proof['description'] ??
+                                'Awaiting proof verification',
+                            'accent': Colors.orange,
+                            'icon': Icons.photo_camera_rounded,
+                            'heroTag': heroTag,
+                            'deadline': dlStr,
+                            'completionType': "PROOF_REVIEW",
+                            'isRequest': false,
+                            'userRole': 'Faculty',
+                            'is_document': proof['is_document'],
+                            'status': proof['status'],
+                            'proof_status': proof['proof_status'],
+                          },
+                        ),
+                      ),
+                    ).then((result) { if (mounted && result == true) _refreshAll(); }),
+                  )
                   .animate()
                   .fadeIn(delay: (580 + idx * 70).ms, duration: 400.ms)
                   .slideX(begin: 0.06, curve: Curves.easeOutCubic);
             }),
-
 
           const SizedBox(height: 32),
         ]),
@@ -762,96 +740,98 @@ class _FacultyPageState extends State<FacultyPage>
     );
   }
 
-  // ─── Build ────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
-    final info = _stats?.facultyInfo;
-    final daily = _stats?.dailyStats;
-    final pending = _stats?.pendingTasks ?? [];
-    final allTasks = _stats?.allTasksToday ?? [];
+    return Consumer<AppStore>(
+      builder: (context, store, _) {
+        final stats = store.facultyStats;
+        final userRole = store.userRole;
+        final info = stats?.facultyInfo;
+        final daily = stats?.dailyStats;
+        final pending = stats?.pendingTasks ?? [];
+        final allTasks = stats?.allTasksToday ?? [];
 
-    // Filter schedule by role: "if faculty just the faculty"
-    List<dynamic> filteredSchedule = allTasks;
-    if (_userRole?.toLowerCase() == 'faculty') {
-      filteredSchedule = allTasks.where((t) => t['assignee_role']?.toString().toLowerCase() == 'faculty').toList();
-    }
+        // Tasks are already securely scoped to the current user by the backend.
+        List<dynamic> filteredSchedule = allTasks;
 
-    final pendingPreview = pending.take(2).toList();
-    final escalationsPreview = _escalations.take(2).toList();
-    final schedulePreview = filteredSchedule.take(2).toList();
-    final proofsPreview = _pendingProofs.take(2).toList();
+        final pendingPreview = pending.take(2).toList();
+        final escalationsPreview = store.escalations.take(2).toList();
+        final schedulePreview = filteredSchedule.take(2).toList();
+        final proofsPreview = store.pendingProofs.take(2).toList();
+        final formattedDate = DateFormat('EEEE, MMM dd').format(DateTime.now());
+        final isLoading = store.isLoading('facultyStats');
 
-    final formattedDate = DateFormat('EEEE, MMM dd').format(DateTime.now());
-
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          // Decorative background circles
-          Positioned(
-            top: -120,
-            right: -60,
-            child: CircleAvatar(
-              radius: 150,
-              backgroundColor: const Color.fromARGB(
-                255,
-                209,
-                149,
-                237,
-              ).withValues(alpha: 0.05),
-            ),
-          ),
-          Positioned(
-            top: 60,
-            right: -100,
-            child: CircleAvatar(
-              radius: 100,
-              backgroundColor: AppTheme.success.withValues(alpha: 0.04),
-            ),
-          ),
-          SafeArea(
-            child: RefreshIndicator(
-              onRefresh: _refreshAll,
-              color: AppTheme.brandAccent,
-              strokeWidth: 2.5,
-              child: CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
+        return Scaffold(
+          backgroundColor: Colors.white,
+          body: Stack(
+            children: [
+              Positioned(
+                top: -120,
+                right: -60,
+                child: CircleAvatar(
+                  radius: 150,
+                  backgroundColor: const Color.fromARGB(
+                    255,
+                    209,
+                    149,
+                    237,
+                  ).withValues(alpha: 0.05),
                 ),
-                slivers: [
-                  CustomAppBar(
-                    title: info?.name ?? "Faculty",
-                    date: formattedDate,
-                    notificationCount: _unreadNotifications,
-                    profileImageUrl: info != null
-                        ? 'https://ui-avatars.com/api/?name=${info.name.replaceAll(' ', '+')}&background=random'
-                        : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
-                  ),
-                  if (_isLoading)
-                    const SliverToBoxAdapter(child: DashboardSkeleton())
-                  else if (widget.isBlocked)
-                    SliverToBoxAdapter(child: _buildBlockedMessage())
-                  else
-                    _buildAnimatedContent(
-                      pending: pending,
-                      allTasks: filteredSchedule,
-                      pendingPreview: pendingPreview,
-                      escalationsPreview: escalationsPreview,
-                      schedulePreview: schedulePreview,
-                      proofsPreview: proofsPreview,
-                      daily: daily,
-                      info: info,
-                    ),
-                ],
               ),
-            ),
+              Positioned(
+                top: 60,
+                right: -100,
+                child: CircleAvatar(
+                  radius: 100,
+                  backgroundColor: AppTheme.success.withValues(alpha: 0.04),
+                ),
+              ),
+              SafeArea(
+                child: RefreshIndicator(
+                  onRefresh: _refreshAll,
+                  color: AppTheme.brandAccent,
+                  strokeWidth: 2.5,
+                  child: CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
+                    slivers: [
+                      CustomAppBar(
+                        title: info?.name ?? "Faculty",
+                        date: formattedDate,
+                        notificationCount: store.unreadNotifications,
+                        profileImageUrl: info != null
+                            ? 'https://ui-avatars.com/api/?name=${info.name.replaceAll(' ', '+')}&background=random'
+                            : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+                      ),
+                      // Show skeleton only on first load with no cache
+                      if (widget.isBlocked)
+                        SliverToBoxAdapter(child: _buildBlockedMessage())
+                      else
+                        _buildAnimatedContent(
+                          userRole: userRole,
+                          pending: pending,
+                          allTasks: filteredSchedule,
+                          pendingPreview: pendingPreview,
+                          escalationsPreview: escalationsPreview,
+                          schedulePreview: schedulePreview,
+                          proofsPreview: proofsPreview,
+                          daily: daily,
+                          info: info,
+                          authorityApprovals: store.authorityApprovals,
+                          pendingVerifications: store.pendingVerifications,
+                          isInitialLoad: isLoading && stats == null,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
-
 
   Widget _buildBlockedMessage() {
     return Container(
@@ -864,7 +844,11 @@ class _FacultyPageState extends State<FacultyPage>
       ),
       child: Column(
         children: [
-          Icon(Icons.lock_person_rounded, size: 64, color: AppTheme.danger.withValues(alpha: 0.8)),
+          Icon(
+            Icons.lock_person_rounded,
+            size: 64,
+            color: AppTheme.danger.withValues(alpha: 0.8),
+          ),
           const SizedBox(height: 24),
           Text(
             "Access Restricted",
@@ -880,7 +864,9 @@ class _FacultyPageState extends State<FacultyPage>
           Text(
             "Once an admin acknowledges your schedule, you can refresh to gain access.",
             textAlign: TextAlign.center,
-            style: AppTheme.bodySub.copyWith(color: AppTheme.textSub.withValues(alpha: 0.7)),
+            style: AppTheme.bodySub.copyWith(
+              color: AppTheme.textSub.withValues(alpha: 0.7),
+            ),
           ),
           const SizedBox(height: 32),
           SizedBox(
@@ -893,7 +879,9 @@ class _FacultyPageState extends State<FacultyPage>
                 backgroundColor: AppTheme.danger,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 elevation: 0,
               ),
             ),

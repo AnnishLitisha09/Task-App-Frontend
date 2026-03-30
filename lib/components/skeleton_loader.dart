@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 /// A shimmer animation wrapper that pulses opacity to simulate loading.
 class _Shimmer extends StatefulWidget {
@@ -272,6 +273,61 @@ class DashboardSkeleton extends StatelessWidget {
           SkeletonTaskCard(),
         ],
       ),
+    );
+  }
+}
+
+/// A skeleton for the Task Details page.
+class TaskDetailSkeleton extends StatelessWidget {
+  const TaskDetailSkeleton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SkeletonBox(width: 80, height: 24, radius: 12), // Priority badge
+          const SizedBox(height: 24),
+          const SkeletonBox(width: 250, height: 32, radius: 8), // Title
+          const SizedBox(height: 12),
+          const SkeletonBox(width: 150, height: 16, radius: 4), // Subtitle
+          const SizedBox(height: 32),
+          const SkeletonBox(width: double.infinity, height: 80, radius: 20), // Venue/Section
+          const SizedBox(height: 24),
+          const SkeletonBox(width: double.infinity, height: 80, radius: 20), // Timeframe
+          const SizedBox(height: 24),
+          const SkeletonBox(width: 120, height: 20, radius: 6), // Section label
+          const SizedBox(height: 12),
+          const SkeletonBox(width: double.infinity, height: 120, radius: 20), // Description
+          const SizedBox(height: 32),
+          const SkeletonBox(width: 120, height: 20, radius: 6), // Activity Log label
+          const SizedBox(height: 12),
+          const SkeletonBox(width: double.infinity, height: 100, radius: 20), // Timeline box
+          const SizedBox(height: 48),
+          const SkeletonBox(width: double.infinity, height: 56, radius: 16), // Bottom button placeholder
+        ],
+      ),
+    );
+  }
+}
+
+/// A branded spinner that uses the app logo instead of a native indicator.
+class BrandSpinner extends StatelessWidget {
+  final double size;
+  const BrandSpinner({super.key, this.size = 60});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Image.asset(
+        'assets/logo.jpg',
+        width: size,
+      )
+      .animate(onPlay: (controller) => controller.repeat(reverse: true))
+      .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1), duration: 800.ms)
+      .shimmer(duration: 1200.ms, color: Colors.blue.withOpacity(0.1)),
     );
   }
 }

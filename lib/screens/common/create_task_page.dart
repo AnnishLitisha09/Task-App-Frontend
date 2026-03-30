@@ -256,14 +256,37 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     // --- Core Fields ---
     data['task_id'] = taskInfo['task_id'];
     data['title'] = taskInfo['title'];
+    data['task_title_id'] = taskInfo['task_title_id'];
     data['description'] = taskInfo['description'] ?? '';
     data['category'] = taskInfo['category'] ?? 'Academic';
     data['priority'] = _capitalize(taskInfo['priority'] ?? 'Medium');
     data['score'] = double.tryParse(taskInfo['score']?.toString() ?? '100.0') ?? 100.0;
     data['isPackageTask'] = taskInfo['is_package'] ?? false;
-    data['requiresApproval'] = taskInfo['is_approved'] ??
-        (rawData['approval_detail']?['status'] == 'approved');
+    data['allowPause'] = taskInfo['is_pause_allowed'] ?? false;
+    data['is_document'] = taskInfo['is_document'] ?? false;
+    data['is_mandatory_flag'] = taskInfo['is_mandatory'] ?? false;
+    data['requiresApproval'] = taskInfo['approver_id'] != null || taskInfo['is_approved'] == true || (rawData['approval_detail']?['status'] == 'approved');
     data['origin_type'] = taskInfo['origin_type'];
+    data['is_faculty'] = taskInfo['is_faculty'] ?? false;
+    
+    // Approver mapping
+    if (taskInfo['approver_id'] != null) {
+      data['approvalAuthority'] = {
+        'id': taskInfo['approver_id'],
+        'user_id': taskInfo['approver_id'],
+        'name': taskInfo['approver']?['name'] ?? 'Approver',
+      };
+    }
+    
+    // Faculty mapping
+    if (taskInfo['is_faculty'] == true && taskInfo['faculty'] != null) {
+      data['facultyInCharge'] = [{
+        'id': taskInfo['faculty']['user_id'],
+        'user_id': taskInfo['faculty']['user_id'],
+        'name': taskInfo['faculty']['name'] ?? 'Faculty',
+        'type': 'individual',
+      }];
+    }
 
     // --- Task Category ---
     if (taskInfo['origin_type'] == 'self-log') {
@@ -283,6 +306,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       data['endTime'] = _parseTimeString(schedule['end_time']);
       data['recurrenceType'] = _capitalize(schedule['recurrence'] ?? 'none');
       data['venue_id'] = schedule['venue_id'];
+      data['maxHours'] = double.tryParse(schedule['time_quota_hours']?.toString() ?? '0.0') ?? 0.0;
     }
 
     // --- Assignees ---
@@ -313,6 +337,17 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           .toList();
     } else if (rawData['closure_ids'] != null && rawData['closure_ids'] is List) {
       data['closure_ids'] = List<int>.from(rawData['closure_ids']);
+    }
+    
+    // Map closure IDs to strings for UI completion methods
+    if (data['closure_ids'] != null && data['closure_ids'] is List) {
+      List<String> methods = [];
+      for (var id in data['closure_ids']) {
+        if (id == 1) methods.add('OTP Verify');
+        if (id == 2) methods.add('Photo Upload');
+        if (id == 3) methods.add('QR Scan');
+      }
+      data['completionMethods'] = methods;
     }
 
     _taskData = data;
@@ -2243,7 +2278,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
@@ -2354,7 +2389,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {

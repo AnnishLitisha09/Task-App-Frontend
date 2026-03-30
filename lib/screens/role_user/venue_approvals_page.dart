@@ -16,6 +16,7 @@ class VenueApprovalsPage extends StatefulWidget {
 class _VenueApprovalsPageState extends State<VenueApprovalsPage> {
   final TaskService _taskService = TaskService();
   bool _isLoading = true;
+  bool _hasChanges = false;
   List<dynamic> _groupedItems = [];
 
   @override
@@ -84,6 +85,7 @@ class _VenueApprovalsPageState extends State<VenueApprovalsPage> {
     int removedIndex = -1;
 
     setState(() {
+      _hasChanges = true;
       removedIndex = _groupedItems.indexWhere(
         (item) => item is BookingWithVenue && item.booking.taskId == taskId,
       );
@@ -125,78 +127,85 @@ class _VenueApprovalsPageState extends State<VenueApprovalsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text(
-          "Pending Approvals",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.pop(context, _hasChanges);
+        return false;
+      },
+      child: Scaffold(
         backgroundColor: Colors.white,
-        elevation: 0,
-        foregroundColor: AppTheme.textMain,
+        appBar: AppBar(
+          title: const Text(
+            "Pending Approvals",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          foregroundColor: AppTheme.textMain,
+        ),
+        body: _isLoading
+            ? const Padding(
+                padding: EdgeInsets.all(20),
+                child: DashboardSkeleton(),
+              )
+            : _groupedItems.isEmpty
+                ? const Center(child: Text("No pending approvals found"))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(20),
+                    itemCount: _groupedItems.length,
+                    itemBuilder: (context, index) {
+                      final item = _groupedItems[index];
+
+                      if (item is Map && item['isHeader'] == true) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 16, bottom: 8),
+                          child: Text(
+                            item['title'],
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.black,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        );
+                      }
+
+                      final approvalItem = item as BookingWithVenue;
+                      return TaskCard(
+                        title: approvalItem.booking.title,
+                        sub:
+                            "${approvalItem.venueName} • By: ${approvalItem.booking.bookedBy}",
+                        accent: AppTheme.warning,
+                        icon: Icons.bolt_rounded,
+                        isRequest: true,
+                        onAccept: () =>
+                            _handleAction(approvalItem.booking.taskId, true),
+                        onReject: () =>
+                            _handleAction(approvalItem.booking.taskId, false),
+                        onTap: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => TaskDetailsPage(
+                                taskData: {
+                                  'task_id': approvalItem.booking.taskId,
+                                  'title': approvalItem.booking.title,
+                                  'isRequest': true,
+                                },
+                                viewMode: 'incharge',
+                              ),
+                            ),
+                          );
+                          if (result == true) {
+                            setState(() => _hasChanges = true);
+                            _fetchApprovals();
+                          }
+                        },
+                      );
+                    },
+                  ),
       ),
-      body: _isLoading
-          ? const Padding(
-              padding: EdgeInsets.all(20),
-              child: DashboardSkeleton(),
-            )
-          : _groupedItems.isEmpty
-          ? const Center(child: Text("No pending approvals found"))
-          : ListView.builder(
-              padding: const EdgeInsets.all(20),
-              itemCount: _groupedItems.length,
-              itemBuilder: (context, index) {
-                final item = _groupedItems[index];
-
-                if (item is Map && item['isHeader'] == true) {
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 16, bottom: 8),
-                    child: Text(
-                      item['title'],
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.black,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  );
-                }
-
-                final approvalItem = item as BookingWithVenue;
-                return TaskCard(
-                  title: approvalItem.booking.title,
-                  sub:
-                      "${approvalItem.venueName} • By: ${approvalItem.booking.bookedBy}",
-                  accent: AppTheme.warning,
-                  icon: Icons.bolt_rounded,
-                  isRequest: true,
-                  onAccept: () =>
-                      _handleAction(approvalItem.booking.taskId, true),
-                  onReject: () =>
-                      _handleAction(approvalItem.booking.taskId, false),
-                  onTap: () async {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => TaskDetailsPage(
-                          taskData: {
-                            'task_id': approvalItem.booking.taskId,
-                            'title': approvalItem.booking.title,
-                            'isRequest': true,
-                          },
-                          viewMode: 'incharge',
-                        ),
-                      ),
-                    );
-                    if (result != null) {
-                      _fetchApprovals();
-                    }
-                  },
-                );
-              },
-            ),
     );
   }
 }

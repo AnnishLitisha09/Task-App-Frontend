@@ -17,7 +17,8 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
-  bool _isGoogleSignInLoading = false;
+  bool _isEmailLoading = false;   // BUG-14 FIX: separate flag for email login
+  bool _isGoogleLoading = false;  // BUG-14 FIX: separate flag for Google sign-in
   final _authService = AuthService();
 
   // --- Professional Minimalist Palette ---
@@ -45,13 +46,12 @@ class _LoginPageState extends State<LoginPage> {
       _showError('Please enter your email');
       return;
     }
-
     if (password.isEmpty) {
       _showError('Please enter your password');
       return;
     }
 
-    setState(() => _isGoogleSignInLoading = true);
+    setState(() => _isEmailLoading = true); // BUG-14 FIX: use dedicated flag
 
     try {
       debugPrint('Attempting login with: $email');
@@ -117,9 +117,7 @@ class _LoginPageState extends State<LoginPage> {
       debugPrint('Login Error: $e');
       _showError(e.toString().replaceAll('Exception: ', ''));
     } finally {
-      if (mounted) {
-        setState(() => _isGoogleSignInLoading = false);
-      }
+      if (mounted) setState(() => _isEmailLoading = false); // BUG-14 FIX
     }
   }
 
@@ -137,7 +135,7 @@ class _LoginPageState extends State<LoginPage> {
     String scopeDetails = 'none',
     List<dynamic>? inchargeVenues,
   }) async {
-    await prefs.setBool('isLoggedIn', true);
+    // BUG-15 FIX: Do NOT set isLoggedIn=true here. Save it last so success is atomic.
     await prefs.setInt('userId', userId);
     await prefs.setString('userEmail', email);
     await prefs.setString('userRole', role); // Primary role for MainWrapper
@@ -171,12 +169,15 @@ class _LoginPageState extends State<LoginPage> {
       await prefs.setString('authToken', token);
     }
     
+    // BUG-15 FIX: Mark session as logged in ONLY if all previous saves succeeded
+    await prefs.setBool('isLoggedIn', true);
+    
     widget.onLoginSuccess();
   }
 
   Future<void> _handleGoogleSignIn() async {
     debugPrint('--- Google Sign-In Started ---');
-    setState(() => _isGoogleSignInLoading = true);
+    setState(() => _isGoogleLoading = true); // BUG-14 FIX: use dedicated flag
 
     try {
       final result = await _authService.signInWithGoogle();
@@ -184,7 +185,7 @@ class _LoginPageState extends State<LoginPage> {
 
       if (result == null) {
         debugPrint('Google Sign-In canceled by user');
-        if (mounted) setState(() => _isGoogleSignInLoading = false);
+        if (mounted) setState(() => _isGoogleLoading = false); // BUG-14 FIX
         return;
       }
 
@@ -247,9 +248,7 @@ class _LoginPageState extends State<LoginPage> {
       debugPrint('Google Sign-In Error: $e');
       _showError('Google Sign-In failed: ${e.toString()}');
     } finally {
-      if (mounted) {
-        setState(() => _isGoogleSignInLoading = false);
-      }
+      if (mounted) setState(() => _isGoogleLoading = false); // BUG-14 FIX
     }
   }
 
@@ -425,7 +424,7 @@ class _LoginPageState extends State<LoginPage> {
         ],
       ),
       child: ElevatedButton(
-        onPressed: _isGoogleSignInLoading ? null : _handleLogin,
+        onPressed: _isEmailLoading ? null : _handleLogin, // BUG-14 FIX
         style: ElevatedButton.styleFrom(
           backgroundColor: primaryColor,
           foregroundColor: Colors.white,
@@ -435,7 +434,7 @@ class _LoginPageState extends State<LoginPage> {
             borderRadius: BorderRadius.circular(16),
           ),
         ),
-        child: _isGoogleSignInLoading
+        child: _isEmailLoading // BUG-14 FIX
             ? const SizedBox(
                 height: 24,
                 width: 24,
@@ -480,7 +479,15 @@ class _LoginPageState extends State<LoginPage> {
       children: [
         Text("New here?", style: TextStyle(color: textBody)),
         TextButton(
-          onPressed: () {},
+          onPressed: () {
+            // BUG-16 FIX: Show informational message instead of silent no-op
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Self-registration is not available. Contact your administrator.'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          },
           child: Text(
             'Create Account',
             style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
@@ -525,7 +532,7 @@ class _LoginPageState extends State<LoginPage> {
         ],
       ),
       child: ElevatedButton(
-        onPressed: _isGoogleSignInLoading ? null : _handleGoogleSignIn,
+        onPressed: _isGoogleLoading ? null : _handleGoogleSignIn, // BUG-14 FIX
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.white,
           foregroundColor: textHeading,
@@ -535,7 +542,7 @@ class _LoginPageState extends State<LoginPage> {
             side: BorderSide(color: inputBorder, width: 1.5),
           ),
         ),
-        child: _isGoogleSignInLoading
+        child: _isGoogleLoading // BUG-14 FIX
             ? SizedBox(
                 height: 24,
                 width: 24,

@@ -26,6 +26,7 @@ class GenericViewAllPage extends StatefulWidget {
 
 class _GenericViewAllPageState extends State<GenericViewAllPage> {
   late List<dynamic> _currentTasks;
+  bool _hasChanges = false;
 
   @override
   void initState() {
@@ -86,17 +87,22 @@ class _GenericViewAllPageState extends State<GenericViewAllPage> {
     if (widget.onTaskAction != null) {
       await widget.onTaskAction!(taskId, approve);
       setState(() {
+        _hasChanges = true;
         _currentTasks.removeWhere((t) => (t['task_id'] ?? t['id']) == taskId);
       });
     }
   }
 
-  @override
   Widget build(BuildContext context) {
     final groupedItems = _groupTasksByTime();
 
-    return Scaffold(
-      backgroundColor: Colors.white,
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.pop(context, _hasChanges);
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(
           widget.title,
@@ -171,8 +177,12 @@ class _GenericViewAllPageState extends State<GenericViewAllPage> {
                   accent: widget.accentColor,
                   icon: widget.title.contains('Escalated')
                       ? Icons.priority_high_rounded
-                      : Icons.task_alt_rounded,
-                  isApproval: widget.viewMode == 'approver',
+                      : widget.title.contains('Directive')
+                          ? Icons.assignment_turned_in_rounded
+                          : Icons.task_alt_rounded,
+                  isApproval: widget.viewMode == 'approver' && !widget.title.contains('Directive'),
+                  isRequest: widget.viewMode == 'approver' && widget.title.contains('Directive'),
+                  acceptLabel: widget.title.contains('Directive') ? "Executive Directive" : null,
                   onAccept: widget.viewMode == 'approver' && taskId != null
                       ? () => _handleLocalAction(taskId, true)
                       : null,
@@ -194,12 +204,20 @@ class _GenericViewAllPageState extends State<GenericViewAllPage> {
                                 viewMode: widget.viewMode,
                               ),
                             ),
-                          );
+                          ).then((result) {
+                            if (result == true && mounted) {
+                              setState(() {
+                                _hasChanges = true;
+                                _currentTasks.removeWhere((t) => (t['task_id'] ?? t['id']) == taskId);
+                              });
+                            }
+                          });
                         }
                       : null,
                 );
               },
             ),
+      ),
     );
   }
 }

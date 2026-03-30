@@ -125,7 +125,7 @@ class TaskCard extends StatelessWidget {
             const SizedBox(height: 16),
             _miniActionBtn(
               (actionButton!['label'] as String).toUpperCase(),
-              (actionButton!['label'] as String).contains('proof') ? Colors.blue : AppTheme.brandAccent,
+              (actionButton!['label'] as String).toLowerCase().contains('proof') ? Colors.blue : AppTheme.brandAccent,
               onTap, // On dashboard, clicking the button usually goes to details or we can add onAction
               isFullWidth: true,
             ),

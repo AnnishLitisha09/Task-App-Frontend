@@ -13,11 +13,7 @@ void main() {
   testWidgets('App launches and shows login page', (WidgetTester tester) async {
     // Build our app and trigger a frame.
     await tester.pumpWidget(
-      const TaskApp(
-        isLoggedIn: false,
-        hasAcknowledgedToday: false,
-        userRole: 'student',
-      ),
+      const TaskApp(),
     );
 
     // Verify that login page is shown.

@@ -22,7 +22,12 @@ class StudentDashboard {
   factory StudentDashboard.fromJson(Map<String, dynamic> json) {
     return StudentDashboard(
       success: json['success'] ?? false,
-      studentDetails: StudentDetails.fromJson(json['student_details'] ?? {}),
+      studentDetails: StudentDetails.fromJson(
+        json['student_details'] ?? 
+        json['faculty_details'] ?? 
+        json['staff_details'] ?? 
+        {}
+      ),
       department: json['department'] ?? '',
       assignedFaculty: AssignedFaculty.fromJson(json['assigned_faculty'] ?? {}),
       counts: Counts.fromJson(json['counts'] ?? {}),
@@ -32,9 +37,19 @@ class StudentDashboard {
       overdueTasks: (json['overdue_tasks'] as List? ?? [])
           .map((i) => OverdueTask.fromJson(i))
           .toList(),
-      pendingForApproval: (json['pending_for_approval'] as List? ?? [])
-          .map((i) => PendingForApproval.fromJson(i))
-          .toList(),
+      pendingForApproval: [
+        ...(json['pending_for_approval'] as List? ?? [])
+            .map((i) => PendingForApproval.fromJson(i)),
+        ...(json['escalated_tasks'] as List? ?? [])
+            .map((i) {
+               if (i is Map<String, dynamic>) {
+                 final map = Map<String, dynamic>.from(i);
+                 map['is_escalate'] = true;
+                 return PendingForApproval.fromJson(map);
+               }
+               return PendingForApproval.fromJson(i);
+            })
+      ],
     );
   }
 }

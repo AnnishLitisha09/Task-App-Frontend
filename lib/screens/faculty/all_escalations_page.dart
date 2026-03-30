@@ -18,6 +18,7 @@ class _AllEscalationsPageState extends State<AllEscalationsPage> {
   final TaskService _taskService = TaskService();
   List<dynamic> _escalations = [];
   bool _isLoading = true;
+  bool _hasChanges = false;
 
   @override
   void initState() {
@@ -42,8 +43,13 @@ class _AllEscalationsPageState extends State<AllEscalationsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.pop(context, _hasChanges);
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -143,11 +149,17 @@ class _AllEscalationsPageState extends State<AllEscalationsPage> {
                                 },
                               ),
                             ),
-                          ),
+                          ).then((result) {
+                            if (mounted && result == true) {
+                              setState(() => _hasChanges = true);
+                              _fetch();
+                            }
+                          }),
                         );
                       },
                     ),
             ),
+      ),
     );
   }
 }

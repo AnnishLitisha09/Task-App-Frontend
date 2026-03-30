@@ -17,15 +17,15 @@ import '../../models/venue_dashboard_model.dart';
 import '../../models/venue_history_model.dart';
 import '../../models/institutional_dashboard_model.dart';
 import '../common/task_detail_page.dart';
-import '../../services/user_service.dart';
 import '../../models/departmental_dashboard_model.dart';
 import './venue_history_page.dart';
 import './venue_approvals_page.dart';
 import './venue_schedule_page.dart';
 import './venue_availability_page.dart';
 import '../common/generic_view_all_page.dart';
-import '../../services/notification_service.dart';
-
+import '../faculty/all_proofs_page.dart';
+import 'package:provider/provider.dart';
+import '../../store/app_store.dart';
 
 class RoleUserPage extends StatefulWidget {
   final String title;
@@ -47,20 +47,62 @@ class RoleUserPage extends StatefulWidget {
 
 class _RoleUserPageState extends State<RoleUserPage> {
   final TaskService _taskService = TaskService();
-  final UserService _userService = UserService();
   final ResourceService _resourceService = ResourceService();
-  VenueDetailsResponse? _venueDetails;
-  VenueHistoryResponse? _globalHistory;
-  DepartmentalDashboard? _deptDetails;
-  InstitutionalDashboard? _institutionDashboard;
-  List<dynamic> _escalations = [];
-  VenueDetailItem? _selectedRoleVenue;
-  List<dynamic> _pendingProofs = [];
-  int _unreadNotifications = 0;
-  bool _isLoading = false;
-  bool _isHistoryLoading = true;
-  String? _error;
-  final NotificationService _notificationService = NotificationService();
+
+  // ─── Getters delegating to Global AppStore ──────────────────────────────
+  VenueDetailsResponse? get _venueDetails =>
+      context.read<AppStore>().venueDashboard;
+  VenueHistoryResponse? get _globalHistory =>
+      context.read<AppStore>().venueHistory;
+  DepartmentalDashboard? get _deptDetails =>
+      context.read<AppStore>().deptDashboard;
+  InstitutionalDashboard? get _institutionDashboard =>
+      context.read<AppStore>().institutionDashboard;
+  List<dynamic> get _escalations => context.read<AppStore>().escalations;
+  List<dynamic> get _pendingProofs => context.read<AppStore>().pendingProofs;
+  int get _unreadNotifications => context.read<AppStore>().unreadNotifications;
+
+  VenueDetailItem? get _selectedRoleVenue {
+    final details = _venueDetails;
+    if (details == null || details.venues.isEmpty) return null;
+    final currentId = VenueNotifier.currentVenueId;
+    if (currentId != null) {
+      return details.venues.firstWhere(
+        (v) => v.venueId == currentId,
+        orElse: () => details.venues.first,
+      );
+    }
+    return details.venues.first;
+  }
+
+  bool get _isLoading {
+    final scope = widget.scope.toLowerCase();
+    if (scope == 'institution')
+      return context.read<AppStore>().isLoading('institutionDashboard');
+    if (scope == 'department')
+      return context.read<AppStore>().isLoading('deptDashboard');
+    return context.read<AppStore>().isLoading('venueDashboard');
+  }
+
+  bool get _isInitialLoad {
+    final scope = widget.scope.toLowerCase();
+    if (scope == 'institution')
+      return _isLoading && _institutionDashboard == null;
+    if (scope == 'department') return _isLoading && _deptDetails == null;
+    return _isLoading && _venueDetails == null;
+  }
+
+  bool get _isHistoryLoading =>
+      context.read<AppStore>().isLoading('venueHistory');
+
+  String? get _error {
+    final store = context.read<AppStore>();
+    final scope = widget.scope.toLowerCase();
+    if (scope == 'infrastructure') return store.errorOf('venueDashboard');
+    if (scope == 'department') return store.errorOf('deptDashboard');
+    if (scope == 'institution') return store.errorOf('institutionDashboard');
+    return null;
+  }
 
   @override
   void initState() {
@@ -89,281 +131,199 @@ class _RoleUserPageState extends State<RoleUserPage> {
     }
   }
 
-  Future<void> _fetchDepartmentalDashboard() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      final results = await Future.wait([
-        _userService.getDepartmentalDashboard(),
-        _taskService.getEscalations(unread: true),
-        _taskService.getPendingProofs(),
-      ]);
-      setState(() {
-        _deptDetails = results[0] as DepartmentalDashboard;
-        _escalations = results[1] as List<dynamic>;
-        if (results[2] is List) {
-          _pendingProofs = results[2];
-        } else if (results[2] is Map) {
-          if (results[2].containsKey('items')) {
-            _pendingProofs = results[2]['items'];
-          } else if (results[2].containsKey('data')) {
-            _pendingProofs = results[2]['data'];
-          }
-        }
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
-    }
+  Future<void> _fetchDepartmentalDashboard({bool force = false}) async {
+    final store = context.read<AppStore>();
+    await Future.wait([
+      store.fetchDeptDashboard(force: force),
+      store.fetchEscalations(force: force),
+      store.fetchPendingProofs(force: force),
+      store.fetchAuthorityApprovals(force: force),
+    ]);
   }
 
-  Future<void> _fetchInstitutionalDashboard() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-    try {
-      final results = await Future.wait([
-        _userService.getInstitutionalDashboard(),
-        _taskService.getEscalations(unread: true),
-        _taskService.getPendingProofs(),
-      ]);
-      setState(() {
-        _institutionDashboard = results[0] as InstitutionalDashboard;
-        _escalations = results[1] as List<dynamic>;
-        if (results[2] is List) {
-          _pendingProofs = results[2];
-        } else if (results[2] is Map) {
-          if (results[2].containsKey('items')) {
-            _pendingProofs = results[2]['items'];
-          } else if (results[2].containsKey('data')) {
-            _pendingProofs = results[2]['data'];
-          }
-        }
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
-    }
+  Future<void> _fetchInstitutionalDashboard({bool force = false}) async {
+    final store = context.read<AppStore>();
+    await Future.wait([
+      store.fetchInstitutionDashboard(force: force),
+      store.fetchEscalations(force: force),
+      store.fetchPendingProofs(force: force),
+    ]);
   }
 
-  Future<void> _fetchVenueDashboard() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  Future<void> _fetchVenueDashboard({bool force = false}) async {
+    final store = context.read<AppStore>();
+    await Future.wait([
+      store.fetchVenueDashboard(force: force),
+      store.fetchEscalations(force: force),
+      store.fetchPendingProofs(force: force),
+    ]);
 
-    try {
-      final results = await Future.wait([
-        _taskService.getVenueDashboard(),
-        _taskService.getEscalations(unread: true),
-        _taskService.getPendingProofs(),
-      ]);
-
-      setState(() {
-        _venueDetails = results[0] as VenueDetailsResponse;
-        _escalations = results[1] as List<dynamic>;
-        if (results[2] is List) {
-          _pendingProofs = results[2];
-        } else if (results[2] is Map) {
-          if (results[2].containsKey('items')) {
-            _pendingProofs = results[2]['items'];
-          } else if (results[2].containsKey('data')) {
-            _pendingProofs = results[2]['data'];
-          }
-        }
-
-        final currentId = VenueNotifier.currentVenueId;
-        if (_venueDetails!.venues.isNotEmpty) {
-          if (currentId != null) {
-            _selectedRoleVenue = _venueDetails!.venues.firstWhere(
-              (v) => v.venueId == currentId,
-              orElse: () => _venueDetails!.venues.first,
-            );
-          } else {
-            _selectedRoleVenue = _venueDetails!.venues.first;
-          }
-        }
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
-    }
-
-    // Always trigger history and unread fetches to keep dashboard fresh
-    final int? activeVenueId = _selectedRoleVenue?.venueId;
-    _fetchScopedHistory(venueId: activeVenueId);
+    // Refresh history & unread automatically after venue loads
+    final activeVenueId =
+        _selectedRoleVenue?.venueId ?? VenueNotifier.currentVenueId;
+    _fetchScopedHistory(venueId: activeVenueId, force: force);
     _fetchUnreadNotifications(venueId: activeVenueId);
   }
 
   Future<void> _fetchUnreadNotifications({int? venueId}) async {
-    try {
-      final count = await _notificationService.getUnreadCount(
-        venueId: widget.scope.toLowerCase() == 'infrastructure' ? venueId : null,
-      );
-      if (mounted) setState(() => _unreadNotifications = count);
-    } catch (_) {}
+    final store = context.read<AppStore>();
+    await store.fetchUnreadNotifications(
+      venueId: widget.scope.toLowerCase() == 'infrastructure' ? venueId : null,
+    );
   }
 
-  Future<void> _fetchScopedHistory({int? venueId}) async {
-    setState(() => _isHistoryLoading = true);
-    try {
-      final history = await _taskService.getVenueHistory(
-        venueId: venueId,
-        days: 7,
-      );
-      setState(() {
-        _globalHistory = history;
-        _isHistoryLoading = false;
-      });
-    } catch (e) {
-      debugPrint("Error fetching scoped history: $e");
-      setState(() => _isHistoryLoading = false);
-    }
+  Future<void> _fetchScopedHistory({int? venueId, bool force = false}) async {
+    final store = context.read<AppStore>();
+    await store.fetchVenueHistory(venueId: venueId, force: force);
   }
 
-  Future<void> _refresh() {
+  Future<void> _refresh() async {
     final scope = widget.scope.toLowerCase();
     _fetchUnreadNotifications(venueId: _selectedRoleVenue?.venueId);
-    if (scope == 'institution') return _fetchInstitutionalDashboard();
-    if (scope == 'department') return _fetchDepartmentalDashboard();
-    return _fetchVenueDashboard();
+    if (scope == 'institution')
+      return _fetchInstitutionalDashboard(force: true);
+    if (scope == 'department') return _fetchDepartmentalDashboard(force: true);
+    return _fetchVenueDashboard(force: true);
   }
 
   @override
   Widget build(BuildContext context) {
     String formattedDate = DateFormat('EEEE, MMM dd').format(DateTime.now());
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          Positioned(
-            top: -100,
-            right: -100,
-            child: CircleAvatar(
-              radius: 200,
-              backgroundColor: AppTheme.brandAccent.withOpacity(0.03),
-            ),
-          ),
-          SafeArea(
-            child: RefreshIndicator(
-              onRefresh: _refresh,
-              color: AppTheme.brandAccent,
-              child: CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
+    return Consumer<AppStore>(
+      builder: (context, store, _) {
+        return Scaffold(
+          backgroundColor: Colors.white,
+          body: Stack(
+            children: [
+              Positioned(
+                top: -100,
+                right: -100,
+                child: CircleAvatar(
+                  radius: 200,
+                  backgroundColor: AppTheme.brandAccent.withOpacity(0.03),
                 ),
-                slivers: [
-                   CustomAppBar(
-                    title: widget.title,
-                    date: formattedDate,
-                    notificationCount: _unreadNotifications,
-                    venueId: widget.scope.toLowerCase() == 'infrastructure' ? _selectedRoleVenue?.venueId : null,
-                    actions: widget.scope.toLowerCase() == 'infrastructure' ? [
-                      IconButton(
-                        onPressed: () => _handleDownloadReport(true),
-                        icon: const Icon(Icons.analytics_rounded, color: AppTheme.brandAccent),
-                        tooltip: "Venue Report",
-                      ),
-                      IconButton(
-                        onPressed: () => _handleDownloadReport(false),
-                        icon: const Icon(Icons.inventory_2_rounded, color: AppTheme.success),
-                        tooltip: "Resource Report",
-                      ),
-                    ] : null,
-                  ),
-                  if (_isLoading)
-                    const SliverToBoxAdapter(child: DashboardSkeleton())
-                  else if (_error != null)
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.error_outline_rounded,
-                                color: AppTheme.danger.withOpacity(0.5),
-                                size: 48,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Failed to load dashboard',
-                                style: AppTheme.h2,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _error!,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: AppTheme.textSub),
-                              ),
-                                const SizedBox(height: 24),
-                              ElevatedButton.icon(
-                                onPressed: _refresh,
-                                icon: const Icon(Icons.refresh_rounded),
-                                label: const Text("Retry"),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppTheme.brandPrimary,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 24,
-                                    vertical: 12,
+              ),
+              SafeArea(
+                child: RefreshIndicator(
+                  onRefresh: _refresh,
+                  color: AppTheme.brandAccent,
+                  child: CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
+                    slivers: [
+                      CustomAppBar(
+                        title: widget.title,
+                        date: formattedDate,
+                        notificationCount: _unreadNotifications,
+                        venueId: widget.scope.toLowerCase() == 'infrastructure'
+                            ? _selectedRoleVenue?.venueId
+                            : null,
+                        actions: widget.scope.toLowerCase() == 'infrastructure'
+                            ? [
+                                IconButton(
+                                  onPressed: () => _handleDownloadReport(true),
+                                  icon: const Icon(
+                                    Icons.analytics_rounded,
+                                    color: AppTheme.brandAccent,
                                   ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
+                                  tooltip: "Venue Report",
                                 ),
+                                IconButton(
+                                  onPressed: () => _handleDownloadReport(false),
+                                  icon: const Icon(
+                                    Icons.inventory_2_rounded,
+                                    color: AppTheme.success,
+                                  ),
+                                  tooltip: "Resource Report",
+                                ),
+                              ]
+                            : null,
+                      ),
+                      if (_error != null && _isInitialLoad)
+                        SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
                               ),
-                            ],
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.error_outline_rounded,
+                                    color: AppTheme.danger.withOpacity(0.5),
+                                    size: 48,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'Failed to load dashboard',
+                                    style: AppTheme.h2,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _error!,
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: AppTheme.textSub),
+                                  ),
+                                  const SizedBox(height: 24),
+                                  ElevatedButton.icon(
+                                    onPressed: _refresh,
+                                    icon: const Icon(Icons.refresh_rounded),
+                                    label: const Text("Retry"),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.brandPrimary,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 24,
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        SliverPadding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          sliver: SliverList(
+                            delegate: SliverChildListDelegate([
+                              const SizedBox(height: 12),
+                              if (widget.isBlocked)
+                                _buildBlockedMessage()
+                              else ...[
+                                _buildScopeDynamicMetrics(
+                                  isInitialLoad: _isInitialLoad,
+                                ),
+                                const SizedBox(height: 32),
+                                ..._buildLogicDrivenTasks(
+                                  isInitialLoad: _isInitialLoad,
+                                ),
+                              ],
+                              const SizedBox(height: 100),
+                            ]),
                           ),
                         ),
-                      ),
-                    )
-                  else
-                    SliverPadding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      sliver: SliverList(
-                        delegate: SliverChildListDelegate([
-                          const SizedBox(height: 12),
-                          if (widget.isBlocked)
-                            _buildBlockedMessage()
-                          else ...[
-                            _buildScopeDynamicMetrics(),
-                            const SizedBox(height: 32),
-                            ..._buildLogicDrivenTasks(),
-                          ],
-                          const SizedBox(height: 100),
-                        ]),
-                      ),
-                    ),
-                ],
+                    ],
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildScopeDynamicMetrics() {
+  Widget _buildScopeDynamicMetrics({required bool isInitialLoad}) {
     switch (widget.scope.toLowerCase()) {
       case 'institution':
         final stats = _institutionDashboard?.institutionalStats;
@@ -396,7 +356,9 @@ class _RoleUserPageState extends State<RoleUserPage> {
                 Expanded(
                   child: StatCard(
                     label: "Departments",
-                    value: (stats?.totalDepartments ?? 0).toString(),
+                    value: isInitialLoad
+                        ? "..."
+                        : (stats?.totalDepartments ?? 0).toString(),
                     icon: Icons.account_balance_rounded,
                     color: AppTheme.brandAccent,
                   ),
@@ -405,7 +367,9 @@ class _RoleUserPageState extends State<RoleUserPage> {
                 Expanded(
                   child: StatCard(
                     label: "Faculty",
-                    value: (stats?.totalFaculty ?? 0).toString(),
+                    value: isInitialLoad
+                        ? "..."
+                        : (stats?.totalFaculty ?? 0).toString(),
                     icon: Icons.assignment_ind_rounded,
                     color: AppTheme.warning,
                   ),
@@ -418,7 +382,9 @@ class _RoleUserPageState extends State<RoleUserPage> {
                 Expanded(
                   child: StatCard(
                     label: "Students",
-                    value: (stats?.totalStudents ?? 0).toString(),
+                    value: isInitialLoad
+                        ? "..."
+                        : (stats?.totalStudents ?? 0).toString(),
                     icon: Icons.school_rounded,
                     color: AppTheme.success,
                   ),
@@ -427,12 +393,13 @@ class _RoleUserPageState extends State<RoleUserPage> {
                 Expanded(
                   child: StatCard(
                     label: "Pending Approvals",
-                    value:
-                        (_institutionDashboard
-                                    ?.personalActions
-                                    .pendingMyApprovalCount ??
-                                0)
-                            .toString(),
+                    value: isInitialLoad
+                        ? "..."
+                        : (_institutionDashboard
+                                      ?.personalActions
+                                      .pendingMyApprovalCount ??
+                                  0)
+                              .toString(),
                     icon: Icons.pending_actions_rounded,
                     color: AppTheme.danger,
                   ),
@@ -456,7 +423,9 @@ class _RoleUserPageState extends State<RoleUserPage> {
                 Expanded(
                   child: StatCard(
                     label: "Students",
-                    value: (deptStats?.totalStudents ?? 0).toString(),
+                    value: isInitialLoad
+                        ? "..."
+                        : (deptStats?.totalStudents ?? 0).toString(),
                     icon: Icons.school_rounded,
                     color: AppTheme.success,
                   ),
@@ -465,7 +434,9 @@ class _RoleUserPageState extends State<RoleUserPage> {
                 Expanded(
                   child: StatCard(
                     label: "Faculty",
-                    value: (deptStats?.totalFaculty ?? 0).toString(),
+                    value: isInitialLoad
+                        ? "..."
+                        : (deptStats?.totalFaculty ?? 0).toString(),
                     icon: Icons.people_alt_rounded,
                     color: AppTheme.brandAccent,
                   ),
@@ -498,35 +469,44 @@ class _RoleUserPageState extends State<RoleUserPage> {
           children: [
             StatCard(
               label: _selectedRoleVenue != null ? "Selected" : "Managed",
-              value: _selectedRoleVenue != null ? "1" : totalVenues.toString(),
+              value: isInitialLoad
+                  ? "..."
+                  : (_selectedRoleVenue != null ? "1" : totalVenues.toString()),
               icon: Icons.stadium_rounded,
               color: AppTheme.success,
             ),
             StatCard(
               label: "Requests",
-              value: pendingRequestsCount.toString(),
+              value: isInitialLoad ? "..." : pendingRequestsCount.toString(),
               icon: Icons.pending_actions_rounded,
               color: AppTheme.warning,
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const VenueApprovalsPage()),
-              ),
+              ).then((result) { if (mounted && result == true) _refresh(); }),
             ),
             StatCard(
               label: "Upcoming",
-              value: activeTodayCount.toString(),
+              value: isInitialLoad ? "..." : activeTodayCount.toString(),
               icon: Icons.pie_chart_rounded,
               color: AppTheme.brandAccent,
             ),
             StatCard(
               label: "Venue Status",
-              value: _selectedRoleVenue?.currentStatus.replaceAll('_', ' ').toUpperCase() ?? "Check",
+              value: isInitialLoad
+                  ? "..."
+                  : (_selectedRoleVenue?.currentStatus
+                            .replaceAll('_', ' ')
+                            .toUpperCase() ??
+                        "Check"),
               icon: Icons.meeting_room_rounded,
               color: Colors.deepPurpleAccent,
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const VenueAvailabilityPage()),
-              ),
+                MaterialPageRoute(
+                  builder: (_) => const VenueAvailabilityPage(),
+                ),
+              ).then((result) { if (mounted && result == true) _refresh(); }),
             ),
           ],
         );
@@ -535,12 +515,42 @@ class _RoleUserPageState extends State<RoleUserPage> {
     }
   }
 
-  Future<void> _handleGeneralTaskAction(int taskId, bool approve) async {
+  Future<void> _handleAcceptDirective(int taskId, bool accept) async {
     try {
-      if (approve) {
+      if (accept) {
         await _taskService.acceptTask(taskId);
       } else {
-        await _taskService.rejectTask(taskId, "Action by manager");
+        await _taskService.rejectTask(taskId, "Rejected directive by user");
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(accept ? "Directive Accepted" : "Directive Rejected"),
+            backgroundColor: accept ? AppTheme.success : AppTheme.danger,
+          ),
+        );
+        _refresh();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error: $e"),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+        _refresh();
+      }
+    }
+  }
+
+  Future<void> _handleApproveTask(int taskId, bool approve) async {
+    try {
+      if (approve) {
+        await _taskService.approveTask(taskId);
+      } else {
+        await _taskService.rejectTask(taskId, "Rejected by authority");
       }
 
       if (mounted) {
@@ -560,7 +570,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
             backgroundColor: AppTheme.danger,
           ),
         );
-        _refresh(); // Re-sync state
+        _refresh();
       }
     }
   }
@@ -568,14 +578,18 @@ class _RoleUserPageState extends State<RoleUserPage> {
   Future<void> _handleDownloadReport(bool isVenue) async {
     try {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Generating ${isVenue ? 'Venue' : 'Resource'} Report...")),
+        SnackBar(
+          content: Text(
+            "Generating ${isVenue ? 'Venue' : 'Resource'} Report...",
+          ),
+        ),
       );
 
-      final List<int> bytes = isVenue 
+      final List<int> bytes = isVenue
           ? await _resourceService.downloadVenueReport()
           : await _resourceService.downloadResourceReport();
 
-      String? fileName = isVenue 
+      String? fileName = isVenue
           ? 'venue_utilisation_report_${DateTime.now().millisecondsSinceEpoch}.xlsx'
           : 'resource_utilisation_report_${DateTime.now().millisecondsSinceEpoch}.xlsx';
 
@@ -611,7 +625,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
     }
   }
 
-  List<Widget> _buildLogicDrivenTasks() {
+  List<Widget> _buildLogicDrivenTasks({required bool isInitialLoad}) {
     List<Widget> sections = [];
     final String scope = widget.scope.toLowerCase();
 
@@ -625,7 +639,11 @@ class _RoleUserPageState extends State<RoleUserPage> {
           onViewAll: () {},
         ),
       );
-      if (schedule.isEmpty) {
+      if (isInitialLoad) {
+        sections.add(
+          const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]),
+        );
+      } else if (schedule.isEmpty) {
         sections.add(
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
@@ -653,6 +671,84 @@ class _RoleUserPageState extends State<RoleUserPage> {
 
       sections.add(const SizedBox(height: 24));
 
+      sections.add(const SizedBox(height: 24));
+
+      // NEW: Incoming Directives (Assigned to me directly)
+      final directivesList =
+          _institutionDashboard?.personalActions.assignedToMeList ?? [];
+      final directivesCount =
+          _institutionDashboard?.personalActions.assignedToMeCount ?? 0;
+      sections.add(
+        SectionHeader(
+          title: "Incoming Directives",
+          count: directivesCount,
+          isStatus: directivesCount > 0,
+          onViewAll: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => GenericViewAllPage(
+                title: "Incoming Directives",
+                tasks: directivesList,
+                viewMode: 'approver',
+                accentColor: AppTheme.brandAccent,
+                onTaskAction: _handleAcceptDirective,
+              ),
+            ),
+          ).then((result) { if (mounted && result == true) _refresh(); }),
+        ),
+      );
+      if (isInitialLoad) {
+        sections.add(
+          const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]),
+        );
+      } else if (directivesList.isEmpty) {
+        sections.add(
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: Text(
+                "No pending directives",
+                style: TextStyle(color: AppTheme.textSub),
+              ),
+            ),
+          ),
+        );
+      } else {
+        for (final task in directivesList.take(2)) {
+          final taskId = task['task_id'] ?? task['id'];
+          sections.add(
+            TaskCard(
+              title: task['title']?.toString() ?? 'Directive Task',
+              sub: task['description']?.toString() ?? '',
+              accent: AppTheme.brandAccent,
+              icon: Icons.assignment_turned_in_rounded,
+              isRequest: true,
+              acceptLabel: "Executive Directive",
+              onAccept: taskId != null
+                  ? () => _handleAcceptDirective(taskId, true)
+                  : null,
+              onReject: taskId != null
+                  ? () => _handleAcceptDirective(taskId, false)
+                  : null,
+              onTap: taskId != null
+                  ? () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailsPage(
+                          taskData: {'task_id': taskId, 'title': task['title']},
+                          viewMode:
+                              'default', // Assignee just needs standard view
+                        ),
+                      ),
+                    ).then((result) { if (mounted && result == true) _refresh(); })
+                  : null,
+            ),
+          );
+        }
+      }
+
+      sections.add(const SizedBox(height: 24));
+
       // 2. Pending Approvals (Standard)
       final approvalList =
           _institutionDashboard?.personalActions.pendingMyApprovalList ?? [];
@@ -666,7 +762,11 @@ class _RoleUserPageState extends State<RoleUserPage> {
           onViewAll: () {},
         ),
       );
-      if (approvalList.isEmpty) {
+      if (isInitialLoad) {
+        sections.add(
+          const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]),
+        );
+      } else if (approvalList.isEmpty) {
         sections.add(
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
@@ -689,10 +789,10 @@ class _RoleUserPageState extends State<RoleUserPage> {
               icon: Icons.assignment_ind_rounded,
               isApproval: true,
               onAccept: taskId != null
-                  ? () => _handleGeneralTaskAction(taskId, true)
+                  ? () => _handleApproveTask(taskId, true)
                   : null,
               onReject: taskId != null
-                  ? () => _handleGeneralTaskAction(taskId, false)
+                  ? () => _handleApproveTask(taskId, false)
                   : null,
               onTap: taskId != null
                   ? () => Navigator.push(
@@ -703,7 +803,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
                           viewMode: 'approver',
                         ),
                       ),
-                    )
+                    ).then((result) { if (mounted && result == true) _refresh(); })
                   : null,
             ),
           );
@@ -721,7 +821,11 @@ class _RoleUserPageState extends State<RoleUserPage> {
           onViewAll: () {},
         ),
       );
-      if (_escalations.isEmpty) {
+      if (isInitialLoad) {
+        sections.add(
+          const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]),
+        );
+      } else if (_escalations.isEmpty) {
         sections.add(
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
@@ -754,7 +858,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
                           viewMode: 'incharge',
                         ),
                       ),
-                    )
+                    ).then((result) { if (mounted && result == true) _refresh(); })
                   : null,
             ),
           );
@@ -778,10 +882,14 @@ class _RoleUserPageState extends State<RoleUserPage> {
                 accentColor: AppTheme.success,
               ),
             ),
-          ),
+          ).then((result) { if (mounted && result == true) _refresh(); }),
         ),
       );
-      if (_pendingProofs.isEmpty) {
+      if (isInitialLoad) {
+        sections.add(
+          const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]),
+        );
+      } else if (_pendingProofs.isEmpty) {
         sections.add(
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
@@ -804,16 +912,16 @@ class _RoleUserPageState extends State<RoleUserPage> {
               icon: Icons.verified_rounded,
               onTap: taskId != null
                   ? () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => TaskDetailsPage(
-                            taskData: {
-                              'task_id': taskId,
-                              'title': proof['title'],
-                            },
-                          ),
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailsPage(
+                          taskData: {
+                            'task_id': taskId,
+                            'title': proof['title'],
+                          },
                         ),
-                      )
+                      ),
+                    ).then((result) { if (mounted && result == true) _refresh(); })
                   : null,
             ),
           );
@@ -836,10 +944,14 @@ class _RoleUserPageState extends State<RoleUserPage> {
                 accentColor: AppTheme.brandAccent,
               ),
             ),
-          ),
+          ).then((result) { if (mounted && result == true) _refresh(); }),
         ),
       );
-      if (schedule.isEmpty) {
+      if (isInitialLoad) {
+        sections.add(
+          const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]),
+        );
+      } else if (schedule.isEmpty) {
         sections.add(
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
@@ -869,7 +981,81 @@ class _RoleUserPageState extends State<RoleUserPage> {
                           viewMode: 'viewonly',
                         ),
                       ),
-                    )
+                    ).then((result) { if (mounted && result == true) _refresh(); })
+                  : null,
+            ),
+          );
+        }
+      }
+
+      sections.add(const SizedBox(height: 24));
+
+      sections.add(const SizedBox(height: 24));
+
+      // NEW: Incoming Directives (Assigned directly to HOD)
+      final directives = _deptDetails?.assignedToMeTasks ?? [];
+      sections.add(
+        SectionHeader(
+          title: "Incoming Directives",
+          count: _deptDetails?.assignedToMeCount ?? 0,
+          isStatus: (_deptDetails?.assignedToMeCount ?? 0) > 0,
+          onViewAll: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => GenericViewAllPage(
+                title: "Incoming Directives",
+                tasks: directives,
+                viewMode: 'approver',
+                accentColor: AppTheme.brandAccent,
+                onTaskAction: _handleAcceptDirective,
+              ),
+            ),
+          ).then((result) { if (mounted && result == true) _refresh(); }),
+        ),
+      );
+      if (isInitialLoad) {
+        sections.add(
+          const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]),
+        );
+      } else if (directives.isEmpty) {
+        sections.add(
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: Text(
+                "No pending directives",
+                style: TextStyle(color: AppTheme.textSub),
+              ),
+            ),
+          ),
+        );
+      } else {
+        for (final task in directives.take(2)) {
+          final taskId = task['task_id'] ?? task['id'];
+          sections.add(
+            TaskCard(
+              title: task['title']?.toString() ?? "Directive Task",
+              sub: "Assigned by: ${task['creator_name'] ?? 'N/A'}",
+              accent: AppTheme.brandAccent,
+              icon: Icons.assignment_turned_in_rounded,
+              isRequest: true,
+              acceptLabel: "Executive Directive",
+              onAccept: taskId != null
+                  ? () => _handleAcceptDirective(taskId, true)
+                  : null,
+              onReject: taskId != null
+                  ? () => _handleAcceptDirective(taskId, false)
+                  : null,
+              onTap: taskId != null
+                  ? () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailsPage(
+                          taskData: {'task_id': taskId, 'title': task['title']},
+                          viewMode: 'default',
+                        ),
+                      ),
+                    ).then((result) { if (mounted && result == true) _refresh(); })
                   : null,
             ),
           );
@@ -893,13 +1079,17 @@ class _RoleUserPageState extends State<RoleUserPage> {
                 tasks: _deptDetails?.pendingApprovals ?? [],
                 viewMode: 'approver',
                 accentColor: AppTheme.warning,
-                onTaskAction: _handleGeneralTaskAction,
+                onTaskAction: _handleApproveTask,
               ),
             ),
-          ),
+          ).then((result) { if (mounted && result == true) _refresh(); }),
         ),
       );
-      if (approvals.isEmpty) {
+      if (isInitialLoad) {
+        sections.add(
+          const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]),
+        );
+      } else if (approvals.isEmpty) {
         sections.add(
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
@@ -922,10 +1112,10 @@ class _RoleUserPageState extends State<RoleUserPage> {
               icon: Icons.how_to_reg_rounded,
               isApproval: true,
               onAccept: taskId != null
-                  ? () => _handleGeneralTaskAction(taskId, true)
+                  ? () => _handleApproveTask(taskId, true)
                   : null,
               onReject: taskId != null
-                  ? () => _handleGeneralTaskAction(taskId, false)
+                  ? () => _handleApproveTask(taskId, false)
                   : null,
               onTap: taskId != null
                   ? () => Navigator.push(
@@ -936,7 +1126,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
                           viewMode: 'approver',
                         ),
                       ),
-                    )
+                    ).then((result) { if (mounted && result == true) _refresh(); })
                   : null,
             ),
           );
@@ -962,10 +1152,14 @@ class _RoleUserPageState extends State<RoleUserPage> {
                 accentColor: AppTheme.danger,
               ),
             ),
-          ),
+          ).then((result) { if (mounted && result == true) _refresh(); }),
         ),
       );
-      if (escalated.isEmpty) {
+      if (isInitialLoad) {
+        sections.add(
+          const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]),
+        );
+      } else if (escalated.isEmpty) {
         sections.add(
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
@@ -995,7 +1189,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
                           viewMode: 'incharge',
                         ),
                       ),
-                    )
+                    ).then((result) { if (mounted && result == true) _refresh(); })
                   : null,
             ),
           );
@@ -1012,17 +1206,16 @@ class _RoleUserPageState extends State<RoleUserPage> {
           onViewAll: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => GenericViewAllPage(
-                title: "Pending Proofs",
-                tasks: _pendingProofs,
-                viewMode: 'viewonly',
-                accentColor: AppTheme.success,
-              ),
+              builder: (_) => const AllProofsPage(),
             ),
-          ),
+          ).then((result) { if (mounted && result == true) _refresh(); }),
         ),
       );
-      if (_pendingProofs.isEmpty) {
+      if (isInitialLoad) {
+        sections.add(
+          const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]),
+        );
+      } else if (_pendingProofs.isEmpty) {
         sections.add(
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
@@ -1045,16 +1238,16 @@ class _RoleUserPageState extends State<RoleUserPage> {
               icon: Icons.verified_rounded,
               onTap: taskId != null
                   ? () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => TaskDetailsPage(
-                            taskData: {
-                              'task_id': taskId,
-                              'title': proof['title'],
-                            },
-                          ),
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailsPage(
+                          taskData: {
+                            'task_id': taskId,
+                            'title': proof['title'],
+                          },
                         ),
-                      )
+                      ),
+                    ).then((result) { if (mounted && result == true) _refresh(); })
                   : null,
             ),
           );
@@ -1079,10 +1272,12 @@ class _RoleUserPageState extends State<RoleUserPage> {
                 accentColor: AppTheme.brandAccent,
               ),
             ),
-          ),
+          ).then((result) { if (mounted && result == true) _refresh(); }),
         ),
       );
-      if (deptTasks.isEmpty) {
+      if (isInitialLoad) {
+        sections.add(const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]));
+      } else if (deptTasks.isEmpty) {
         sections.add(
           const Center(
             child: Text(
@@ -1109,7 +1304,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
                           viewMode: 'viewonly',
                         ),
                       ),
-                    )
+                    ).then((result) { if (mounted && result == true) _refresh(); })
                   : null,
             ),
           );
@@ -1135,11 +1330,15 @@ class _RoleUserPageState extends State<RoleUserPage> {
             onViewAll: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const VenueSchedulePage()),
-            ),
+            ).then((result) { if (mounted && result == true) _refresh(); }),
           ),
         );
 
-        if (currentVenue.today.confirmedBookings.isEmpty) {
+        if (isInitialLoad) {
+          sections.add(
+            const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]),
+          );
+        } else if (currentVenue.today.confirmedBookings.isEmpty) {
           sections.add(
             const Center(
               child: Padding(
@@ -1176,7 +1375,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
                         viewMode: 'incharge',
                       ),
                     ),
-                  );
+                  ).then((result) { if (mounted && result == true) _refresh(); });
                   if (result != null) {
                     _fetchVenueDashboard();
                   }
@@ -1203,7 +1402,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
                   venueName: currentVenue.name,
                 ),
               ),
-            ),
+            ).then((result) { if (mounted && result == true) _refresh(); }),
           ),
         );
 
@@ -1229,7 +1428,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
                       viewMode: 'incharge',
                     ),
                   ),
-                ),
+                ).then((result) { if (mounted && result == true) _refresh(); }),
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -1393,10 +1592,16 @@ class _RoleUserPageState extends State<RoleUserPage> {
                     child: DropdownButton<VenueDetailItem>(
                       value: _selectedRoleVenue,
                       isDense: true,
-                      icon: const Icon(Icons.arrow_drop_down_rounded, color: AppTheme.brandAccent),
+                      icon: const Icon(
+                        Icons.arrow_drop_down_rounded,
+                        color: AppTheme.brandAccent,
+                      ),
                       onChanged: (VenueDetailItem? newValue) {
                         if (newValue != null) {
-                          VenueNotifier.switchVenue(newValue.venueId, newValue.name);
+                          VenueNotifier.switchVenue(
+                            newValue.venueId,
+                            newValue.name,
+                          );
                         }
                       },
                       items: _venueDetails!.venues.map((VenueDetailItem venue) {
@@ -1434,7 +1639,11 @@ class _RoleUserPageState extends State<RoleUserPage> {
       ),
       child: Column(
         children: [
-          Icon(Icons.lock_person_rounded, size: 64, color: AppTheme.danger.withOpacity(0.8)),
+          Icon(
+            Icons.lock_person_rounded,
+            size: 64,
+            color: AppTheme.danger.withOpacity(0.8),
+          ),
           const SizedBox(height: 24),
           Text(
             "Access Restricted",
@@ -1450,7 +1659,9 @@ class _RoleUserPageState extends State<RoleUserPage> {
           Text(
             "Once an admin acknowledges your schedule, you can refresh to gain access.",
             textAlign: TextAlign.center,
-            style: AppTheme.bodySub.copyWith(color: AppTheme.textSub.withOpacity(0.7)),
+            style: AppTheme.bodySub.copyWith(
+              color: AppTheme.textSub.withOpacity(0.7),
+            ),
           ),
           const SizedBox(height: 32),
           SizedBox(
@@ -1463,7 +1674,9 @@ class _RoleUserPageState extends State<RoleUserPage> {
                 backgroundColor: AppTheme.danger,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 elevation: 0,
               ),
             ),
@@ -1472,6 +1685,7 @@ class _RoleUserPageState extends State<RoleUserPage> {
       ),
     ).animate().fadeIn().slideY(begin: 0.1);
   }
+
   String _formatItemDate(String dateStr) {
     if (dateStr.isEmpty) return "N/A";
     try {

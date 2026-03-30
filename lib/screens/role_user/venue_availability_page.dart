@@ -18,6 +18,7 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
   final TaskService _taskService = TaskService();
   final ResourceService _resourceService = ResourceService();
   bool _isLoading = true;
+  bool _hasChanges = false;
   VenueDetailsResponse? _data;
 
   // Real history mapping
@@ -271,7 +272,10 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        _fetchData(); // Refresh
+        setState(() {
+          _hasChanges = true;
+          _fetchData(); // Refresh
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -286,10 +290,14 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
     }
   }
 
-  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.pop(context, _hasChanges);
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text(
           "Infrastructure Control",
@@ -396,6 +404,7 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
                 },
               ),
             ),
+      ),
     );
   }
 

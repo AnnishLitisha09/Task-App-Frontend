@@ -12,6 +12,8 @@ class DepartmentalDashboard {
   final List<dynamic> todaysSchedule;
   final int departmentTasksCount;
   final List<dynamic> departmentTasks;
+  final int assignedToMeCount;
+  final List<dynamic> assignedToMeTasks;
 
   DepartmentalDashboard({
     required this.success,
@@ -27,6 +29,8 @@ class DepartmentalDashboard {
     required this.todaysSchedule,
     required this.departmentTasksCount,
     required this.departmentTasks,
+    required this.assignedToMeCount,
+    required this.assignedToMeTasks,
   });
 
   factory DepartmentalDashboard.fromJson(Map<String, dynamic> json) {
@@ -36,14 +40,16 @@ class DepartmentalDashboard {
       isTomorrowPreview: json['is_tomorrow_preview'] ?? false,
       department: DepartmentInfo.fromJson(json['department'] ?? {}),
       stats: DeptStats.fromJson(json['stats'] ?? {}),
-      pendingApprovalsCount: json['pending_approvals_count'] ?? 0,
-      pendingApprovals: json['pending_approvals'] ?? [],
+      pendingApprovalsCount: json['awaiting_my_approval_count'] ?? json['pending_approvals_count'] ?? 0,
+      pendingApprovals: json['awaiting_my_approval'] ?? json['pending_approvals'] ?? [],
       escalatedTasksCount: json['escalated_tasks_count'] ?? 0,
       escalatedTasks: json['escalated_tasks'] ?? [],
       todaysScheduleCount: json['todays_schedule_count'] ?? 0,
       todaysSchedule: json['todays_schedule'] ?? [],
       departmentTasksCount: json['department_tasks_count'] ?? 0,
       departmentTasks: json['department_tasks'] ?? [],
+      assignedToMeCount: json['assigned_to_me_count'] ?? 0,
+      assignedToMeTasks: json['assigned_to_me'] ?? [],
     );
   }
 }

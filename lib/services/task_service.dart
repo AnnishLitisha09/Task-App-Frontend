@@ -7,13 +7,16 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/intl.dart';
 import '../models/task_detail_model.dart';
 import '../models/daily_report_model.dart';
-import '../services/venue_notifier.dart';
 import '../models/venue_dashboard_model.dart';
 import '../models/venue_history_model.dart';
 import '../models/managed_venues_model.dart';
 import '../models/exhaustive_task_model.dart';
 
 class TaskService {
+  // BUG-06 NOTE: Invalidate token cache on logout to force a fresh token read.
+  // Full service-level token caching is a future optimization —
+  // each method currently reads from SharedPreferences directly.
+  void invalidateToken() {} // No-op placeholder for logout hook
   Future<Map<String, dynamic>> getTaskDetails(dynamic taskId) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -209,37 +212,8 @@ class TaskService {
     }
   }
 
-  Future<dynamic> getFacultyDashboardStats() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('authToken') ?? '';
-      final backendUrl =
-          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
-
-      final selectedVenueId = VenueNotifier.currentVenueId;
-      String urlStr = '${backendUrl}users/faculty/stats/daily';
-      if (selectedVenueId != null) {
-        urlStr += '?venue_id=$selectedVenueId';
-      }
-
-      final response = await http.get(
-        Uri.parse(urlStr),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception('Failed to load faculty stats: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Error fetching faculty stats: $e');
-    }
-  }
-
+  // BUG-04 FIX: Removed getFacultyDashboardStats() — it duplicated AppStore.fetchFacultyStats()
+  // and bypassed the 5-min cache. All callers should use AppStore.fetchFacultyStats() instead.
   Future<Map<String, dynamic>> createTaskUnified(
     Map<String, dynamic> payload, {
     String? filePath,
@@ -252,37 +226,50 @@ class TaskService {
 
       final url = Uri.parse('${backendUrl}tasks/unified-create');
 
-      // Use MultipartRequest to support file upload
-      final request = http.MultipartRequest('POST', url);
+      if (filePath == null) {
+        // Use standard JSON request for clean nested body parsing
+        final response = await http.post(
+          url,
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(payload),
+        );
 
-      // Add Headers
-      request.headers.addAll({
-        'Authorization': 'Bearer $token',
-      });
-
-      // Add Fields (JSON payload)
-      // The backend expects flat fields or JSON strings for nested objects
-      payload.forEach((key, value) {
-        if (value is Map || value is List) {
-          request.fields[key] = jsonEncode(value);
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          final data = jsonDecode(response.body);
+          return data;
         } else {
-          request.fields[key] = value.toString();
+          throw Exception('Failed to create task: ${response.statusCode} - ${response.body}');
         }
-      });
-
-      // Add File if exists
-      if (filePath != null) {
-        request.files.add(await http.MultipartFile.fromPath('file', filePath));
-      }
-
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = jsonDecode(response.body);
-        return data;
       } else {
-        throw Exception('Failed to create task: ${response.statusCode} - ${response.body}');
+        // Use MultipartRequest to support file upload
+        final request = http.MultipartRequest('POST', url);
+        request.headers.addAll({
+          'Authorization': 'Bearer $token',
+        });
+
+        // Add Fields (JSON payload)
+        payload.forEach((key, value) {
+          if (value is Map || value is List) {
+            request.fields[key] = jsonEncode(value);
+          } else {
+            request.fields[key] = value.toString();
+          }
+        });
+
+        request.files.add(await http.MultipartFile.fromPath('file', filePath));
+
+        final streamedResponse = await request.send();
+        final response = await http.Response.fromStream(streamedResponse);
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          final data = jsonDecode(response.body);
+          return data;
+        } else {
+          throw Exception('Failed to create task: ${response.statusCode} - ${response.body}');
+        }
       }
     } catch (e) {
       throw Exception('Error creating task: $e');
@@ -302,39 +289,53 @@ class TaskService {
 
       final url = Uri.parse('${backendUrl}tasks/$taskId');
 
-      // Use MultipartRequest to support file upload (via PUT)
-      final request = http.MultipartRequest('PUT', url);
-
-      // Add Headers
-      request.headers.addAll({
-        'Authorization': 'Bearer $token',
-      });
-
-      // Add Fields (JSON payload)
-      payload.forEach((key, value) {
-        if (value != null) {
-          if (value is Map || value is List) {
-            request.fields[key] = jsonEncode(value);
-          } else {
-            request.fields[key] = value.toString();
-          }
+      if (filePath == null) {
+        // Send a standard strictly-JSON request if there's no file.
+        // This ensures the backend parses raw boolean/arrays exactly like a `curl` JSON payload.
+        final response = await http.put(
+          url,
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(payload),
+        );
+        
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          final data = jsonDecode(response.body);
+          return data;
+        } else {
+          throw Exception('Failed to update task: ${response.statusCode} - ${response.body}');
         }
-      });
-
-      // Add File if exists
-      if (filePath != null) {
-        request.files.add(await http.MultipartFile.fromPath('file', filePath));
-      }
-
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = jsonDecode(response.body);
-        return data;
       } else {
-        throw Exception(
-            'Failed to update task: ${response.statusCode} - ${response.body}');
+        // Use MultipartRequest for file uploads
+        final request = http.MultipartRequest('PUT', url);
+        request.headers.addAll({
+          'Authorization': 'Bearer $token',
+        });
+
+        // Add Fields (JSON payload stringified as multipart fields)
+        payload.forEach((key, value) {
+          if (value != null) {
+            if (value is Map || value is List) {
+              request.fields[key] = jsonEncode(value);
+            } else {
+              request.fields[key] = value.toString();
+            }
+          }
+        });
+
+        request.files.add(await http.MultipartFile.fromPath('file', filePath));
+
+        final streamedResponse = await request.send();
+        final response = await http.Response.fromStream(streamedResponse);
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          final data = jsonDecode(response.body);
+          return data;
+        } else {
+          throw Exception('Failed to update task: ${response.statusCode} - ${response.body}');
+        }
       }
     } catch (e) {
       throw Exception('Error updating task: $e');

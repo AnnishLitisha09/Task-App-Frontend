@@ -25,8 +25,9 @@ class TaskDetailModel {
   final TaskCreator creator;
   final dynamic approver;
   final dynamic faculty;
-  final String?
-  venue; // Changed from dynamic/null to String? based on usage in UI, though API returns null or object usually. Let's assume name or object. API says "venue": null. Let's make it dynamic or a class. UI expects string. Ideally backend sends object. Let's make it map safely.
+  // BUG-09 FIX: venue changed to Map? to preserve venue_id, name, and all fields.
+  // UI reads venue name via: _taskDetail.venue?['name']
+  final Map<String, dynamic>? venue;
   final dynamic resource;
   final List<TaskType> taskTypes;
   final List<TaskAssignee> assignees;
@@ -34,6 +35,10 @@ class TaskDetailModel {
   final List<String> closureRules;
   final String createdAt;
   final TaskActionButton? actionButton;
+
+  /// BUG-07 FIX: Safe boolean parser — handles bool, int (0/1), and string
+  static bool _parseBool(dynamic v) =>
+      v == true || v == 1 || v?.toString().toLowerCase() == 'true';
 
   TaskDetailModel({
     required this.taskId,
@@ -86,14 +91,14 @@ class TaskDetailModel {
       status: json['status'] ?? '',
       score: (num.tryParse(json['score']?.toString() ?? '0') ?? 0).toInt(),
       penaltyPerHour: (num.tryParse(json['penalty_per_hour']?.toString() ?? '0') ?? 0).toInt(),
-      isPackage: json['is_package'] == true || json['is_package'] == 1 || json['is_package'].toString() == 'true',
-      isPauseAllowed: json['is_pause_allowed'] == true || json['is_pause_allowed'] == 1 || json['is_pause_allowed'].toString() == 'true',
-      isDocument: json['is_document'] == true || json['is_document'] == 1 || json['is_document'].toString() == 'true',
-      isMandatory: json['is_mandatory'] == true || json['is_mandatory'] == 1 || json['is_mandatory'].toString() == 'true',
-      isApproved: json['is_approved'] == true || json['is_approved'] == 1 || json['is_approved'].toString() == 'true',
-      isFaculty: json['is_faculty'] == true || json['is_faculty'] == 1 || json['is_faculty'].toString() == 'true',
-      isDeleted: json['is_deleted'] == true || json['is_deleted'] == 1 || json['is_deleted'].toString() == 'true',
-      isEscalate: json['is_escalate'] == true || json['is_escalate'] == 1 || json['is_escalate'].toString() == 'true',
+      isPackage: TaskDetailModel._parseBool(json['is_package']),
+      isPauseAllowed: TaskDetailModel._parseBool(json['is_pause_allowed']),
+      isDocument: TaskDetailModel._parseBool(json['is_document']),
+      isMandatory: TaskDetailModel._parseBool(json['is_mandatory']),
+      isApproved: TaskDetailModel._parseBool(json['is_approved']),
+      isFaculty: TaskDetailModel._parseBool(json['is_faculty']),
+      isDeleted: TaskDetailModel._parseBool(json['is_deleted']),
+      isEscalate: TaskDetailModel._parseBool(json['is_escalate']),
       venueId: json['venue_id'],
       resourceId: json['resource_id'],
       creatorId: int.tryParse(json['creator_id']?.toString() ?? '') ?? 0,
@@ -103,8 +108,8 @@ class TaskDetailModel {
       approver: json['approver'],
       faculty: json['faculty'],
       venue: json['venue'] is Map
-          ? json['venue']['name']
-          : null, // Extract name if object, else null
+          ? Map<String, dynamic>.from(json['venue'] as Map)
+          : null, // BUG-09 FIX: preserve full venue object, not just the name
       resource: json['resource'],
       taskTypes:
           (json['task_types'] as List?)
@@ -192,7 +197,7 @@ class TaskAssignee {
   final String name;
   final String email;
   final String status;
-  final String acceptedAt;
+  final String? acceptedAt; // BUG-08 FIX: nullable — null until task is started
   final String? proof;
   final String? submittedTime;
 
@@ -216,7 +221,8 @@ class TaskAssignee {
       name: json['name'] ?? '',
       email: json['email'] ?? '',
       status: json['status'] ?? '',
-      acceptedAt: json['accepted_at'] ?? '',
+      // BUG-08 FIX: acceptedAt is nullable — null when task hasn't been started
+      acceptedAt: json['accepted_at'], // Nullable String? now
       proof: json['proof'],
       submittedTime: json['submitted_time'],
     );

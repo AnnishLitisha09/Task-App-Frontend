@@ -7,8 +7,8 @@ import '../../theme/app_theme.dart';
 import '../../components/custom_app_bar.dart';
 import '../../components/section_header.dart';
 import '../../services/resource_service.dart';
-import '../../services/notification_service.dart';
-
+import 'package:provider/provider.dart';
+import '../../store/app_store.dart';
 
 class AdminPage extends StatefulWidget {
   const AdminPage({super.key});
@@ -23,21 +23,13 @@ class _AdminPageState extends State<AdminPage> {
 
   DateTime _fromDate = DateTime.now().subtract(const Duration(days: 30));
   DateTime _toDate = DateTime.now();
-  int _unreadNotifications = 0;
-  final NotificationService _notificationService = NotificationService();
- 
-   @override
-   void initState() {
-     super.initState();
-     _fetchUnreadNotifications();
-   }
- 
-   Future<void> _fetchUnreadNotifications() async {
-     try {
-       final count = await _notificationService.getUnreadCount();
-       if (mounted) setState(() => _unreadNotifications = count);
-     } catch (_) {}
-   }
+  int get _unreadNotifications => context.read<AppStore>().unreadNotifications;
+
+  @override
+  void initState() {
+    super.initState();
+    context.read<AppStore>().fetchUnreadNotifications();
+  }
 
   Future<void> _selectDateRange() async {
     final DateTimeRange? picked = await showDateRangePicker(
@@ -72,7 +64,7 @@ class _AdminPageState extends State<AdminPage> {
     try {
       String label = "";
       List<int> bytes;
-      
+
       if (reportType == 0) {
         label = "Overall Venue Report";
         bytes = await _resourceService.downloadVenueReport();
@@ -86,9 +78,9 @@ class _AdminPageState extends State<AdminPage> {
         bytes = await _resourceService.downloadResourceReport();
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Generating $label...")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Generating $label...")));
 
       String fileName = (reportType == 0 || reportType == 1)
           ? 'admin_venue_utilisation_${DateTime.now().millisecondsSinceEpoch}.xlsx'
@@ -132,55 +124,71 @@ class _AdminPageState extends State<AdminPage> {
   Widget build(BuildContext context) {
     String formattedDate = DateFormat('EEEE, MMM dd').format(DateTime.now());
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            CustomAppBar(
-              title: "Admin Dashboard",
-              date: formattedDate,
-              notificationCount: _unreadNotifications,
+    return Consumer<AppStore>(
+      builder: (context, store, _) {
+        return Scaffold(
+          backgroundColor: Colors.white,
+          body: SafeArea(
+            child: CustomScrollView(
+              slivers: [
+                CustomAppBar(
+                  title: "Admin Dashboard",
+                  date: formattedDate,
+                  notificationCount: _unreadNotifications,
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      const SectionHeader(title: "System Reports"),
+                      const SizedBox(height: 16),
+                      _buildReportCard(
+                        title: "Venue Usage (Custom Range)",
+                        description:
+                            "From ${DateFormat('MMM dd, yyyy').format(_fromDate)} to ${DateFormat('MMM dd, yyyy').format(_toDate)}",
+                        icon: Icons.date_range_rounded,
+                        color: Colors.orange,
+                        trailing: TextButton(
+                          onPressed: _isDownloading ? null : _selectDateRange,
+                          child: const Text(
+                            "CHANGE",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        onTap: () => _handleDownloadReport(1),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildReportCard(
+                        title: "Venue Overall Export",
+                        description:
+                            "Full master list and current status of all venues.",
+                        icon: Icons.analytics_rounded,
+                        color: AppTheme.brandAccent,
+                        onTap: () => _handleDownloadReport(0),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildReportCard(
+                        title: "Resource Inventory Report",
+                        description:
+                            "Full breakdown of resources, statuses, and usage logs.",
+                        icon: Icons.inventory_2_rounded,
+                        color: AppTheme.success,
+                        onTap: () => _handleDownloadReport(2),
+                      ),
+                    ]),
+                  ),
+                ),
+              ],
             ),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  const SectionHeader(title: "System Reports"),
-                  const SizedBox(height: 16),
-                  _buildReportCard(
-                    title: "Venue Usage (Custom Range)",
-                    description: "From ${DateFormat('MMM dd, yyyy').format(_fromDate)} to ${DateFormat('MMM dd, yyyy').format(_toDate)}",
-                    icon: Icons.date_range_rounded,
-                    color: Colors.orange,
-                    trailing: TextButton(
-                      onPressed: _isDownloading ? null : _selectDateRange,
-                      child: const Text("CHANGE", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                    ),
-                    onTap: () => _handleDownloadReport(1),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildReportCard(
-                    title: "Venue Overall Export",
-                    description: "Full master list and current status of all venues.",
-                    icon: Icons.analytics_rounded,
-                    color: AppTheme.brandAccent,
-                    onTap: () => _handleDownloadReport(0),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildReportCard(
-                    title: "Resource Inventory Report",
-                    description: "Full breakdown of resources, statuses, and usage logs.",
-                    icon: Icons.inventory_2_rounded,
-                    color: AppTheme.success,
-                    onTap: () => _handleDownloadReport(2),
-                  ),
-                ]),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -205,7 +213,7 @@ class _AdminPageState extends State<AdminPage> {
                 height: 56,
                 width: 56,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withAlpha(25),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(icon, color: color, size: 28),
@@ -217,17 +225,15 @@ class _AdminPageState extends State<AdminPage> {
                   children: [
                     Text(title, style: AppTheme.bodyMain),
                     const SizedBox(height: 4),
-                    Text(
-                      description,
-                      style: AppTheme.bodySub,
-                    ),
+                    Text(description, style: AppTheme.bodySub),
                   ],
                 ),
               ),
-              trailing ?? Icon(
-                Icons.file_download_rounded,
-                color: AppTheme.textSub.withOpacity(0.5),
-              ),
+              trailing ??
+                  Icon(
+                    Icons.file_download_rounded,
+                    color: AppTheme.textSub.withAlpha(127),
+                  ),
             ],
           ),
         ),

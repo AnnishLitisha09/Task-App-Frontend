@@ -50,7 +50,7 @@ class _RootWrapperState extends State<RootWrapper> {
     try {
       await TaskService().acknowledgeGeneral();
     } catch (e) {
-      print("Acknowledge API Error: $e");
+      debugPrint("Acknowledge API Error: $e"); // BUG-18 FIX: Use debugPrint instead of print
     }
     final prefs = await SharedPreferences.getInstance();
     String todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
@@ -77,8 +77,8 @@ class _RootWrapperState extends State<RootWrapper> {
       return MainWrapper(userRole: _userRole);
     }
 
-    // Faculty/Student Mandatory Acknowledgment Window (6:00 AM - 8:45 AM)
-    if ((_userRole == 'faculty' || _userRole == 'student') &&
+    // BUG-17 FIX: Included staff in the mandatory acknowledgment window
+    if ((_userRole == 'faculty' || _userRole == 'student' || _userRole == 'staff') &&
         !_hasAcknowledged &&
         _isAcknowledgementMandatory()) {
       return MorningAcknowledgementPage(onAcknowledged: _handleAcknowledge);

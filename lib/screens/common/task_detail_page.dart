@@ -11,6 +11,7 @@ import 'task_otp_page.dart';
 import 'user_selection_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../faculty/verify_users_proof_page.dart';
+import '../../components/skeleton_loader.dart';
 
 // Activity Lifecycle Status
 enum ActivityStatus { NOT_STARTED, IN_PROGRESS, PAUSED, COMPLETED }
@@ -42,6 +43,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   // Activity Lifecycle State
   ActivityStatus _activityStatus = ActivityStatus.NOT_STARTED;
   DateTime? _activityStartTime;
+  bool _isTaskToday = false; // BUG-12 FIX: cached instead of computed on every rebuild
 
   TaskDetailModel? _taskDetail;
   bool _isLoading = true;
@@ -49,13 +51,18 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   String? _currentUserRole;
   List<dynamic> _activityLogs = [];
 
+  bool _hasChanges = false;
+
   @override
   void initState() {
     super.initState();
-    _fetchTaskDetail();
+    _fetchTaskDetail(fromInit: true);
   }
 
-  Future<void> _fetchTaskDetail() async {
+  Future<void> _fetchTaskDetail({bool refreshLogs = true, bool fromInit = false}) async {
+    if (!fromInit) {
+      _hasChanges = true;
+    }
     try {
       final taskId =
           widget.taskData['task_id']?.toString() ??
@@ -94,33 +101,39 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           final s = myAssign.status.toLowerCase();
           if (s == 'in_progress' || s == 'started') {
             status = ActivityStatus.IN_PROGRESS;
-            startTime = DateTime.tryParse(myAssign.acceptedAt);
+            // BUG-08 FIX: acceptedAt is now nullable
+            startTime = myAssign.acceptedAt != null ? DateTime.tryParse(myAssign.acceptedAt!) : null;
           } else if (s == 'paused') {
             status = ActivityStatus.PAUSED;
-            startTime = DateTime.tryParse(myAssign.acceptedAt);
+            startTime = myAssign.acceptedAt != null ? DateTime.tryParse(myAssign.acceptedAt!) : null;
           } else if (s == 'completed' || s == 'closed') {
             status = ActivityStatus.COMPLETED;
-            startTime = DateTime.tryParse(myAssign.acceptedAt);
+            startTime = myAssign.acceptedAt != null ? DateTime.tryParse(myAssign.acceptedAt!) : null;
           } else if (s == 'pending') {
             status = ActivityStatus.NOT_STARTED;
           }
         }
 
-        // Fetch Exhaustive Details for Activity Logs
-        try {
-          final exhaustive = await service.getExhaustiveTaskDetail(int.parse(taskId));
-          _activityLogs = exhaustive.historyLogs; // Use historyLogs instead of logs
-        } catch (e) {
-          debugPrint("Could not fetch exhaustive logs: $e");
+        // Only fetch exhaustive details (logs) if explicitly requested
+        if (refreshLogs) {
+          try {
+            final exhaustive = await service.getExhaustiveTaskDetail(int.parse(taskId));
+            _activityLogs = exhaustive.historyLogs;
+          } catch (e) {
+            debugPrint("Could not fetch exhaustive logs: $e");
+          }
         }
 
+        // BUG-13 FIX: Normalize role to lowercase on assignment to prevent case mismatch
         setState(() {
           _taskDetail = detail;
           _isLoading = false;
           _currentUserId = uid;
-          _currentUserRole = urole;
+          _currentUserRole = urole?.toLowerCase(); // always lowercase
           _activityStatus = status;
           _activityStartTime = startTime;
+          // BUG-12 FIX: compute isTaskToday once here instead of every rebuild
+          _isTaskToday = _computeIsTaskToday(detail);
         });
       }
     } catch (e) {
@@ -132,12 +145,35 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     }
   }
 
+  /// BUG-12 FIX: Compute once per data load \u2014 avoids DateTime.parse on every rebuild.
+  bool _computeIsTaskToday(TaskDetailModel detail) {
+    final taskType = detail.taskTypes.isNotEmpty ? detail.taskTypes.first : null;
+    final dateStr = taskType?.startDate ?? widget.taskData['startDate']?.toString();
+    if (dateStr == null || dateStr.isEmpty) return false;
+    try {
+      final taskDate = DateTime.parse(dateStr);
+      final now = DateTime.now();
+      return taskDate.year == now.year &&
+             taskDate.month == now.month &&
+             taskDate.day == now.day;
+    } catch (_) {
+      return false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: Colors.white,
-        body: Center(child: CircularProgressIndicator()),
+      return WillPopScope(
+        onWillPop: () async {
+          Navigator.pop(context, _hasChanges);
+          return false;
+        },
+        child: Scaffold(
+          backgroundColor: Colors.white,
+          appBar: _buildCustomAppBar(context),
+          body: const TaskDetailSkeleton(),
+        ),
       );
     }
 
@@ -149,19 +185,32 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                 : (widget.taskData['completionType'] ?? "OTP"))
             .toUpperCase();
 
-    // Simple logic for approval based on task type or specific flag if available
+    // ── Authority Approval: task needs sign-off from HOD/Dean/Principal BEFORE execution ──
     final bool isApprovalWorkflow =
         type.contains("APPROVAL") ||
-        (_taskDetail?.isApproved == false && _taskDetail?.status == 'Pending');
+        (_taskDetail?.isApproved == false &&
+            _taskDetail?.status == 'Pending' &&
+            _taskDetail?.actionButton?.type == 'approve_task');
 
+    // ── Request (Accept/Reject by the assignee) ──
     final bool isRequest =
         widget.taskData['isRequest'] == true ||
-        _taskDetail?.status == 'pending';
+        _taskDetail?.actionButton?.type == 'request';
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: _buildCustomAppBar(context),
-      body: Stack(
+    // ── Proof Submission Check: manager checking submitted proof docs ──
+    // This is DIFFERENT from authority approval. The task is already running/done.
+    final bool isSubmissionCheck =
+        _taskDetail?.actionButton?.type == 'verify_proof';
+
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.pop(context, _hasChanges);
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: _buildCustomAppBar(context),
+        body: Stack(
         children: [
           SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
@@ -199,12 +248,14 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           ),
           if ('Standard' != 'NoAction' && widget.viewMode != 'viewonly')
             _buildFloatingBottomAction(
-              isApprovalWorkflow ||
+              // Only pass isApproval=true for authority-level approval tasks
+              // and for incharge request handling
+              (isApprovalWorkflow && !isSubmissionCheck) ||
                   (widget.viewMode == 'incharge' && isRequest),
             ),
         ],
       ),
-    );
+    ));
   }
 
   PreferredSizeWidget _buildCustomAppBar(BuildContext context) {
@@ -222,7 +273,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
               color: textMain,
               size: 18,
             ),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, _hasChanges),
             style: IconButton.styleFrom(
               backgroundColor: surfaceColor,
               shape: RoundedRectangleBorder(
@@ -389,11 +440,10 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     );
   }
 
-  // --- NEW: Venue Section ---
   Widget _buildVenueSection() {
     final venueName =
-        _taskDetail?.venue ??
-        widget.taskData['venue'] ??
+        _taskDetail?.venue?['name']?.toString() ??
+        widget.taskData['venue']?.toString() ??
         "Main Engineering Block, Room 402";
     return Container(
       padding: const EdgeInsets.all(16),
@@ -611,6 +661,15 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   }
 
   Widget _buildBottomContent(bool isApproval) {
+    // If the server-side actionButton has a clear type, always trust it first
+    // to avoid conflating 'authority approval' with 'proof submission checking'
+    final String? actionType = _taskDetail?.actionButton?.type;
+    if (actionType != null) {
+      // Directly route to the switch-based renderer which cleanly separates all cases
+      return _buildStandardAction();
+    }
+
+    // Legacy fallback for edge cases where actionButton is null
     if (isApproval) return _buildApprovalActions();
 
     final List<TaskAssignee> assignees = _taskDetail?.assignees ?? [];
@@ -626,7 +685,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
 
     bool requiresOtp(String role) {
       final r = role.toLowerCase();
-      return r == 'student' || r == 'students' || r == 'staff';
+      return r == 'student' || r == 'students';
     }
 
     bool hasOtpUsersAssigned = assignees.any((a) => requiresOtp(a.role));
@@ -641,22 +700,8 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     final bool isPendingProof = widget.taskData['isPendingProof'] == true ||
         widget.taskData['completionType'] == 'PROOF_SUBMIT';
 
-    bool isTaskToday() {
-      final taskType = (_taskDetail?.taskTypes.isNotEmpty == true) ? _taskDetail!.taskTypes.first : null;
-      final dateStr = taskType?.startDate ?? widget.taskData['startDate']?.toString();
-      if (dateStr == null) return false;
-      try {
-        final taskDate = DateTime.parse(dateStr);
-        final now = DateTime.now();
-        return taskDate.year == now.year &&
-               taskDate.month == now.month &&
-               taskDate.day == now.day;
-      } catch (e) {
-        return false;
-      }
-    }
-
-    bool canShowOtpManager = isManager && hasOtpUsersAssigned && !isPendingProof && isTaskToday();
+    // BUG-12 FIX: Use cached _isTaskToday instead of recomputing every rebuild
+    bool canShowOtpManager = isManager && hasOtpUsersAssigned && !isPendingProof && _isTaskToday;
 
     if (canExecute) {
       return Row(
@@ -904,6 +949,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           _activityStatus = ActivityStatus.IN_PROGRESS;
           _activityStartTime = DateTime.now();
         });
+        _fetchTaskDetail(refreshLogs: false); // Fast refresh action buttons only
       } else {
         // Ending activity
         _finalizeCompletionLocally();
@@ -916,6 +962,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     setState(() {
       _activityStatus = ActivityStatus.COMPLETED;
     });
+    _fetchTaskDetail(refreshLogs: false);
     // In End Activity flow, the student might also need to upload proof if required.
     // verifyOTP in END type already marks backend as completed, scores etc.
   }
@@ -1155,7 +1202,8 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           },
         );
 
-      // ── Execute Directive (escalated task) ────────────────────────────────
+      // ── Execute Directive (escalated/managed task) ────────────────────────────────
+      case 'manage':
       case 'escalated':
         return _buildEscalatedActions();
 
@@ -1190,12 +1238,13 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
               (_taskDetail?.closureRules.contains('photo_upload') ?? false);
           final bool requiresOtp = _taskDetail?.closureRules.contains('otp') ?? false;
 
-          String endLabel = isProofTask ? 'Submit Proof & End' : 'End Activity';
-          if (requiresOtp) endLabel += ' OTP';
-
+          // Split buttons for long tasks too
+          final bool isFastTrackAction = _currentUserRole?.toLowerCase() == 'faculty' || _currentUserRole?.toLowerCase() == 'staff';
+          
           return Row(
             children: [
               Expanded(
+                flex: 2,
                 child: _buildSingleButton(
                   label: actionButton.action == 'pause' ? 'Pause' : 'Resume',
                   icon: actionButton.action == 'pause'
@@ -1206,47 +1255,106 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                       actionButton.action == 'pause' ? _pauseActivity : _resumeActivity,
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: _buildSingleButton(
-                  label: endLabel,
-                  icon: isProofTask ? Icons.upload_file_rounded : Icons.stop_rounded,
-                  color: isProofTask ? Colors.blue : brandAccent,
-                  onPressed: requiresOtp ? () => _openOtpPage(OtpPageMode.verify, overrideOtpType: 'END') : _endActivity,
+              const SizedBox(width: 8),
+              if (isProofTask) ...[
+                Expanded(
+                  flex: 3,
+                  child: _buildSingleButton(
+                    label: 'Submit Proof',
+                    icon: Icons.upload_file_rounded,
+                    color: Colors.blue,
+                    onPressed: (requiresOtp && !isFastTrackAction) ? () => _openOtpPage(OtpPageMode.verify, overrideOtpType: 'END') : _endActivity,
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                _buildSecondaryButton(
+                  label: 'End',
+                  icon: Icons.stop_rounded,
+                  color: brandAccent,
+                  onPressed: (requiresOtp && !isFastTrackAction) ? () => _openOtpPage(OtpPageMode.verify, overrideOtpType: 'END') : _endActivity,
+                ),
+              ] else ...[
+                Expanded(
+                  flex: 3,
+                  child: _buildSingleButton(
+                    label: 'End Activity',
+                    icon: Icons.stop_rounded,
+                    color: brandAccent,
+                    onPressed: (requiresOtp && !isFastTrackAction) ? () => _openOtpPage(OtpPageMode.verify, overrideOtpType: 'END') : _endActivity,
+                  ),
+                ),
+              ],
             ],
           );
         }
 
         // ── OTP Tasks: Start & End ───────────────────────────────────────────
         if (actionButton.action == 'start_otp') {
+          final bool isFastTrackAction = _currentUserRole?.toLowerCase() == 'faculty' || _currentUserRole?.toLowerCase() == 'staff';
           return _buildSingleButton(
-            label: actionButton.label,
-            icon: Icons.vpn_key_rounded,
+            label: isFastTrackAction ? 'Start Activity' : actionButton.label,
+            icon: isFastTrackAction ? Icons.play_arrow_rounded : Icons.vpn_key_rounded,
             color: brandAccent,
-            onPressed: () => _openOtpPage(OtpPageMode.verify, overrideOtpType: 'START'),
+            onPressed: isFastTrackAction ? _startActivity : () => _openOtpPage(OtpPageMode.verify, overrideOtpType: 'START'),
           );
         }
         
         if (actionButton.action == 'end_otp') {
-          final bool isProofTask = actionButton.label.contains('Submit Proof');
+          final bool isFastTrackAction = _currentUserRole?.toLowerCase() == 'faculty' || _currentUserRole?.toLowerCase() == 'staff';
+          final bool isProofTask = actionButton.label.contains('Submit Proof') || _taskDetail?.isDocument == true;
+          
+          if (isProofTask) {
+              return Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: _buildSingleButton(
+                      label: 'Submit Proof',
+                      icon: Icons.upload_file_rounded,
+                      color: Colors.blue,
+                      onPressed: isFastTrackAction ? _endActivity : () => _openOtpPage(OtpPageMode.verify, overrideOtpType: 'END'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _buildSecondaryButton(
+                    label: 'End',
+                    icon: Icons.verified_rounded,
+                    color: brandAccent,
+                    onPressed: isFastTrackAction ? _endActivity : () => _openOtpPage(OtpPageMode.verify, overrideOtpType: 'END'),
+                  ),
+                ],
+              );
+          }
+           
           return _buildSingleButton(
-            label: actionButton.label,
-            icon: isProofTask ? Icons.upload_file_rounded : Icons.verified_rounded,
-            color: isProofTask ? Colors.blue : brandAccent,
-            onPressed: () => _openOtpPage(OtpPageMode.verify, overrideOtpType: 'END'),
+            label: isFastTrackAction ? 'End Activity' : actionButton.label,
+            icon: isFastTrackAction ? Icons.stop_rounded : Icons.verified_rounded,
+            color: brandAccent,
+            onPressed: isFastTrackAction ? _endActivity : () => _openOtpPage(OtpPageMode.verify, overrideOtpType: 'END'),
           );
         }
 
         // ── Regular in_progress + proof: single combined button ───────────────
         if (actionButton.action == 'submit_proof') {
-          return _buildSingleButton(
-            label: 'Submit Proof & End',
-            icon: Icons.upload_file_rounded,
-            color: Colors.blue,
-            onPressed: _endActivity,
+          return Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: _buildSingleButton(
+                  label: 'Submit Proof',
+                  icon: Icons.upload_file_rounded,
+                  color: Colors.blue,
+                  onPressed: _endActivity,
+                ),
+              ),
+              const SizedBox(width: 8),
+              _buildSecondaryButton(
+                label: 'End',
+                icon: Icons.stop_rounded,
+                color: brandAccent,
+                onPressed: _endActivity,
+              ),
+            ],
           );
         }
 
@@ -1274,6 +1382,37 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
   }
 
 
+
+
+  Widget _buildSecondaryButton({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onPressed,
+    String? label,
+  }) {
+    return ElevatedButton(
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color.withOpacity(0.1),
+        foregroundColor: color,
+        elevation: 0,
+        minimumSize: const Size(64, 64),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: color.withOpacity(0.2))),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 22),
+          if (label != null) ...[
+            const SizedBox(width: 8),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+          ],
+        ],
+      ),
+    );
+  }
 
   // Helper to build a single button
   Widget _buildSingleButton({
@@ -1637,6 +1776,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           _activityStatus = ActivityStatus.IN_PROGRESS;
           _activityStartTime = DateTime.now();
         });
+        _fetchTaskDetail(refreshLogs: false); // Fast refresh action buttons only
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1663,6 +1803,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       setState(() {
         _activityStatus = ActivityStatus.PAUSED;
       });
+      _fetchTaskDetail(refreshLogs: false);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1688,6 +1829,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       setState(() {
         _activityStatus = ActivityStatus.IN_PROGRESS;
       });
+      _fetchTaskDetail(refreshLogs: false);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1745,7 +1887,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-      Navigator.pop(context, 'proof_submitted');
+      _fetchTaskDetail(refreshLogs: true);
     }
   }
 
@@ -1754,7 +1896,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     if (rules.isEmpty) rules = ["otp"];
     
     final role = _currentUserRole?.toLowerCase() ?? '';
-    bool needsOtp = role == 'student'; // End OTP is primarily for students
+    bool needsOtp = role == 'student'; // Staff and Faculty do NOT need OTP for verification
     
     // STEP 1: Verify OTP if required
     if (needsOtp && rules.contains('otp')) {
@@ -1969,8 +2111,9 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     }
   }
   Widget _buildEscalatedActions() {
+    final label = _taskDetail?.actionButton?.label ?? "Execute Directive";
     return _buildSingleButton(
-      label: "Execute Directive",
+      label: label,
       icon: Icons.bolt_rounded,
       color: brandAccent,
       onPressed: _showEscalationManagementDialog,
@@ -2133,7 +2276,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: const Text("Task transferred successfully!"), backgroundColor: successColor),
         );
-        _fetchTaskDetail();
+        _fetchTaskDetail(); // Full refresh — task owner changed, logs matter
       }
     } catch (e) {
       if (mounted) {
@@ -2201,7 +2344,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: const Text("Task rescheduled successfully!"), backgroundColor: successColor),
         );
-        _fetchTaskDetail();
+        _fetchTaskDetail(); // Full refresh — schedule changed, logs matter
       }
     } catch (e) {
       if (mounted) {
@@ -2312,7 +2455,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
           ),
         );
         // Refresh detail
-        _fetchTaskDetail();
+        _fetchTaskDetail(); // Full refresh — new assignment, logs matter
       }
     } catch (e) {
       if (mounted) {

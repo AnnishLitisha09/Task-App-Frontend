@@ -49,10 +49,14 @@ class InstitutionalStats {
 class PersonalActions {
   final int pendingMyApprovalCount;
   final List<dynamic> pendingMyApprovalList;
+  final int assignedToMeCount;
+  final List<dynamic> assignedToMeList;
 
   PersonalActions({
     required this.pendingMyApprovalCount,
     required this.pendingMyApprovalList,
+    required this.assignedToMeCount,
+    required this.assignedToMeList,
   });
 
   factory PersonalActions.fromJson(Map<String, dynamic> json) {
@@ -60,6 +64,8 @@ class PersonalActions {
       pendingMyApprovalCount:
           (json['pending_my_approval_count'] as num?)?.toInt() ?? 0,
       pendingMyApprovalList: json['pending_my_approval_list'] ?? [],
+      assignedToMeCount: (json['assigned_to_me_count'] as num?)?.toInt() ?? 0,
+      assignedToMeList: json['assigned_to_me'] ?? [],
     );
   }
 }

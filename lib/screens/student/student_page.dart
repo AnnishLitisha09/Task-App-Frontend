@@ -8,16 +8,14 @@ import '../../components/task_card.dart';
 import '../../components/section_header.dart';
 import '../../components/skeleton_loader.dart';
 import '../../components/reject_dialog.dart';
-import '../../services/student_service.dart';
 import '../../services/task_service.dart';
 import '../../models/student_dashboard_model.dart';
 import 'student_tasks_list_page.dart';
 import 'all_new_task_page.dart';
 import '../common/task_detail_page.dart';
 import '../common/score_performance_page.dart';
-import '../../services/notification_service.dart';
-
-
+import 'package:provider/provider.dart';
+import '../../store/app_store.dart';
 
 class StudentPage extends StatefulWidget {
   final Function(Map<String, dynamic>) onAcceptTask;
@@ -35,11 +33,10 @@ class StudentPage extends StatefulWidget {
 }
 
 class _StudentPageState extends State<StudentPage> {
-  bool _isLoading = true;
-  StudentDashboard? _dashboard;
-  int _unreadNotifications = 0;
-  final StudentService _studentService = StudentService();
-  final NotificationService _notificationService = NotificationService();
+  // ─── Getters delegating to Global AppStore ──────────────────────────────
+  StudentDashboard? get _dashboard => context.read<AppStore>().studentDashboard;
+  int get _unreadNotifications => context.read<AppStore>().unreadNotifications;
+  bool get _isLoading => context.read<AppStore>().isLoading('studentDashboard');
 
   @override
   void initState() {
@@ -47,29 +44,12 @@ class _StudentPageState extends State<StudentPage> {
     _fetchDashboard();
   }
 
-  Future<void> _fetchDashboard() async {
-    setState(() => _isLoading = true);
-    try {
-      final results = await Future.wait([
-        _studentService.getStudentDashboard(),
-        _notificationService.getUnreadCount(),
-      ]);
-
-      if (mounted) {
-        setState(() {
-          _dashboard = results[0] as StudentDashboard;
-          _unreadNotifications = results[1] as int;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error loading dashboard: $e")));
-      }
-    }
+  Future<void> _fetchDashboard({bool force = false}) async {
+    final store = context.read<AppStore>();
+    await Future.wait([
+      store.fetchStudentDashboard(force: force),
+      store.fetchUnreadNotifications(),
+    ]);
   }
 
   bool _checkOverlap(String newTiming) {
@@ -155,7 +135,7 @@ class _StudentPageState extends State<StudentPage> {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        _fetchDashboard();
+        _fetchDashboard(force: true);
       }
     } catch (e) {
       if (mounted) {
@@ -187,7 +167,7 @@ class _StudentPageState extends State<StudentPage> {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        _fetchDashboard();
+        _fetchDashboard(force: true);
       }
     } catch (e) {
       if (mounted) {
@@ -217,451 +197,496 @@ class _StudentPageState extends State<StudentPage> {
   Widget build(BuildContext context) {
     String formattedDate = DateFormat('EEEE, MMM dd').format(DateTime.now());
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          Positioned(
-            top: -100,
-            right: -50,
-            child: CircleAvatar(
-              radius: 150,
-              backgroundColor: AppTheme.brandAccent.withOpacity(0.05),
-            ),
-          ),
-          SafeArea(
-            child: RefreshIndicator(
-              onRefresh: _fetchDashboard,
-              color: AppTheme.brandAccent,
-              child: CustomScrollView(
-                physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-                slivers: [
-                  CustomAppBar(
-                    title: _isLoading ? "Loading..." : (_dashboard?.studentDetails.name ?? "Student"),
-                    date: formattedDate,
-                    notificationCount: _unreadNotifications,
-                    profileImageUrl:
-                        'https://img.freepik.com/premium-vector/purple-circle-with-white-person-icon_876006-6.jpg?w=360',
-                  ),
-                  if (_isLoading)
-                    const SliverToBoxAdapter(child: DashboardSkeleton())
-                  else
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-                      sliver: SliverList(
-                        delegate: SliverChildListDelegate([
-                          if (widget.isBlocked)
-                            _buildBlockedMessage()
-                          else ...[
-                            GridView.count(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  crossAxisCount: 2,
-                                  crossAxisSpacing: 16,
-                                  mainAxisSpacing: 16,
-                                  childAspectRatio: 1.4,
-                                  children: [
-                                    StatCard(
-                                      label: "Total Score",
-                                      value:
-                                          _dashboard?.studentDetails.score ??
-                                          "0",
-                                      icon: Icons.assignment_rounded,
-                                      color: AppTheme.brandAccent,
-                                      onTap: () async {
-                                        await Navigator.push(
+    return Consumer<AppStore>(
+      builder: (context, store, _) {
+        return Scaffold(
+          backgroundColor: Colors.white,
+          body: Stack(
+            children: [
+              Positioned(
+                top: -100,
+                right: -50,
+                child: CircleAvatar(
+                  radius: 150,
+                  backgroundColor: AppTheme.brandAccent.withOpacity(0.05),
+                ),
+              ),
+              SafeArea(
+                child: RefreshIndicator(
+                  onRefresh: () => _fetchDashboard(force: true),
+                  color: AppTheme.brandAccent,
+                  child: CustomScrollView(
+                    physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
+                    slivers: [
+                      CustomAppBar(
+                        title: _isLoading && _dashboard == null
+                            ? "Loading..."
+                            : (_dashboard?.studentDetails.name ?? "Student"),
+                        date: formattedDate,
+                        notificationCount: _unreadNotifications,
+                        profileImageUrl:
+                            'https://img.freepik.com/premium-vector/purple-circle-with-white-person-icon_876006-6.jpg?w=360',
+                      ),
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
+                        sliver: SliverList(
+                          delegate: SliverChildListDelegate([
+                            if (widget.isBlocked)
+                              _buildBlockedMessage()
+                            else ...[
+                              (_isLoading && _dashboard == null)
+                                  ? const SkeletonStatGrid()
+                                  : GridView.count(
+                                      shrinkWrap: true,
+                                      physics: const NeverScrollableScrollPhysics(),
+                                      crossAxisCount: 2,
+                                      crossAxisSpacing: 16,
+                                      mainAxisSpacing: 16,
+                                      childAspectRatio: 1.4,
+                                      children: [
+                                      StatCard(
+                                        label: "Total Score",
+                                        value: _isLoading && _dashboard == null
+                                            ? "..."
+                                            : (_dashboard
+                                                      ?.studentDetails
+                                                      .score ??
+                                                  "0"),
+                                        icon: Icons.assignment_rounded,
+                                        color: AppTheme.brandAccent,
+                                        onTap: () async {
+                                          await Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  const ScorePerformancePage(),
+                                            ),
+                                          );
+                                          _fetchDashboard(
+                                            force: true,
+                                          ); // Refresh score when coming back
+                                        },
+                                      ),
+                                      StatCard(
+                                        label: "Pending",
+                                        value: _isLoading && _dashboard == null
+                                            ? "..."
+                                            : (_dashboard
+                                                          ?.counts
+                                                          .pendingApprovalCount ??
+                                                      0)
+                                                  .toString()
+                                                  .padLeft(2, '0'),
+                                        icon: Icons.schedule_rounded,
+                                        color: AppTheme.warning,
+                                      ),
+                                      StatCard(
+                                        label: "Overdue",
+                                        value: _isLoading && _dashboard == null
+                                            ? "..."
+                                            : (_dashboard
+                                                          ?.counts
+                                                          .overdueTasksCount ??
+                                                      0)
+                                                  .toString()
+                                                  .padLeft(2, '0'),
+                                        icon: Icons.bolt_rounded,
+                                        color: AppTheme.danger,
+                                      ),
+                                      StatCard(
+                                        label: "Current GPA",
+                                        value: _isLoading && _dashboard == null
+                                            ? "..."
+                                            : (_dashboard
+                                                      ?.studentDetails
+                                                      .cGpa ??
+                                                  "0.0"),
+                                        icon: Icons.auto_graph_rounded,
+                                        color: AppTheme.success,
+                                      ),
+                                    ],
+                                  )
+                                  .animate()
+                                  .fadeIn(duration: 400.ms)
+                                  .slideY(begin: 0.1, end: 0),
+                              const SizedBox(height: 32),
+
+                              // 1. Today's Schedule
+                              SectionHeader(
+                                title: "Today's Schedule",
+                                count: _dashboard?.todaysSchedule.length ?? 0,
+                                onViewAll: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => StudentTasksListPage(
+                                      title: "Today's Schedule",
+                                      tasks: _dashboard?.todaysSchedule ?? [],
+                                      mode: 'today',
+                                    ),
+                                  ),
+                                ).then((result) { if (mounted && result == true) _fetchDashboard(); }),
+                              ),
+                              if (_isLoading && _dashboard == null)
+                                const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()])
+                              else if (_dashboard?.todaysSchedule.isEmpty ??
+                                  true)
+                                const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 20),
+                                    child: Text(
+                                      "No tasks for today",
+                                      style: TextStyle(color: AppTheme.textSub),
+                                    ),
+                                  ),
+                                )
+                              else
+                                ...(_dashboard!.todaysSchedule.take(2)).map((
+                                  task,
+                                ) {
+                                  final String heroTag = "today_${task.taskId}";
+                                  return TaskCard(
+                                    title: task.title,
+                                    sub:
+                                        "Today • ${task.timing} • ${task.category}",
+                                    accent: AppTheme.brandAccent,
+                                    icon: Icons.calendar_today,
+                                    heroTag: heroTag,
+                                    actionButton: task.actionButton,
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => TaskDetailsPage(
+                                            taskData: {
+                                              'task_id': task.taskId,
+                                              'title': task.title,
+                                              'category': task.category,
+                                              'timing': task.timing,
+                                              'heroTag': heroTag,
+                                              'status': task.status,
+                                              'accent': AppTheme.brandAccent,
+                                              'icon': Icons.calendar_today,
+                                            },
+                                          ),
+                                        ),
+                                      ).then((result) { if (mounted && result == true) _fetchDashboard(); });
+                                    },
+                                  );
+                                }),
+
+                              const SizedBox(height: 32),
+
+                              // 2. New Task Requests
+                              Builder(
+                                builder: (context) {
+                                  final newRequests =
+                                      _dashboard?.pendingForApproval
+                                          .where((t) => !t.isEscalated)
+                                          .toList() ??
+                                      [];
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      SectionHeader(
+                                        title: "New Task Requests",
+                                        isStatus: true,
+                                        count: newRequests.length,
+                                        onViewAll: () => Navigator.push(
                                           context,
                                           MaterialPageRoute(
                                             builder: (context) =>
-                                                const ScorePerformancePage(),
+                                                AllNewTasksPage(
+                                                  onAccept: (task) =>
+                                                      _handleAcceptTask(task),
+                                                  initialTasks: newRequests,
+                                                ),
                                           ),
-                                        );
-                                        _fetchDashboard(); // Refresh score when coming back
-                                      },
-                                    ),
-                                    StatCard(
-                                      label: "Pending",
-                                      value:
-                                          (_dashboard
-                                                      ?.counts
-                                                      .pendingApprovalCount ??
-                                                  0)
-                                              .toString()
-                                              .padLeft(2, '0'),
-                                      icon: Icons.schedule_rounded,
-                                      color: AppTheme.warning,
-                                    ),
-                                    StatCard(
-                                      label: "Overdue",
-                                      value:
-                                          (_dashboard
-                                                      ?.counts
-                                                      .overdueTasksCount ??
-                                                  0)
-                                              .toString()
-                                              .padLeft(2, '0'),
-                                      icon: Icons.bolt_rounded,
-                                      color: AppTheme.danger,
-                                    ),
-                                    StatCard(
-                                      label: "Current GPA",
-                                      value:
-                                          _dashboard?.studentDetails.cGpa ??
-                                          "0.0",
-                                      icon: Icons.auto_graph_rounded,
-                                      color: AppTheme.success,
-                                    ),
-                                  ],
-                                )
-                                .animate()
-                                .fadeIn(duration: 400.ms)
-                                .slideY(begin: 0.1, end: 0),
-                            const SizedBox(height: 32),
-
-                            // 1. Today's Schedule
-                            SectionHeader(
-                              title: "Today's Schedule",
-                              count: _dashboard?.todaysSchedule.length ?? 0,
-                              onViewAll: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => StudentTasksListPage(
-                                    title: "Today's Schedule",
-                                    tasks: _dashboard?.todaysSchedule ?? [],
-                                    mode: 'today',
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (_dashboard?.todaysSchedule.isEmpty ?? true)
-                              const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 20),
-                                  child: Text(
-                                    "No tasks for today",
-                                    style: TextStyle(color: AppTheme.textSub),
-                                  ),
-                                ),
-                              )
-                            else
-                              ...(_dashboard!.todaysSchedule.take(2)).map((
-                                task,
-                              ) {
-                                final String heroTag = "today_${task.taskId}";
-                                return TaskCard(
-                                  title: task.title,
-                                  sub:
-                                      "Today • ${task.timing} • ${task.category}",
-                                  accent: AppTheme.brandAccent,
-                                  icon: Icons.calendar_today,
-                                  heroTag: heroTag,
-                                  actionButton: task.actionButton,
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => TaskDetailsPage(
-                                          taskData: {
-                                            'task_id': task.taskId,
-                                            'title': task.title,
-                                            'category': task.category,
-                                            'timing': task.timing,
-                                            'heroTag': heroTag,
-                                            'status': task.status,
-                                            'accent': AppTheme.brandAccent,
-                                            'icon': Icons.calendar_today,
-                                          },
-                                        ),
+                                        ).then((result) { if (mounted && result == true) _fetchDashboard(); }),
                                       ),
-                                    );
-                                  },
-                                );
-                              }),
-
-                            const SizedBox(height: 32),
-
-                            // 2. New Task Requests
-                            Builder(
-                              builder: (context) {
-                                final newRequests =
-                                    _dashboard?.pendingForApproval
-                                        .where((t) => !t.isEscalated)
-                                        .toList() ??
-                                    [];
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    SectionHeader(
-                                      title: "New Task Requests",
-                                      isStatus: true,
-                                      count: newRequests.length,
-                                      onViewAll: () => Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => AllNewTasksPage(
-                                            onAccept: (task) =>
-                                                _handleAcceptTask(task),
-                                            initialTasks: newRequests,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    if (newRequests.isEmpty)
-                                      const Center(
-                                        child: Padding(
-                                          padding: EdgeInsets.symmetric(
-                                            vertical: 20,
-                                          ),
-                                          child: Text(
-                                            "No new task requests",
-                                            style: TextStyle(
-                                              color: AppTheme.textSub,
+                                      if (_isLoading && _dashboard == null)
+                                        const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()])
+                                      else if (newRequests.isEmpty)
+                                        const Center(
+                                          child: Padding(
+                                            padding: EdgeInsets.symmetric(
+                                              vertical: 20,
+                                            ),
+                                            child: Text(
+                                              "No new task requests",
+                                              style: TextStyle(
+                                                color: AppTheme.textSub,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      )
-                                    else
-                                      ...newRequests
-                                          .take(2)
-                                          .toList()
-                                          .asMap()
-                                          .entries
-                                          .map((entry) {
-                                            final idx = entry.key;
-                                            final task = entry.value;
-                                            final realIdx = _dashboard!
-                                                .pendingForApproval
-                                                .indexOf(task);
-                                            final String heroTag =
-                                                "task_req_${task.taskId}_$idx";
-                                            return TaskCard(
-                                              title: task.title,
-                                              sub:
-                                                  "${task.date} • ${task.timing} • ${task.category}",
-                                              accent: AppTheme.warning,
-                                              icon: Icons
-                                                  .assignment_late_outlined,
-                                              heroTag: heroTag,
-                                              isRequest: true,
-                                              onAccept: () =>
-                                                  _handleApprove(realIdx),
-                                              onReject: () => _showRejectDialog(
-                                                task.taskId,
-                                                task.title,
-                                              ),
-                                              onTap: () {
-                                                Navigator.push(
-                                                  context,
-                                                  MaterialPageRoute(
-                                                    builder: (context) =>
-                                                        TaskDetailsPage(
-                                                          taskData: {
-                                                            'task_id':
-                                                                task.taskId,
-                                                            'title': task.title,
-                                                            'category':
-                                                                task.category,
-                                                            'timing':
-                                                                task.timing,
-                                                            'heroTag': heroTag,
-                                                            'status': 'PENDING',
-                                                            'accent': AppTheme
-                                                                .warning,
-                                                            'icon': Icons
-                                                                .assignment_late_outlined,
-                                                          },
-                                                        ),
-                                                  ),
-                                                );
-                                              },
-                                            );
-                                          }),
-                                  ],
-                                );
-                              },
-                            ),
-
-                            const SizedBox(height: 32),
-
-                            // 3. Directives Pending (Escalated Only)
-                            Builder(
-                              builder: (context) {
-                                final escalated =
-                                    _dashboard?.pendingForApproval
-                                        .where((t) => t.isEscalated)
-                                        .toList() ??
-                                    [];
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    SectionHeader(
-                                      title: "Directives Pending",
-                                      color: AppTheme.danger,
-                                      count: escalated.length,
-                                      onViewAll: () => Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              StudentTasksListPage(
-                                                title: "Directives Pending",
-                                                tasks: escalated,
-                                                mode: 'pending',
-                                                onAccept: (task) =>
-                                                    _handleAcceptTask(task),
-                                                onReject: (id, title) =>
-                                                    _handleReject(
-                                                      id,
-                                                      "Declined",
+                                        )
+                                      else
+                                        ...newRequests
+                                            .take(2)
+                                            .toList()
+                                            .asMap()
+                                            .entries
+                                            .map((entry) {
+                                              final idx = entry.key;
+                                              final task = entry.value;
+                                              final realIdx = _dashboard!
+                                                  .pendingForApproval
+                                                  .indexOf(task);
+                                              final String heroTag =
+                                                  "task_req_${task.taskId}_$idx";
+                                              return TaskCard(
+                                                title: task.title,
+                                                sub:
+                                                    "${task.date} • ${task.timing} • ${task.category}",
+                                                accent: AppTheme.warning,
+                                                icon: Icons
+                                                    .assignment_late_outlined,
+                                                heroTag: heroTag,
+                                                isRequest: true,
+                                                onAccept: () =>
+                                                    _handleApprove(realIdx),
+                                                onReject: () =>
+                                                    _showRejectDialog(
+                                                      task.taskId,
+                                                      task.title,
                                                     ),
-                                              ),
-                                        ),
-                                      ),
-                                    ),
-                                    if (escalated.isEmpty)
-                                      const Center(
-                                        child: Padding(
-                                          padding: EdgeInsets.symmetric(
-                                            vertical: 20,
+                                                onTap: () {
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (context) =>
+                                                          TaskDetailsPage(
+                                                            taskData: {
+                                                              'task_id':
+                                                                  task.taskId,
+                                                              'title':
+                                                                  task.title,
+                                                              'category':
+                                                                  task.category,
+                                                              'timing':
+                                                                  task.timing,
+                                                              'heroTag':
+                                                                  heroTag,
+                                                              'status':
+                                                                  'PENDING',
+                                                              'accent': AppTheme
+                                                                  .warning,
+                                                              'icon': Icons
+                                                                  .assignment_late_outlined,
+                                                            },
+                                                          ),
+                                                    ),
+                                                  ).then((result) {
+                                                    if (mounted && result == true) _fetchDashboard();
+                                                  });
+                                                },
+                                              );
+                                            }),
+                                    ],
+                                  );
+                                },
+                              ),
+
+                              const SizedBox(height: 32),
+
+                              // 3. Directives Pending (Escalated Only)
+                              Builder(
+                                builder: (context) {
+                                  final escalated =
+                                      _dashboard?.pendingForApproval
+                                          .where((t) => t.isEscalated)
+                                          .toList() ??
+                                      [];
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      SectionHeader(
+                                        title: "Directives Pending",
+                                        color: AppTheme.danger,
+                                        count: escalated.length,
+                                        onViewAll: () => Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                StudentTasksListPage(
+                                                  title: "Directives Pending",
+                                                  tasks: escalated,
+                                                  mode: 'pending',
+                                                  onAccept: (task) =>
+                                                      _handleAcceptTask(task),
+                                                  onReject: (id, title) =>
+                                                      _handleReject(
+                                                        id,
+                                                        "Declined",
+                                                      ),
+                                                ),
                                           ),
-                                          child: Text(
-                                            "No pending directives",
-                                            style: TextStyle(
-                                              color: AppTheme.textSub,
+                                        ).then((_) {
+                                          if (mounted) _fetchDashboard();
+                                        }),
+                                      ),
+                                      if (_isLoading && _dashboard == null)
+                                        const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()])
+                                      else if (escalated.isEmpty)
+                                        const Center(
+                                          child: Padding(
+                                            padding: EdgeInsets.symmetric(
+                                              vertical: 20,
+                                            ),
+                                            child: Text(
+                                              "No pending directives",
+                                              style: TextStyle(
+                                                color: AppTheme.textSub,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      )
-                                    else
-                                      ...escalated
-                                          .take(2)
-                                          .toList()
-                                          .asMap()
-                                          .entries
-                                          .map((entry) {
-                                            final idx = entry.key;
-                                            final task = entry.value;
-                                            final String heroTag =
-                                                "dir_esc_${task.taskId}_$idx";
-                                            return TaskCard(
-                                              title: task.title,
-                                              sub:
-                                                  "🚨 Escalated • ${task.date} • ${task.timing}",
-                                              accent: AppTheme.danger,
-                                              icon: Icons.warning_amber_rounded,
-                                              heroTag: heroTag,
-                                              isRequest: true,
-                                              onAccept: () => _handleApprove(
-                                                _dashboard!.pendingForApproval
-                                                    .indexOf(task),
-                                              ),
-                                              onReject: () => _showRejectDialog(
-                                                task.taskId,
-                                                task.title,
-                                              ),
-                                              onTap: () {
-                                                Navigator.push(
-                                                  context,
-                                                  MaterialPageRoute(
-                                                    builder: (context) =>
-                                                        TaskDetailsPage(
-                                                          taskData: {
-                                                            'task_id':
-                                                                task.taskId,
-                                                            'title': task.title,
-                                                            'category':
-                                                                task.category,
-                                                            'timing':
-                                                                task.timing,
-                                                            'heroTag': heroTag,
-                                                            'status':
-                                                                'ESCALATED',
-                                                            'accent':
-                                                                AppTheme.danger,
-                                                            'icon': Icons
-                                                                .warning_amber_rounded,
-                                                          },
-                                                        ),
-                                                  ),
-                                                );
-                                              },
-                                            );
-                                          }),
-                                  ],
-                                );
-                              },
-                            ),
-
-                            const SizedBox(height: 32),
-
-                            // 4. Overdue Tasks
-                            SectionHeader(
-                              title: "Overdue Tasks",
-                              color: AppTheme.danger,
-                              count: _dashboard?.overdueTasks.length ?? 0,
-                              onViewAll: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => StudentTasksListPage(
-                                    title: "Overdue Tasks",
-                                    tasks: _dashboard?.overdueTasks ?? [],
-                                    mode: 'overdue',
-                                  ),
-                                ),
+                                        )
+                                      else
+                                        ...escalated
+                                            .take(2)
+                                            .toList()
+                                            .asMap()
+                                            .entries
+                                            .map((entry) {
+                                              final idx = entry.key;
+                                              final task = entry.value;
+                                              final String heroTag =
+                                                  "dir_esc_${task.taskId}_$idx";
+                                              return TaskCard(
+                                                title: task.title,
+                                                sub:
+                                                    "🚨 Escalated • ${task.date} • ${task.timing}",
+                                                accent: AppTheme.danger,
+                                                icon:
+                                                    Icons.warning_amber_rounded,
+                                                heroTag: heroTag,
+                                                isRequest: true,
+                                                onAccept: () => _handleApprove(
+                                                  _dashboard!.pendingForApproval
+                                                      .indexOf(task),
+                                                ),
+                                                onReject: () =>
+                                                    _showRejectDialog(
+                                                      task.taskId,
+                                                      task.title,
+                                                    ),
+                                                onTap: () {
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (context) =>
+                                                          TaskDetailsPage(
+                                                            taskData: {
+                                                              'task_id':
+                                                                  task.taskId,
+                                                              'title':
+                                                                  task.title,
+                                                              'category':
+                                                                  task.category,
+                                                              'timing':
+                                                                  task.timing,
+                                                              'heroTag':
+                                                                  heroTag,
+                                                              'status':
+                                                                  'ESCALATED',
+                                                              'accent': AppTheme
+                                                                  .danger,
+                                                              'icon': Icons
+                                                                  .warning_amber_rounded,
+                                                            },
+                                                          ),
+                                                    ),
+                                                  ).then((result) {
+                                                    if (mounted && result == true) _fetchDashboard();
+                                                  });
+                                                },
+                                              );
+                                            }),
+                                    ],
+                                  );
+                                },
                               ),
-                            ),
-                            if (_dashboard?.overdueTasks.isEmpty ?? true)
-                              const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 20),
-                                  child: Text(
-                                    "No overdue tasks",
-                                    style: TextStyle(color: AppTheme.textSub),
+
+                              const SizedBox(height: 32),
+
+                              // 4. Overdue Tasks
+                              SectionHeader(
+                                title: "Overdue Tasks",
+                                color: AppTheme.danger,
+                                count: _dashboard?.overdueTasks.length ?? 0,
+                                onViewAll: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => StudentTasksListPage(
+                                      title: "Overdue Tasks",
+                                      tasks: _dashboard?.overdueTasks ?? [],
+                                      mode: 'overdue',
+                                    ),
                                   ),
-                                ),
-                              )
-                            else
-                              ..._dashboard!.overdueTasks.take(2).map((task) {
-                                return TaskCard(
-                                  title: task.title,
-                                  sub:
-                                      "Deadline: ${task.date} • ${task.timing}",
-                                  accent: AppTheme.danger,
-                                  icon: Icons.priority_high_rounded,
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => TaskDetailsPage(
-                                          taskData: {
-                                            'task_id': task.taskId,
-                                            'assignment_id': task.assignmentId,
-                                            'title': task.title,
-                                            'category': task.category,
-                                            'timing': task.timing,
-                                            'status': task.status,
-                                            'accent': AppTheme.danger,
-                                            'icon': Icons.priority_high_rounded,
-                                          },
+                                ).then((result) { if (mounted && result == true) _fetchDashboard(); }),
+                              ),
+                              if (_isLoading && _dashboard == null)
+                                        const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()])
+                              else if (_dashboard?.overdueTasks.isEmpty ?? true)
+                                const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 20),
+                                    child: Text(
+                                      "No overdue tasks",
+                                      style: TextStyle(color: AppTheme.textSub),
+                                    ),
+                                  ),
+                                )
+                              else
+                                ..._dashboard!.overdueTasks.take(2).map((task) {
+                                  return TaskCard(
+                                    title: task.title,
+                                    sub:
+                                        "Deadline: ${task.date} • ${task.timing}",
+                                    accent: AppTheme.danger,
+                                    icon: Icons.priority_high_rounded,
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => TaskDetailsPage(
+                                            taskData: {
+                                              'task_id': task.taskId,
+                                              'assignment_id':
+                                                  task.assignmentId,
+                                              'title': task.title,
+                                              'category': task.category,
+                                              'timing': task.timing,
+                                              'status': task.status,
+                                              'accent': AppTheme.danger,
+                                              'icon':
+                                                  Icons.priority_high_rounded,
+                                            },
+                                          ),
                                         ),
-                                      ),
-                                    );
-                                  },
-                                );
-                              }),
+                                      ).then((result) { if (mounted && result == true) _fetchDashboard(); });
+                                    },
+                                  );
+                                }),
 
-                            const SizedBox(height: 32),
+                              const SizedBox(height: 32),
 
-                            // Removed Pending Proofs
-                          ],
-                        ]),
+                              // Removed Pending Proofs
+                            ],
+                          ]),
+                        ),
                       ),
-                    ),
-                ],
+                    ],
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
