@@ -84,3 +84,32 @@ class Student {
     );
   }
 }
+
+class AttendanceStats {
+  final int totalDays;
+  final int presentDays;
+  final int absentDays;
+
+  AttendanceStats({
+    required this.totalDays,
+    required this.presentDays,
+    required this.absentDays,
+  });
+
+  factory AttendanceStats.fromJson(Map<String, dynamic> json) {
+    return AttendanceStats(
+      totalDays: json['total_days'] ?? 0,
+      presentDays: json['present_days'] ?? 0,
+      absentDays: json['absent_days'] ?? 0,
+    );
+  }
+
+  double get percentage => totalDays > 0 ? (presentDays / totalDays) * 100 : 0.0;
+}
+
+class LeaveDataResponse {
+  final List<LeaveRecord> leaves;
+  final AttendanceStats stats;
+
+  LeaveDataResponse({required this.leaves, required this.stats});
+}

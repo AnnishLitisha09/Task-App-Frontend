@@ -47,7 +47,7 @@ class LeaveService {
   }
 
   // Get my leaves (Student)
-  Future<List<LeaveRecord>> getMyLeaves() async {
+  Future<LeaveDataResponse> getMyLeaves() async {
     try {
       final token = await _getToken();
       final response = await http.get(
@@ -56,13 +56,25 @@ class LeaveService {
       );
 
       if (response.statusCode == 200) {
-        final List data = jsonDecode(response.body);
-        return data.map((item) => LeaveRecord.fromJson(item)).toList();
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        final List leavesJson = data['leaves'];
+        final statsJson = data['attendance'];
+
+        return LeaveDataResponse(
+          leaves: leavesJson.map((item) => LeaveRecord.fromJson(item)).toList(),
+          stats: AttendanceStats.fromJson(statsJson),
+        );
       }
-      return [];
+      return LeaveDataResponse(
+        leaves: [],
+        stats: AttendanceStats(totalDays: 0, presentDays: 0, absentDays: 0),
+      );
     } catch (e) {
       print('Get my leaves error: $e');
-      return [];
+      return LeaveDataResponse(
+        leaves: [],
+        stats: AttendanceStats(totalDays: 0, presentDays: 0, absentDays: 0),
+      );
     }
   }
 

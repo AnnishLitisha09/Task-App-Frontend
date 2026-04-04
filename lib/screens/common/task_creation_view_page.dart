@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../models/exhaustive_task_model.dart';
 import '../../models/task_action_button.dart';
 import '../../services/task_service.dart';
+import 'user_selection_page.dart';
 
 class TaskViewPage extends StatefulWidget {
   final Map<String, dynamic> taskData;
@@ -138,7 +139,25 @@ class _TaskViewPageState extends State<TaskViewPage> {
                 _buildProofGrid(_exhaustiveData!.closureMethods),
                 const SizedBox(height: 32),
 
-                _sectionHeader("Assignees"),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _sectionHeader("Assignees"),
+                    if (_exhaustiveData!.assignments.length > 5)
+                      TextButton(
+                        onPressed: () => _showAllAssignees(_exhaustiveData!.assignments),
+                        child: Text(
+                          "VIEW ALL",
+                          style: TextStyle(
+                            color: accent,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
                 _buildAssigneeList(_exhaustiveData!.assignments),
                 const SizedBox(height: 32),
 
@@ -176,10 +195,10 @@ class _TaskViewPageState extends State<TaskViewPage> {
     final status = _exhaustiveData!.taskInfo.status;
     final Color bannerColor = status.toLowerCase() == 'active'
         ? Colors.indigo.shade50
-        : Colors.green.shade50;
+        : accent.withOpacity(0.1);
     final Color textColor = status.toLowerCase() == 'active'
         ? Colors.indigo.shade700
-        : Colors.green.shade700;
+        : accent;
 
     return Container(
       width: double.infinity,
@@ -312,13 +331,13 @@ class _TaskViewPageState extends State<TaskViewPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: isActive ? Colors.green.shade50 : Colors.blueGrey.shade50,
+        color: isActive ? accent.withOpacity(0.1) : Colors.blueGrey.shade50,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         status.toUpperCase(),
         style: TextStyle(
-          color: isActive ? Colors.green.shade700 : Colors.blueGrey.shade700,
+          color: isActive ? accent : Colors.blueGrey.shade700,
           fontWeight: FontWeight.w900,
           fontSize: 10,
         ),
@@ -338,7 +357,7 @@ class _TaskViewPageState extends State<TaskViewPage> {
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _statItem("Total", stats.totalCount.toString(), Colors.blue),
-          _statItem("Accepted", stats.acceptedCount.toString(), Colors.green),
+          _statItem("Accepted", stats.acceptedCount.toString(), accent),
           _statItem("Rejected", stats.rejectedCount.toString(), Colors.red),
         ],
       ),
@@ -423,59 +442,107 @@ class _TaskViewPageState extends State<TaskViewPage> {
   }
 
   Widget _buildAssigneeList(List<Assignment> assignments) {
+    if (assignments.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.grey.shade100),
+        ),
+        child: Column(
+          children: [
+            Icon(Icons.people_outline_rounded, color: Colors.grey[300], size: 32),
+            const SizedBox(height: 8),
+            Text(
+              "NO ASSIGNEES FOUND",
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return SizedBox(
-      height: 70,
+      height: 85,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
         itemCount: assignments.length,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, index) {
           final assignment = assignments[index];
           final assignee = assignment.assignee;
+          final String initial =
+              assignee.name.isNotEmpty ? assignee.name[0].toUpperCase() : '?';
+
           return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: Colors.grey.shade100),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 CircleAvatar(
-                  radius: 18,
+                  radius: 20,
                   backgroundColor: accent.withOpacity(0.1),
                   child: Text(
-                    assignee.name[0],
+                    initial,
                     style: TextStyle(
                       color: accent,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 14),
                 Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      assignee.name,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
+                      assignee.name.isNotEmpty ? assignee.name : 'Unknown User',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                        color: textDark,
                       ),
                     ),
-                    Text(
-                      assignment.status.toUpperCase(),
-                      style: TextStyle(
-                        color: assignment.status.toLowerCase() == 'escalated'
-                            ? Colors.red
-                            : (assignment.status.toLowerCase() == 'accepted'
-                                  ? Colors.green
-                                  : Colors.orange),
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.5,
+                    const SizedBox(height: 2),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _getStatusColor(assignment.status).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        assignment.status.toUpperCase(),
+                        style: TextStyle(
+                          color: _getStatusColor(assignment.status),
+                          fontSize: 8,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                        ),
                       ),
                     ),
                   ],
@@ -486,6 +553,23 @@ class _TaskViewPageState extends State<TaskViewPage> {
         },
       ),
     );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'accepted':
+      case 'completed':
+        return accent;
+      case 'rejected':
+      case 'escalated':
+        return Colors.red;
+      case 'in_progress':
+        return Colors.blue;
+      case 'pending':
+        return Colors.orange;
+      default:
+        return Colors.grey;
+    }
   }
 
   Widget _buildHistoryTimeline(List<HistoryLog> logs) {
@@ -679,17 +763,151 @@ class _TaskViewPageState extends State<TaskViewPage> {
   }
 
   Widget _sectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Text(
-        title.toUpperCase(),
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 1.2,
-          color: textLight,
-        ),
+    return Text(
+      title.toUpperCase(),
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 1.2,
+        color: textLight,
       ),
+    );
+  }
+
+  void _showAllAssignees(List<Assignment> assignments) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      isScrollControlled: true,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          minChildSize: 0.4,
+          expand: false,
+          builder: (context, scrollController) {
+            return Column(
+              children: [
+                const SizedBox(height: 12),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    children: [
+                      Text(
+                        "ALL ASSIGNEES",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: textDark,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        "${assignments.length} Total",
+                        style: TextStyle(
+                          color: textLight,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    itemCount: assignments.length,
+                    itemBuilder: (context, index) {
+                      final a = assignments[index];
+                      final assignee = a.assignee;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: bgSlate,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.grey.shade100),
+                        ),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 20,
+                              backgroundColor: accent.withOpacity(0.1),
+                              child: Text(
+                                assignee.name.isNotEmpty
+                                    ? assignee.name[0].toUpperCase()
+                                    : '?',
+                                style: TextStyle(
+                                  color: accent,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    assignee.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  Text(
+                                    assignee.role.toUpperCase(),
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: textLight,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _getStatusColor(a.status).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                a.status.toUpperCase(),
+                                style: TextStyle(
+                                  color: _getStatusColor(a.status),
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -754,13 +972,13 @@ class _TaskViewPageState extends State<TaskViewPage> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: isActive ? Colors.green.shade50 : Colors.grey.shade50,
+                            color: isActive ? accent.withOpacity(0.1) : Colors.grey.shade50,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
                             status,
                             style: TextStyle(
-                              color: isActive ? Colors.green.shade700 : Colors.grey.shade600,
+                              color: isActive ? accent : Colors.grey.shade600,
                               fontSize: 9,
                               fontWeight: FontWeight.w900,
                             ),
@@ -878,19 +1096,57 @@ class _TaskViewPageState extends State<TaskViewPage> {
       return;
     }
 
+    // 4. ASK FOR ASSIGNMENT
+    bool? useSelf = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Assignment Choice"),
+        content: const Text("Who should handle this rescheduled task?"),
+        actions: [
+          TextButton(
+            child: const Text("Me (Self)"),
+            onPressed: () => Navigator.pop(ctx, true),
+          ),
+          ElevatedButton(
+            child: const Text("Assign to Others"),
+            onPressed: () => Navigator.pop(ctx, false),
+          ),
+        ],
+      ),
+    );
+
+    if (useSelf == null) return;
+
+    List<int>? pickedAssignees;
+    if (!useSelf) {
+      // Open UserSelectionPage
+      final selectedUsers = await Navigator.push<List<Map<String, dynamic>>>(
+        context,
+        MaterialPageRoute(builder: (_) => const UserSelectionPage()),
+      );
+      if (selectedUsers == null || selectedUsers.isEmpty) return;
+      pickedAssignees = selectedUsers.map((u) => int.parse(u['user_id'].toString())).toList();
+    }
+
     setState(() => _isLoading = true);
     try {
-      // Use the extended rescheduling logic which includes self-assignment
+      // Use the extended rescheduling logic with custom assignees
       await _taskService.rescheduleTaskExtended(
         taskId: taskId, 
         newStart: startDT, 
         newEnd: endDT,
-        selfAssign: true,
+        selfAssign: useSelf,
+        assigneeIds: pickedAssignees,
       );
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Task rescheduled and self-assigned successfully!"), backgroundColor: Colors.green),
+          SnackBar(
+            content: Text(useSelf 
+              ? "Task rescheduled and self-assigned successfully!" 
+              : "Task rescheduled and assigned successfully!"), 
+            backgroundColor: Colors.green
+          ),
         );
         _fetchDetails();
       }

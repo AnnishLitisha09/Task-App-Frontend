@@ -65,9 +65,9 @@ class _LoginPageState extends State<LoginPage> {
       final userEmail = user['email'] ?? email;
       final role = (user['role'] ?? 'student').toString();
       final name = (user['name'] ?? '').toString();
+      final specificRole = (user['specific_role'] ?? '').toString();
 
-      String category = role.toUpperCase();
-      String scope = 'none';
+      String scopeDetailsSaved = user['scope_details']?.toString() ?? 'none';
 
       // Parse all_roles into a comma separated string to store locally
       String allRolesSaved = '';
@@ -77,10 +77,19 @@ class _LoginPageState extends State<LoginPage> {
             .join(',');
       }
 
-      String scopeDetailsSaved = user['scope_details']?.toString() ?? 'none';
+      // Determine effective routing role:
+      // If the user has an authority assignment (HOD, Dean, Principal, Incharge)
+      // route them to the role-user (authority) page regardless of primary role.
+      final authorityKeywords = ['hod', 'dean', 'principal', 'incharge'];
+      final hasAuthority = specificRole.isNotEmpty &&
+          authorityKeywords.any((k) => specificRole.toLowerCase().contains(k));
 
-      if (role == 'role-user') {
-        category = (user['specific_role'] ?? 'User').toString();
+      String effectiveRole = (role == 'role-user' || hasAuthority) ? 'role-user' : role;
+      String category = role.toUpperCase();
+      String scope = 'none';
+
+      if (effectiveRole == 'role-user') {
+        category = specificRole.isNotEmpty ? specificRole : (user['specific_role'] ?? 'User').toString();
         // Map scope_details to internal scope values
         String rawScope = scopeDetailsSaved.toLowerCase();
         if (rawScope.contains('department')) {
@@ -102,7 +111,7 @@ class _LoginPageState extends State<LoginPage> {
       await _saveUserSession(
         prefs,
         userEmail,
-        role,
+        effectiveRole,   // Use effectiveRole so HOD/authority routing works
         category,
         userId: userId,
         scope: scope,
@@ -196,9 +205,9 @@ class _LoginPageState extends State<LoginPage> {
       final email = (user['email'] ?? '').toString();
       final role = (user['role'] ?? 'student').toString();
       final name = (user['name'] ?? '').toString();
+      final specificRole = (user['specific_role'] ?? '').toString();
 
-      String category = role.toUpperCase();
-      String scope = 'none';
+      String scopeDetailsSaved = user['scope_details']?.toString() ?? 'none';
 
       // Parse all_roles into a comma separated string to store locally
       String allRolesSaved = '';
@@ -208,10 +217,17 @@ class _LoginPageState extends State<LoginPage> {
             .join(',');
       }
 
-      String scopeDetailsSaved = user['scope_details']?.toString() ?? 'none';
+      // Determine effective routing role (same logic as email login)
+      final authorityKeywords = ['hod', 'dean', 'principal', 'incharge'];
+      final hasAuthority = specificRole.isNotEmpty &&
+          authorityKeywords.any((k) => specificRole.toLowerCase().contains(k));
 
-      if (role == 'role-user') {
-        category = (user['specific_role'] ?? 'User').toString();
+      String effectiveRole = (role == 'role-user' || hasAuthority) ? 'role-user' : role;
+      String category = role.toUpperCase();
+      String scope = 'none';
+
+      if (effectiveRole == 'role-user') {
+        category = specificRole.isNotEmpty ? specificRole : (user['specific_role'] ?? 'User').toString();
         // Map scope_details to internal scope values
         String rawScope = scopeDetailsSaved.toLowerCase();
         if (rawScope.contains('department')) {
@@ -233,7 +249,7 @@ class _LoginPageState extends State<LoginPage> {
       await _saveUserSession(
         prefs,
         email,
-        role,
+        effectiveRole,   // Use effectiveRole so HOD/authority routing works
         category,
         userId: userId,
         scope: scope,

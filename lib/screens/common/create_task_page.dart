@@ -95,7 +95,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'activityTags': <String>[],
       'attachDocuments': false,
       'selectedDocuments': <String>[],
-      'is_document': false, // Changed from hardcoded true
+      'is_document': false,
+      'is_mandatory_flag': false,
       'closure_ids': [1],
     };
 
@@ -160,16 +161,21 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       }
 
       // 6. Handle taskType mapping if it comes from backend
-      if (data['TaskTypes'] != null && data['TaskTypes'] is List && data['TaskTypes'].isNotEmpty) {
+      if (data['TaskTypes'] != null &&
+          data['TaskTypes'] is List &&
+          data['TaskTypes'].isNotEmpty) {
         final typeObj = data['TaskTypes'][0];
         String backendType = typeObj['task_name'] ?? 'Fixed Time Task';
-        
+
         // Map canonical backend names to UI names
         if (backendType == 'Date-Only / Long Task') {
-          data['taskType'] = 'Task';
+          data['taskType'] = 'Long Task';
         } else if (backendType == 'Bidding / Nomination Task') {
-          // Fallback if it still exists in DB
-          data['taskType'] = 'Task'; 
+          data['taskType'] = 'Bidding Task';
+        } else if (backendType == 'Fixed Time Task') {
+          data['taskType'] = 'Fixed Time Task';
+        } else if (backendType == 'Recurring Task') {
+          data['taskType'] = 'Recurring Task';
         } else {
           data['taskType'] = backendType;
         }
@@ -177,9 +183,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         data['startDate'] = _parseDateString(typeObj['start_date']);
         data['endDate'] = _parseDateString(typeObj['end_date']);
         data['selectedDate'] = _parseDateString(typeObj['start_date']);
-        
-        // Pre-fill activityDate and selectedDate for Fixed/Floating
-        if (data['taskType'] == 'Fixed Time Task' || data['taskType'] == 'Floating Task') {
+
+        // Pre-fill activityDate and selectedDate for Fixed/Floating/Bidding
+        if (data['taskType'] == 'Fixed Time Task' ||
+            data['taskType'] == 'Floating Task' ||
+            data['taskType'] == 'Bidding Task') {
           data['activityDate'] = data['startDate'];
           data['selectedDate'] = data['startDate'];
         }
@@ -190,25 +198,32 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       }
 
       // 7. Handle Selected Assignees Mapping
-      if (data['selectedAssignees'] == null || (data['selectedAssignees'] as List).isEmpty) {
+      if (data['selectedAssignees'] == null ||
+          (data['selectedAssignees'] as List).isEmpty) {
         if (data['TaskAssigns'] != null && data['TaskAssigns'] is List) {
-          data['selectedAssignees'] = (data['TaskAssigns'] as List).map((a) {
-            final u = a['User'];
-            if (u == null) return <String, dynamic>{};
-            final details = u['Student'] ?? u['Faculty'] ?? u['Staff'] ?? u['RoleUser'];
-            return {
-              'id': u['user_id'],
-              'user_id': u['user_id'],
-              'name': details?['name'] ?? 'Unknown User',
-              'role': u['role'],
-              'type': 'individual',
-            };
-          }).where((m) => m.isNotEmpty).toList();
+          data['selectedAssignees'] = (data['TaskAssigns'] as List)
+              .map((a) {
+                final u = a['User'];
+                if (u == null) return <String, dynamic>{};
+                final details =
+                    u['Student'] ?? u['Faculty'] ?? u['Staff'] ?? u['RoleUser'];
+                return {
+                  'id': u['user_id'],
+                  'user_id': u['user_id'],
+                  'name': details?['name'] ?? 'Unknown User',
+                  'role': u['role'],
+                  'type': 'individual',
+                  'status': a['status'] ?? 'pending',
+                };
+              })
+              .where((m) => m.isNotEmpty)
+              .toList();
         }
       }
 
       // 8. Handle Approval mapping
-      if (data['requiresApproval'] == null && data['requires_approval'] != null) {
+      if (data['requiresApproval'] == null &&
+          data['requires_approval'] != null) {
         data['requiresApproval'] = data['requires_approval'];
       }
       if (data['approvalAuthority'] == null && data['approver_id'] != null) {
@@ -246,7 +261,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
     // Detect format: exhaustive uses task_info wrapper; new /details endpoint is flat
     final bool isExhaustive = rawData.containsKey('task_info');
-    final Map<String, dynamic> taskInfo = isExhaustive ? (rawData['task_info'] as Map<String, dynamic>? ?? rawData) : rawData;
+    final Map<String, dynamic> taskInfo = isExhaustive
+        ? (rawData['task_info'] as Map<String, dynamic>? ?? rawData)
+        : rawData;
 
     // Schedule key differs: exhaustive = 'schedule', details = 'type_details'
     final Map<String, dynamic>? schedule = isExhaustive
@@ -260,15 +277,19 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     data['description'] = taskInfo['description'] ?? '';
     data['category'] = taskInfo['category'] ?? 'Academic';
     data['priority'] = _capitalize(taskInfo['priority'] ?? 'Medium');
-    data['score'] = double.tryParse(taskInfo['score']?.toString() ?? '100.0') ?? 100.0;
+    data['score'] =
+        double.tryParse(taskInfo['score']?.toString() ?? '100.0') ?? 100.0;
     data['isPackageTask'] = taskInfo['is_package'] ?? false;
     data['allowPause'] = taskInfo['is_pause_allowed'] ?? false;
     data['is_document'] = taskInfo['is_document'] ?? false;
     data['is_mandatory_flag'] = taskInfo['is_mandatory'] ?? false;
-    data['requiresApproval'] = taskInfo['approver_id'] != null || taskInfo['is_approved'] == true || (rawData['approval_detail']?['status'] == 'approved');
+    data['requiresApproval'] =
+        taskInfo['approver_id'] != null ||
+        taskInfo['is_approved'] == true ||
+        (rawData['approval_detail']?['status'] == 'approved');
     data['origin_type'] = taskInfo['origin_type'];
     data['is_faculty'] = taskInfo['is_faculty'] ?? false;
-    
+
     // Approver mapping
     if (taskInfo['approver_id'] != null) {
       data['approvalAuthority'] = {
@@ -277,15 +298,17 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         'name': taskInfo['approver']?['name'] ?? 'Approver',
       };
     }
-    
+
     // Faculty mapping
     if (taskInfo['is_faculty'] == true && taskInfo['faculty'] != null) {
-      data['facultyInCharge'] = [{
-        'id': taskInfo['faculty']['user_id'],
-        'user_id': taskInfo['faculty']['user_id'],
-        'name': taskInfo['faculty']['name'] ?? 'Faculty',
-        'type': 'individual',
-      }];
+      data['facultyInCharge'] = [
+        {
+          'id': taskInfo['faculty']['user_id'],
+          'user_id': taskInfo['faculty']['user_id'],
+          'name': taskInfo['faculty']['name'] ?? 'Faculty',
+          'type': 'individual',
+        },
+      ];
     }
 
     // --- Task Category ---
@@ -297,7 +320,18 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
     // --- Schedule ---
     if (schedule != null) {
-      data['taskType'] = schedule['task_name'] ?? 'Fixed Time Task';
+      String rawName = schedule['task_name'] ?? 'Fixed Time Task';
+      if (rawName == 'Date-Only / Long Task') {
+        data['taskType'] = 'Long Task';
+      } else if (rawName == 'Bidding / Nomination Task') {
+        data['taskType'] = 'Bidding Task';
+      } else if (rawName == 'Fixed Time Task') {
+        data['taskType'] = 'Fixed Time Task';
+      } else if (rawName == 'Recurring Task') {
+        data['taskType'] = 'Recurring Task';
+      } else {
+        data['taskType'] = rawName;
+      }
       data['startDate'] = _parseDateString(schedule['start_date'] ?? '');
       data['endDate'] = _parseDateString(schedule['end_date'] ?? '');
       data['selectedDate'] = data['startDate'];
@@ -306,7 +340,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       data['endTime'] = _parseTimeString(schedule['end_time']);
       data['recurrenceType'] = _capitalize(schedule['recurrence'] ?? 'none');
       data['venue_id'] = schedule['venue_id'];
-      data['maxHours'] = double.tryParse(schedule['time_quota_hours']?.toString() ?? '0.0') ?? 0.0;
+      data['maxHours'] =
+          double.tryParse(schedule['time_quota_hours']?.toString() ?? '0.0') ??
+          0.0;
+      data['maxSlots'] = schedule['max_acceptances'] ?? 5;
     }
 
     // --- Assignees ---
@@ -323,6 +360,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           'user_id': user['user_id'],
           'name': user['name'] ?? 'Unknown',
           'role': user['role'],
+          'status': a['status'] ?? 'pending',
         };
       }).toList();
     }
@@ -335,10 +373,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           .map((c) => c['closure_id'])
           .whereType<int>()
           .toList();
-    } else if (rawData['closure_ids'] != null && rawData['closure_ids'] is List) {
+    } else if (rawData['closure_ids'] != null &&
+        rawData['closure_ids'] is List) {
       data['closure_ids'] = List<int>.from(rawData['closure_ids']);
     }
-    
+
     // Map closure IDs to strings for UI completion methods
     if (data['closure_ids'] != null && data['closure_ids'] is List) {
       List<String> methods = [];
@@ -361,11 +400,63 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   Future<void> _fetchVenues() async {
     setState(() => _isLoadingVenues = true);
     try {
-      final venues = await _resourceService.getVenues();
+      final dateObj =
+          _taskData['taskType'] == 'Fixed Time Task' ||
+              _taskData['taskType'] == 'Floating Task' ||
+              _taskData['taskType'] == 'Bidding Task'
+          ? _taskData['selectedDate']
+          : _taskData['startDate'];
+
+      String? dateStr;
+      if (dateObj is DateTime) {
+        dateStr =
+            "${dateObj.year}-${dateObj.month.toString().padLeft(2, '0')}-${dateObj.day.toString().padLeft(2, '0')}";
+      }
+
+      String? startTimeStr;
+      if (_taskData['startTime'] is TimeOfDay) {
+        final st = _taskData['startTime'] as TimeOfDay;
+        startTimeStr =
+            "${st.hour.toString().padLeft(2, '0')}:${st.minute.toString().padLeft(2, '0')}:00";
+      }
+
+      String? endTimeStr;
+      if (_taskData['endTime'] is TimeOfDay) {
+        final et = _taskData['endTime'] as TimeOfDay;
+        endTimeStr =
+            "${et.hour.toString().padLeft(2, '0')}:${et.minute.toString().padLeft(2, '0')}:00";
+      }
+
+      final venues = await _resourceService.getVenues(
+        date: dateStr,
+        startTime: startTimeStr,
+        endTime: endTimeStr,
+      );
+
       setState(() {
         _venues = venues;
         _isLoadingVenues = false;
-        // Default stays 'None' — only set a venue if user explicitly picks one
+
+        if (_taskData['venue_id'] != null) {
+          final selectedVenue = _venues.firstWhere(
+            (v) => v['venue_id'] == _taskData['venue_id'],
+            orElse: () => {},
+          );
+          if (selectedVenue.isNotEmpty) {
+            final name = selectedVenue['name'] ?? 'Unknown';
+            final status =
+                selectedVenue['booking_status'] ??
+                selectedVenue['status'] ??
+                'unknown';
+            _taskData['locationId'] =
+                '$name (${_capitalize(status.toString())})';
+          } else {
+            _taskData['locationId'] = 'None';
+            _taskData['venue_id'] = null;
+          }
+        } else {
+          _taskData['locationId'] = 'None';
+        }
       });
     } catch (e) {
       debugPrint('Error fetching venues: $e');
@@ -389,7 +480,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     try {
       final titles = await _taskService.getTaskTitles();
       setState(() {
-        _taskTitles = titles; // Removed role filtering: all roles' titles should come
+        _taskTitles =
+            titles; // Removed role filtering: all roles' titles should come
         _isLoadingTitles = false;
         // Auto-select first item if current title is empty
         if (_taskTitles.isNotEmpty &&
@@ -438,6 +530,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       }
     }
   }
+
   Future<void> _pickExcelFile() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -482,37 +575,85 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           _updatePackageMaxHours();
         }
       });
+      _fetchVenues();
     }
   }
 
   void _updatePackageMaxHours() {
-    double hours = 0.0;
-
-    if (_taskData['taskType'] == 'Fixed Time Task') {
-      final st = _taskData['startTime'] as TimeOfDay?;
-      final et = _taskData['endTime'] as TimeOfDay?;
-      if (st != null && et != null) {
-        int m = (et.hour * 60 + et.minute) - (st.hour * 60 + st.minute);
-        hours = m / 60.0;
-      } else {
-        hours = 8.0; // Default work day
-      }
-    } else {
-      final start = _taskData['startDate'] as DateTime? ?? DateTime.now();
-      final end = _taskData['endDate'] as DateTime? ?? DateTime.now();
-      
-      if (end.isBefore(start)) {
-        hours = 0.0;
-      } else {
-        // Calculate inclusive working days
-        int days = end.difference(start).inDays + 1;
-        hours = days * 8.0; // Assume 8 hours per working day (8:30 - 16:30)
+    double totalStepsHours = 0;
+    if (_taskData['subTasks'] != null) {
+      for (var sub in (_taskData['subTasks'] as List)) {
+        totalStepsHours += (sub['duration'] as num?)?.toDouble() ?? 0.0;
       }
     }
 
     setState(() {
-      _taskData['maxHours'] = hours;
+      _taskData['maxHours'] = totalStepsHours;
     });
+  }
+
+  DateTime _calculatePackageEndTime(
+    DateTime startDate,
+    TimeOfDay startTime,
+    double durationHours,
+  ) {
+    // Standard Working Hours: 08:30 AM - 04:30 PM (8 hours)
+    // We'll use 8:30 to 16:30 for simplicity and consistency with other project parts
+    const int workStartMinutes = 8 * 60 + 30;
+    const int workEndMinutes = 16 * 60 + 30;
+    // dailyWorkMinutes removed as it was unused across the project logic
+
+    DateTime current = DateTime(
+      startDate.year,
+      startDate.month,
+      startDate.day,
+      startTime.hour,
+      startTime.minute,
+    );
+    double remainingMinutes = durationHours * 60;
+
+    // 1. Initial Normalization: Ensure current is not a Sunday
+    while (current.weekday == DateTime.sunday) {
+      current = current.add(const Duration(days: 1));
+      current = DateTime(current.year, current.month, current.day, 8, 30);
+    }
+
+    // 2. Initial Normalization: Ensure current is within 08:30 - 16:30
+    int currentMinutes = current.hour * 60 + current.minute;
+    if (currentMinutes >= workEndMinutes) {
+      current = current.add(const Duration(days: 1));
+      while (current.weekday == DateTime.sunday) {
+        current = current.add(const Duration(days: 1));
+      }
+      current = DateTime(current.year, current.month, current.day, 8, 30);
+      currentMinutes = workStartMinutes;
+    } else if (currentMinutes < workStartMinutes) {
+      current = DateTime(current.year, current.month, current.day, 8, 30);
+      currentMinutes = workStartMinutes;
+    }
+
+    while (remainingMinutes > 0) {
+      // Skip Sundays
+      if (current.weekday == DateTime.sunday) {
+        current = current.add(const Duration(days: 1));
+        current = DateTime(current.year, current.month, current.day, 8, 30);
+        currentMinutes = workStartMinutes;
+        continue;
+      }
+
+      int minutesAvailableToday = workEndMinutes - currentMinutes;
+
+      if (remainingMinutes <= minutesAvailableToday) {
+        current = current.add(Duration(minutes: remainingMinutes.round()));
+        remainingMinutes = 0;
+      } else {
+        remainingMinutes -= minutesAvailableToday;
+        current = current.add(const Duration(days: 1));
+        current = DateTime(current.year, current.month, current.day, 8, 30);
+        currentMinutes = workStartMinutes;
+      }
+    }
+    return current;
   }
 
   @override
@@ -725,52 +866,18 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   List<Widget> _buildSection2() {
     final List<String> venueOptions = [
       'None',
-      ..._venues.map((v) => v['name'].toString()),
+      ..._venues.map((v) {
+        final name = v['name'] ?? 'Unknown';
+        final status = v['booking_status'] ?? v['status'] ?? 'unknown';
+        return '$name (${_capitalize(status.toString())})';
+      }),
     ];
 
-    return [
-      _modernDropdown(
-        "TASK TYPE",
-        ["Fixed Time Task", "Floating Task", "Task", "Recurring Task"],
-        _taskData['taskType'],
-        (v) => setState(() {
-          _taskData['taskType'] = v;
-          if (_taskData['isPackageTask']) _updatePackageMaxHours();
-        }),
-      ),
-      const SizedBox(height: 24),
-      _modernDropdown(
-        "VENUE / LOCATION",
-        venueOptions,
-        _taskData['locationId'],
-        (v) {
-          setState(() {
-            _taskData['locationId'] = v;
-            if (v == 'None') {
-              _taskData['venue_id'] = null;
-            } else {
-              final selectedVenue = _venues.firstWhere(
-                (venue) => venue['name'] == v,
-                orElse: () => {},
-              );
-              _taskData['venue_id'] = selectedVenue['venue_id'];
-            }
-          });
-        },
-      ),
-      if (!(_taskData['isPackageTask'] ?? false)) ...[
-        const SizedBox(height: 32),
-        Text(
-          "TIME CONFIGURATION",
-          style: TextStyle(
-            color: accent,
-            fontWeight: FontWeight.bold,
-            fontSize: 11,
-            letterSpacing: 1.2,
-          ),
-        ),
-        const Divider(height: 32),
-        if (_taskData['taskType'] == "Fixed Time Task") ...[
+    final List<Widget> timeConfig = [];
+    if (!(_taskData['isPackageTask'] ?? false)) {
+      if (_taskData['taskType'] == "Fixed Time Task" ||
+          _taskData['taskType'] == "Bidding Task") {
+        timeConfig.addAll([
           _dateTile("SELECT DATE", 'selectedDate'),
           const SizedBox(height: 16),
           Row(
@@ -798,7 +905,21 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               ),
             ],
           ),
-        ] else if (_taskData['taskType'] == "Recurring Task") ...[
+          if (_taskData['taskType'] == "Bidding Task") ...[
+            const SizedBox(height: 16),
+            _modernField(
+              label: "AVAILABLE SLOTS",
+              hint: "10",
+              isNumber: true,
+              initialValue: (_taskData['maxSlots'] ?? 5).toString(),
+              onChanged: (v) => setState(() {
+                _taskData['maxSlots'] = int.tryParse(v) ?? 5;
+              }),
+            ),
+          ],
+        ]);
+      } else if (_taskData['taskType'] == "Recurring Task") {
+        timeConfig.addAll([
           _modernDropdown(
             "RECURRENCE",
             ["Daily", "Weekly", "Monthly"],
@@ -835,7 +956,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               ),
             ],
           ),
-        ] else if (_taskData['taskType'] == "Floating Task") ...[
+        ]);
+      } else if (_taskData['taskType'] == "Floating Task") {
+        timeConfig.addAll([
           _dateTile("START DATE", 'startDate'),
           const SizedBox(height: 16),
           _dateTile("END DATE", 'endDate'),
@@ -878,7 +1001,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                 ),
             ],
           ),
-        ] else ...[
+        ]);
+      } else {
+        timeConfig.addAll([
           _dateTile(
             _taskData['isPackageTask'] ? "START DATE" : "VALID FROM",
             'startDate',
@@ -887,8 +1012,68 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             const SizedBox(height: 16),
             _dateTile("VALID UNTIL", 'endDate'),
           ],
+        ]);
+      }
+    }
+
+    return [
+      _modernDropdown(
+        "TASK TYPE",
+        [
+          "Bidding Task",
+          "Floating Task",
+          "Long Task",
+          "Fixed Time Task",
+          "Recurring Task",
         ],
+        _taskData['taskType'],
+        (v) {
+          setState(() {
+            _taskData['taskType'] = v;
+            if (v == 'Long Task') {
+              _taskData['allowPause'] = true;
+            }
+            if (_taskData['isPackageTask']) _updatePackageMaxHours();
+          });
+          _fetchVenues();
+        },
+      ),
+      const SizedBox(height: 24),
+      if (timeConfig.isNotEmpty) ...[
+        Text(
+          "TIME CONFIGURATION",
+          style: TextStyle(
+            color: accent,
+            fontWeight: FontWeight.bold,
+            fontSize: 11,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const Divider(height: 24),
+        ...timeConfig,
+        const SizedBox(height: 24),
       ],
+      _modernDropdown(
+        "VENUE / LOCATION",
+        venueOptions,
+        _taskData['locationId'],
+        (v) {
+          setState(() {
+            _taskData['locationId'] = v;
+            if (v == 'None') {
+              _taskData['venue_id'] = null;
+            } else {
+              final selectedVenue = _venues.firstWhere((venue) {
+                final n = venue['name'] ?? 'Unknown';
+                final s =
+                    venue['booking_status'] ?? venue['status'] ?? 'unknown';
+                return '$n (${_capitalize(s.toString())})' == v;
+              }, orElse: () => {});
+              _taskData['venue_id'] = selectedVenue['venue_id'];
+            }
+          });
+        },
+      ),
       const SizedBox(height: 24),
       _modernToggle(
         "ALLOW PAUSE",
@@ -925,8 +1110,73 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     }
 
     // PACKAGE TASK VIEW: Sequential List
+    final DateTime startDt = _taskData['startDate'] ?? DateTime.now();
+    final TimeOfDay startTm =
+        _taskData['startTime'] ?? const TimeOfDay(hour: 8, minute: 30);
+    final double totalHrs = _taskData['maxHours'] ?? 0.0;
+    final DateTime estimatedEnd = _calculatePackageEndTime(
+      startDt,
+      startTm,
+      totalHrs,
+    );
+
     return [
-      _dateTile("OVERALL PROJECT DEADLINE", 'endDate'),
+      _dateTile("PROJECT START DATE", 'startDate'),
+      const SizedBox(height: 16),
+      _timePicker(
+        label: "START TIME",
+        time: _taskData['startTime'],
+        onTimePicked: (v) => setState(() {
+          _taskData['startTime'] = v;
+        }),
+      ),
+      const SizedBox(height: 24),
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.blue.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.blue.withOpacity(0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.auto_graph_rounded,
+                  color: Colors.blue,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  "ESTIMATED COMPLETION",
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.blue,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "${DateFormat('EEEE, MMM d').format(estimatedEnd)} at ${DateFormat('jm').format(estimatedEnd)}",
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "Total Workflow: ${totalHrs.toStringAsFixed(1)} hours",
+              style: TextStyle(fontSize: 11, color: Colors.blue.shade700),
+            ),
+          ],
+        ),
+      ),
       const SizedBox(height: 24),
       Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -998,13 +1248,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         ),
       ),
       _modernToggle(
-        "REQUIRED DOCUMENTATION",
-        _taskData['mandatoryDocumentation'],
-        (v) => setState(() => _taskData['mandatoryDocumentation'] = v),
-      ),
-      const SizedBox(height: 16),
-      _modernToggle(
-        "IS DOCUMENT BASED",
+        "IS DOCUMENT BASED / PROOF REQUIRED",
         _taskData['is_document'] ?? false,
         (v) => setState(() => _taskData['is_document'] = v),
       ),
@@ -1068,6 +1312,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                   _taskData['taskCategory'] == 'Directive Task';
               if (isDirective || _isWithinWorkingHours(picked)) {
                 onTimePicked(picked);
+                _fetchVenues();
               } else {
                 _showErrorSnackBar(
                   "You can only select time between 08:30 AM and 04:30 PM for self logs!",
@@ -1270,15 +1515,29 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                       child: Text(
                         assignees.isEmpty
                             ? "Select Users, Roles or Depts"
-                            : "${assignees.length} assigned",
+                            : (_taskData['task_id'] != null
+                                ? "${assignees.length} Total Users"
+                                : "${assignees.length} assigned"),
                         style: TextStyle(
-                          color: assignees.isEmpty
-                              ? Colors.grey
-                              : Colors.black87,
+                          color: assignees.isEmpty ? Colors.grey : Colors.black87,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
+                    if (_taskData['task_id'] != null) ...[
+                      _statBadge(
+                        "ACCEPTED",
+                        assignees.where((a) => a['status'] == 'accepted').length,
+                        Colors.green,
+                      ),
+                      const SizedBox(width: 8),
+                      _statBadge(
+                        "REJECTED",
+                        assignees.where((a) => a['status'] == 'rejected').length,
+                        Colors.red,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     const Icon(
                       Icons.arrow_forward_ios_rounded,
                       size: 14,
@@ -1301,6 +1560,38 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         const SizedBox(height: 12),
         _excelUploadTile(),
       ],
+    );
+  }
+
+  Widget _statBadge(String label, int count, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 7,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+          ),
+          Text(
+            count.toString(),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1374,8 +1665,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
-                      color:
-                          _excelFilePath != null ? Colors.green : Colors.blue,
+                      color: _excelFilePath != null
+                          ? Colors.green
+                          : Colors.blue,
                     ),
                   ),
                   if (_excelFilePath != null)
@@ -1466,7 +1758,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             runSpacing: 4,
             children: faculty.map((f) {
               return Chip(
-                label: Text(f['name'] ?? "Faculty", style: const TextStyle(fontSize: 10)),
+                label: Text(
+                  f['name'] ?? "Faculty",
+                  style: const TextStyle(fontSize: 10),
+                ),
                 backgroundColor: Colors.orange.withOpacity(0.1),
                 onDeleted: () {
                   setState(() {
@@ -1475,7 +1770,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                 },
                 deleteIconColor: Colors.orange,
                 side: BorderSide.none,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               );
             }).toList(),
           ),
@@ -1969,12 +2266,12 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                 Text(
                   isCreationAllowed
                       ? (isSelfLog
-                          ? (_taskData['task_id'] != null
-                              ? "Update Log"
-                              : "Log Achievement")
-                          : (_taskData['task_id'] != null
-                              ? "Update Directive"
-                              : "Create Directive"))
+                            ? (_taskData['task_id'] != null
+                                  ? "Update Log"
+                                  : "Log Achievement")
+                            : (_taskData['task_id'] != null
+                                  ? "Update Directive"
+                                  : "Create Directive"))
                       : "LOCKED: 08:30-16:30",
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
@@ -2041,7 +2338,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'dean': 'dean',
     };
 
-    if (userIndex <= 1) return []; // Admin or Principal have no higher selectable roles
+    if (userIndex <= 1)
+      return []; // Admin or Principal have no higher selectable roles
     return hierarchy.sublist(1, userIndex).map((r) => keyMap[r] ?? r).toList();
   }
 
@@ -2064,12 +2362,18 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     // Removed working hours check for directives (allowed 24/7)
 
     // --- NEW: Deadline Validation (Prevent creating past tasks) ---
-    if (_taskData['taskType'] == 'Fixed Time Task') {
+    if (_taskData['taskType'] == 'Fixed Time Task' ||
+        _taskData['taskType'] == 'Bidding Task') {
       final DateTime selectedDate = _taskData['selectedDate'] ?? DateTime.now();
       final TimeOfDay? et = _taskData['endTime'];
       if (et != null) {
-        final deadline = DateTime(selectedDate.year, selectedDate.month,
-            selectedDate.day, et.hour, et.minute);
+        final deadline = DateTime(
+          selectedDate.year,
+          selectedDate.month,
+          selectedDate.day,
+          et.hour,
+          et.minute,
+        );
         if (deadline.isBefore(DateTime.now())) {
           _showErrorSnackBar("Cannot create a task with a past deadline.");
           return;
@@ -2088,12 +2392,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         'recurrence': recurrence,
         'start_date': DateFormat('yyyy-MM-dd').format(_taskData['startDate']),
         'end_date': DateFormat('yyyy-MM-dd').format(_taskData['endDate']),
-        'start_time': _taskData['startTime'] != null
-            ? '${_taskData['startTime'].hour.toString().padLeft(2, '0')}:${_taskData['startTime'].minute.toString().padLeft(2, '0')}:00'
-            : '11:00:00',
-        'end_time': _taskData['endTime'] != null
-            ? '${_taskData['endTime'].hour.toString().padLeft(2, '0')}:${_taskData['endTime'].minute.toString().padLeft(2, '0')}:00'
-            : '12:00:00',
+        'time_quota_hours': _taskData['maxHours'] ?? 2.0,
       };
     } else if (_taskData['taskType'] == 'Fixed Time Task') {
       taskTypeData = {
@@ -2110,12 +2409,30 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             : null,
         'time_quota_hours': _taskData['maxHours'] ?? 2.0,
       };
+    } else if (_taskData['isPackageTask']) {
+      // Special mapping for Package Task: Use Start Date and Start Time
+      taskTypeData = {
+        'task_name': 'Package Task',
+        'start_date': DateFormat('yyyy-MM-dd').format(_taskData['startDate']),
+        'start_time': _taskData['startTime'] != null
+            ? '${_taskData['startTime'].hour.toString().padLeft(2, '0')}:${_taskData['startTime'].minute.toString().padLeft(2, '0')}:00'
+            : '08:30:00',
+        'time_quota_hours': _taskData['maxHours'] ?? 0.0,
+      };
     } else if (_taskData['taskType'] == 'Bidding Task') {
       taskTypeData = {
         'task_name': 'Bidding Task',
-        'start_date': DateFormat('yyyy-MM-dd').format(_taskData['startDate']),
-        'end_date': DateFormat('yyyy-MM-dd').format(_taskData['endDate']),
-        'max_acceptances': _taskData['maxAcceptances'] ?? 3,
+        'start_date': DateFormat(
+          'yyyy-MM-dd',
+        ).format(_taskData['selectedDate']),
+        'end_date': DateFormat('yyyy-MM-dd').format(_taskData['selectedDate']),
+        'start_time': _taskData['startTime'] != null
+            ? '${_taskData['startTime'].hour.toString().padLeft(2, '0')}:${_taskData['startTime'].minute.toString().padLeft(2, '0')}:00'
+            : '09:00:00',
+        'end_time': _taskData['endTime'] != null
+            ? '${_taskData['endTime'].hour.toString().padLeft(2, '0')}:${_taskData['endTime'].minute.toString().padLeft(2, '0')}:00'
+            : null,
+        'max_acceptances': _taskData['maxSlots'] ?? 5,
       };
     } else if (_taskData['taskType'] == 'Floating Task') {
       taskTypeData = {
@@ -2133,7 +2450,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     } else {
       // Default for Task (Long Task) and others
       taskTypeData = {
-        'task_name': _taskData['taskType'] == 'Task' ? 'Date-Only / Long Task' : _taskData['taskType'],
+        'task_name': _taskData['taskType'] == 'Task'
+            ? 'Date-Only / Long Task'
+            : _taskData['taskType'],
         'start_date': DateFormat('yyyy-MM-dd').format(_taskData['startDate']),
         'end_date': DateFormat('yyyy-MM-dd').format(_taskData['endDate']),
       };
@@ -2152,7 +2471,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
     List<int> assigneeIds = selected
         .map((a) {
-          final id = a['id'] ?? a['user_id'];
+          final id = a['user_id'] ?? a['id'];
           if (id is String) return int.tryParse(id) ?? 0;
           return id as int? ?? 0;
         })
@@ -2196,15 +2515,23 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'requires_approval': _taskData['requiresApproval'] ?? false,
       'approver_id': _taskData['approvalAuthority'] != null
           ? (_taskData['approvalAuthority']!['id'] ??
-              _taskData['approvalAuthority']!['user_id'])
+                _taskData['approvalAuthority']!['user_id'])
           : null,
     };
 
     // Explicitly add due_date at root for package tracking
     if (_taskData['isPackageTask']) {
-      final DateTime? end = _taskData['endDate'] ?? _taskData['selectedDate'];
-      if (end != null) {
+      final DateTime? start = _taskData['startDate'];
+      final TimeOfDay? startT = _taskData['startTime'];
+      final double totalH = _taskData['maxHours'] ?? 0.0;
+
+      if (start != null && startT != null) {
+        final DateTime end = _calculatePackageEndTime(start, startT, totalH);
         payload['due_date'] = DateFormat('yyyy-MM-dd').format(end);
+        // Also update task_type_data with end info for completeness
+        taskTypeData['end_date'] = payload['due_date'];
+        taskTypeData['end_time'] =
+            '${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}:00';
       }
     }
 
@@ -2236,9 +2563,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     }
 
     // Add faculty information if present
-    final List<Map<String, dynamic>> facultyList = List<Map<String, dynamic>>.from(
-      _taskData['facultyInCharge'] ?? [],
-    );
+    final List<Map<String, dynamic>> facultyList =
+        List<Map<String, dynamic>>.from(_taskData['facultyInCharge'] ?? []);
     if (facultyList.isNotEmpty) {
       payload['is_faculty'] = true;
       payload['faculty_ids'] = facultyList.map((f) {
@@ -2257,14 +2583,19 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
     try {
       final isEdit = _taskData['task_id'] != null;
-      print("========== DIRECTIVE ${isEdit ? 'UPDATE' : 'CREATE'} PAYLOAD ==========");
+      print(
+        "========== DIRECTIVE ${isEdit ? 'UPDATE' : 'CREATE'} PAYLOAD ==========",
+      );
       print(payload.toString());
       print("==============================================");
       final taskService = TaskService();
 
       if (isEdit) {
-        await taskService.updateTaskUnified(_taskData['task_id'], payload,
-            filePath: _excelFilePath);
+        await taskService.updateTaskUnified(
+          _taskData['task_id'],
+          payload,
+          filePath: _excelFilePath,
+        );
       } else {
         await taskService.createTaskUnified(payload, filePath: _excelFilePath);
       }
@@ -2273,7 +2604,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-                isEdit ? 'Task updated successfully!' : 'Task created successfully!'),
+              isEdit
+                  ? 'Task updated successfully!'
+                  : 'Task created successfully!',
+            ),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
           ),
@@ -2282,7 +2616,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       }
     } catch (e) {
       if (mounted) {
-        _showErrorSnackBar('Failed to ${(_taskData['task_id'] != null) ? 'update' : 'create'} task: $e');
+        _showErrorSnackBar(
+          'Failed to ${(_taskData['task_id'] != null) ? 'update' : 'create'} task: $e',
+        );
       }
     }
   }
@@ -2367,14 +2703,19 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
     try {
       final isEdit = _taskData['task_id'] != null;
-      print("========== SELF LOG ${isEdit ? 'UPDATE' : 'CREATE'} PAYLOAD ==========");
+      print(
+        "========== SELF LOG ${isEdit ? 'UPDATE' : 'CREATE'} PAYLOAD ==========",
+      );
       print(payload.toString());
       print("=============================================");
       final taskService = TaskService();
-      
+
       if (isEdit) {
-        await taskService.updateTaskUnified(_taskData['task_id'], payload,
-            filePath: _excelFilePath);
+        await taskService.updateTaskUnified(
+          _taskData['task_id'],
+          payload,
+          filePath: _excelFilePath,
+        );
       } else {
         await taskService.createTaskUnified(payload, filePath: _excelFilePath);
       }
@@ -2382,9 +2723,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(isEdit
-                ? 'Activity log updated successfully!'
-                : 'Activity log submitted successfully!'),
+            content: Text(
+              isEdit
+                  ? 'Activity log updated successfully!'
+                  : 'Activity log submitted successfully!',
+            ),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
           ),
@@ -2394,7 +2737,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     } catch (e) {
       if (mounted) {
         _showErrorSnackBar(
-            'Failed to ${(_taskData['task_id'] != null) ? 'update' : 'submit'} log: $e');
+          'Failed to ${(_taskData['task_id'] != null) ? 'update' : 'submit'} log: $e',
+        );
       }
     }
   }
@@ -2464,14 +2808,15 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                   subtitle: subTask['assignee_name'] ?? "Select...",
                   icon: Icons.person_add_alt_1,
                   onTap: () async {
-                    final List<Map<String, dynamic>>? result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            const UserSelectionPage(multiSelect: false),
-                      ),
-                    );
-    
+                    final List<Map<String, dynamic>>? result =
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                const UserSelectionPage(multiSelect: false),
+                          ),
+                        );
+
                     if (result != null && result.isNotEmpty) {
                       setState(() {
                         subTask['assignee_id'] =
@@ -2492,6 +2837,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                   initialValue: subTask['duration']?.toString(),
                   onChanged: (v) => setState(() {
                     subTask['duration'] = double.tryParse(v) ?? 0.0;
+                    _updatePackageMaxHours();
                   }),
                 ),
               ),

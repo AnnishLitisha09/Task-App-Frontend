@@ -26,12 +26,14 @@ class GenericViewAllPage extends StatefulWidget {
 
 class _GenericViewAllPageState extends State<GenericViewAllPage> {
   late List<dynamic> _currentTasks;
+  List<dynamic> _groupedItems = [];
   bool _hasChanges = false;
 
   @override
   void initState() {
     super.initState();
     _currentTasks = List.from(widget.tasks);
+    _groupedItems = _groupTasksByTime();
   }
 
   List<dynamic> _groupTasksByTime() {
@@ -40,14 +42,24 @@ class _GenericViewAllPageState extends State<GenericViewAllPage> {
     final List<dynamic> sortedTasks = List.from(_currentTasks);
     sortedTasks.sort((a, b) {
       // Sort by Date first
-      String dA = a['date']?.toString() ?? a['start_date']?.toString() ?? '9999-12-31';
-      String dB = b['date']?.toString() ?? b['start_date']?.toString() ?? '9999-12-31';
+      final String dA = a['date']?.toString() ??
+          a['start_date']?.toString() ??
+          '9999-12-31';
+      final String dB = b['date']?.toString() ??
+          b['start_date']?.toString() ??
+          '9999-12-31';
       int dateCompare = dA.compareTo(dB);
       if (dateCompare != 0) return dateCompare;
 
       // Then by Time
-      final String timeA = a['timing']?.toString() ?? a['time']?.toString() ?? a['start_time']?.toString() ?? '23:59';
-      final String timeB = b['timing']?.toString() ?? b['time']?.toString() ?? b['start_time']?.toString() ?? '23:59';
+      final String timeA = a['timing']?.toString() ??
+          a['time']?.toString() ??
+          a['start_time']?.toString() ??
+          '23:59';
+      final String timeB = b['timing']?.toString() ??
+          b['time']?.toString() ??
+          b['start_time']?.toString() ??
+          '23:59';
       return timeA.compareTo(timeB);
     });
 
@@ -55,9 +67,13 @@ class _GenericViewAllPageState extends State<GenericViewAllPage> {
     String currentHeader = '';
 
     for (var task in sortedTasks) {
-      String dateStr = task['date']?.toString() ?? task['start_date']?.toString() ?? '';
-      String timeStr = task['timing']?.toString() ?? task['time']?.toString() ?? task['start_time']?.toString() ?? 'TBD';
-      
+      String dateStr =
+          task['date']?.toString() ?? task['start_date']?.toString() ?? '';
+      String timeStr = task['timing']?.toString() ??
+          task['time']?.toString() ??
+          task['start_time']?.toString() ??
+          'TBD';
+
       // Clean up timeStr
       if (timeStr.length > 5 && timeStr.contains(':')) {
         timeStr = timeStr.substring(0, 5);
@@ -66,12 +82,14 @@ class _GenericViewAllPageState extends State<GenericViewAllPage> {
       String formattedDate = '';
       if (dateStr.isNotEmpty) {
         try {
-          final dt = DateTime.parse(dateStr.contains('T') ? dateStr : dateStr);
+          final dt = DateTime.parse(dateStr);
           formattedDate = DateFormat('MMM dd').format(dt);
         } catch (_) {}
       }
 
-      String timeHeader = formattedDate.isNotEmpty ? "$formattedDate ($timeStr)" : timeStr;
+      String timeHeader = formattedDate.isNotEmpty
+          ? "$formattedDate ($timeStr)"
+          : timeStr;
 
       if (timeHeader != currentHeader) {
         currentHeader = timeHeader;
@@ -86,16 +104,18 @@ class _GenericViewAllPageState extends State<GenericViewAllPage> {
   Future<void> _handleLocalAction(int taskId, bool approve) async {
     if (widget.onTaskAction != null) {
       await widget.onTaskAction!(taskId, approve);
-      setState(() {
-        _hasChanges = true;
-        _currentTasks.removeWhere((t) => (t['task_id'] ?? t['id']) == taskId);
-      });
+      if (mounted) {
+        setState(() {
+          _hasChanges = true;
+          _currentTasks.removeWhere((t) => (t['task_id'] ?? t['id']) == taskId);
+          _groupedItems = _groupTasksByTime();
+        });
+      }
     }
   }
 
+  @override
   Widget build(BuildContext context) {
-    final groupedItems = _groupTasksByTime();
-
     return WillPopScope(
       onWillPop: () async {
         Navigator.pop(context, _hasChanges);
@@ -103,38 +123,39 @@ class _GenericViewAllPageState extends State<GenericViewAllPage> {
       },
       child: Scaffold(
         backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text(
-          widget.title,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+        appBar: AppBar(
+          title: Text(
+            widget.title,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          foregroundColor: AppTheme.textMain,
         ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        foregroundColor: AppTheme.textMain,
-      ),
-      body: groupedItems.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.task_alt_rounded,
-                    size: 64,
-                    color: AppTheme.textSub.withOpacity(0.2),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    "No tasks found in this section",
-                    style: TextStyle(color: AppTheme.textSub),
-                  ),
-                ],
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(20),
-              itemCount: groupedItems.length,
-              itemBuilder: (context, index) {
-                final item = groupedItems[index];
+        body: _groupedItems.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.task_alt_rounded,
+                      size: 64,
+                      color: AppTheme.textSub.withOpacity(0.2),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      "No tasks found in this section",
+                      style: TextStyle(color: AppTheme.textSub),
+                    ),
+                  ],
+                ),
+              )
+            : ListView.builder(
+                padding: const EdgeInsets.all(20),
+                cacheExtent: 1000,
+                itemCount: _groupedItems.length,
+                itemBuilder: (context, index) {
+                  final item = _groupedItems[index];
 
                 if (item is Map && item['isHeader'] == true) {
                   return Padding(

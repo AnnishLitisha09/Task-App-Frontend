@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import '../theme/app_theme.dart';
 
 class TaskCard extends StatelessWidget {
@@ -17,6 +16,8 @@ class TaskCard extends StatelessWidget {
   final String? acceptLabel;
   final String? rejectLabel;
   final Map<String, dynamic>? actionButton;
+  final String? priority;
+  final String? taskTypeName;
 
   const TaskCard({
     super.key,
@@ -34,7 +35,27 @@ class TaskCard extends StatelessWidget {
     this.acceptLabel,
     this.rejectLabel,
     this.actionButton,
+    this.priority,
+    this.taskTypeName,
   });
+
+  Widget _miniBadge(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +94,24 @@ class TaskCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(title, style: AppTheme.bodyMain),
-                    Text(sub, style: AppTheme.bodySub),
+                    Row(
+                      children: [
+                        Expanded(child: Text(sub, style: AppTheme.bodySub)),
+                        if (priority != null) ...[
+                          const SizedBox(width: 8),
+                          _miniBadge(
+                            priority!.toUpperCase(),
+                            priority!.toLowerCase() == 'high' 
+                                ? AppTheme.danger 
+                                : (priority!.toLowerCase() == 'medium' ? AppTheme.warning : AppTheme.success)
+                          ),
+                        ],
+                        if (taskTypeName != null && (taskTypeName!.toLowerCase().contains('floating') || taskTypeName!.toLowerCase().contains('long'))) ...[
+                          const SizedBox(width: 4),
+                          _miniBadge(taskTypeName!.toUpperCase(), AppTheme.brandPrimary),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -143,8 +181,10 @@ class TaskCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
-      child: content,
-    ).animate().fadeIn().slideX(begin: 0.1, end: 0);
+      child: RepaintBoundary(
+        child: content,
+      ),
+    );
   }
 
   Widget _miniActionBtn(

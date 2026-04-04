@@ -38,15 +38,25 @@ class ResourceService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getVenues() async {
+  Future<List<Map<String, dynamic>>> getVenues({String? date, String? startTime, String? endTime}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken') ?? '';
       final backendUrl =
           dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
 
+      String url = '${backendUrl}tasks/venues/all';
+      List<String> queryParams = [];
+      if (date != null) queryParams.add('date=$date');
+      if (startTime != null) queryParams.add('start_time=$startTime');
+      if (endTime != null) queryParams.add('end_time=$endTime');
+      
+      if (queryParams.isNotEmpty) {
+        url += '?${queryParams.join('&')}';
+      }
+
       final response = await http.get(
-        Uri.parse('${backendUrl}tasks/venues/all'),
+        Uri.parse(url),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',

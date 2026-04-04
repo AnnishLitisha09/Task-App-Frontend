@@ -107,13 +107,22 @@ class _MaintenanceLogsPageState extends State<MaintenanceLogsPage> {
                     "Venue",
                     _venues
                         .where((v) => (v['venue_id'] ?? v['id']) == selectedVenueId)
-                        .map((v) => v['name'] as String)
+                        .map((v) {
+                           final n = v['name'] as String? ?? 'Unknown';
+                           final s = v['booking_status'] ?? v['status'] ?? 'unknown';
+                           return '$n (${s.toString().toUpperCase()})';
+                        })
                         .toList(),
                     (v) {
                       // Handled by lock
                     },
                     selectedVenueId != null 
-                        ? _venues.firstWhere((v) => (v['venue_id'] ?? v['id']) == selectedVenueId)['name'] 
+                        ? (() {
+                             final v = _venues.firstWhere((v) => (v['venue_id'] ?? v['id']) == selectedVenueId);
+                             final n = v['name'] as String? ?? 'Unknown';
+                             final s = v['booking_status'] ?? v['status'] ?? 'unknown';
+                             return '$n (${s.toString().toUpperCase()})';
+                          })()
                         : null,
                   ),
                   const SizedBox(height: 16),

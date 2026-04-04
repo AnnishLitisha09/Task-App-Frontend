@@ -444,7 +444,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     final venueName =
         _taskDetail?.venue?['name']?.toString() ??
         widget.taskData['venue']?.toString() ??
-        "Main Engineering Block, Room 402";
+        "No Venue Selected";
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1450,8 +1450,8 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     final bool isPendingProof = widget.taskData['isPendingProof'] == true ||
         widget.taskData['completionType'] == 'PROOF_SUBMIT';
 
-    String label = isApproval ? "MANUAL APPROVAL" : "REQUIRED AUTHENTICATION";
-    Color color = isApproval ? successColor : destructive;
+    String label = isApproval ? "MANUAL APPROVAL" : "CLOSURE PROTOCOL";
+    Color color = isApproval ? successColor : brandAccent;
 
     if (isPendingProof) {
       label = "PROOF SUBMISSION PENDING";
@@ -1515,13 +1515,13 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     final firstTaskType = _taskDetail?.taskTypes.firstOrNull;
     final String startVal =
         _formatDate(firstTaskType?.startDate, firstTaskType?.startTime) ??
-        widget.taskData['startDate'] ??
-        "Feb 06, 08:00 AM";
+        widget.taskData['startDate']?.toString() ??
+        "Not Specified";
 
     final String endVal =
         _formatDate(firstTaskType?.endDate, firstTaskType?.endTime) ??
-        widget.taskData['deadline'] ??
-        "Feb 10, 11:59 PM";
+        widget.taskData['deadline']?.toString() ??
+        "Not Specified";
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1595,7 +1595,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
             Text(
               _taskDetail?.title ??
                   widget.taskData['title'] ??
-                  "Peer Review Analysis",
+                  "Untitled Task",
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w900,

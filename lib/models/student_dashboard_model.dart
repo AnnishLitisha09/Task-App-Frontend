@@ -34,22 +34,22 @@ class StudentDashboard {
       todaysSchedule: (json['todays_schedule'] as List? ?? [])
           .map((i) => TodayTask.fromJson(i))
           .toList(),
-      overdueTasks: (json['overdue_tasks'] as List? ?? [])
-          .map((i) => OverdueTask.fromJson(i))
-          .toList(),
-      pendingForApproval: [
-        ...(json['pending_for_approval'] as List? ?? [])
-            .map((i) => PendingForApproval.fromJson(i)),
+      overdueTasks: [
+        ...(json['overdue_tasks'] as List? ?? [])
+            .map((i) => OverdueTask.fromJson(i)),
         ...(json['escalated_tasks'] as List? ?? [])
             .map((i) {
                if (i is Map<String, dynamic>) {
                  final map = Map<String, dynamic>.from(i);
-                 map['is_escalate'] = true;
-                 return PendingForApproval.fromJson(map);
+                 map['assignment_status'] = 'escalated';
+                 return OverdueTask.fromJson(map);
                }
-               return PendingForApproval.fromJson(i);
+               return OverdueTask.fromJson(i);
             })
       ],
+      pendingForApproval: (json['pending_for_approval'] as List? ?? [])
+          .map((i) => PendingForApproval.fromJson(i))
+          .toList(),
     );
   }
 }
@@ -126,7 +126,7 @@ class Counts {
   factory Counts.fromJson(Map<String, dynamic> json) {
     return Counts(
       todayScheduleCount: json['today_schedule_count'] ?? 0,
-      overdueTasksCount: json['overdue_tasks_count'] ?? 0,
+      overdueTasksCount: (json['overdue_tasks_count'] ?? 0) + (json['escalated_tasks_count'] ?? 0),
       pendingApprovalCount: json['pending_approval_count'] ?? 0,
     );
   }

@@ -352,8 +352,17 @@ class TaskService {
       final dateStr =
           '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
+      String url = '${backendUrl}tasks/schedule/monthly?date=$dateStr';
+      final scope = prefs.getString('userScope') ?? 'none';
+      if (scope == 'infrastructure') {
+        int? vId = prefs.getInt('selectedVenueId');
+        if (vId != null) {
+          url += '&venue_id=$vId';
+        }
+      }
+
       final response = await http.get(
-        Uri.parse('${backendUrl}tasks/schedule/monthly?date=$dateStr'),
+        Uri.parse(url),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -1135,6 +1144,7 @@ class TaskService {
     required DateTime newStart,
     required DateTime newEnd,
     required bool selfAssign,
+    List<int>? assigneeIds,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1153,6 +1163,7 @@ class TaskService {
           'new_end_date': DateFormat('yyyy-MM-dd').format(newEnd),
           'new_end_time': DateFormat('HH:mm:ss').format(newEnd),
           'self_assign': selfAssign,
+          if (assigneeIds != null) 'assignee_ids': assigneeIds,
         }),
       );
 

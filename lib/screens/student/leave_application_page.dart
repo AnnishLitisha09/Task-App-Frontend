@@ -16,6 +16,7 @@ class _LeaveApplicationPageState extends State<LeaveApplicationPage> {
   final LeaveService _leaveService = LeaveService();
   bool _isLoading = true;
   List<LeaveRecord> _leaves = [];
+  AttendanceStats _attendance = AttendanceStats(totalDays: 0, presentDays: 0, absentDays: 0);
 
   final Color brandAccent = const Color(0xFF6366F1);
   final Color slate900 = const Color(0xFF0F172A);
@@ -35,10 +36,11 @@ class _LeaveApplicationPageState extends State<LeaveApplicationPage> {
 
   Future<void> _fetchLeaves() async {
     setState(() => _isLoading = true);
-    final leaves = await _leaveService.getMyLeaves();
+    final result = await _leaveService.getMyLeaves();
     if (mounted) {
       setState(() {
-        _leaves = leaves;
+        _leaves = result.leaves;
+        _attendance = result.stats;
         _isLoading = false;
       });
     }
@@ -179,9 +181,26 @@ class _LeaveApplicationPageState extends State<LeaveApplicationPage> {
     );
   }
 
-  // --- ATTENDANCE OVERVIEW CARD ---
-  // --- UPDATED LIGHT THEMED ATTENDANCE CARD ---
+  // --- ATTENDANCE OVERVIEW CARD (Dynamic) ---
   Widget _buildAttendanceOverview() {
+    final pct = _attendance.percentage;
+    final pctStr = pct.toStringAsFixed(1);
+    final pctInt = pct.toInt();
+
+    // Determine standing label & color
+    String standing;
+    Color standingColor;
+    if (pct >= 90) {
+      standing = 'High Standing';
+      standingColor = successGreen;
+    } else if (pct >= 75) {
+      standing = 'Satisfactory';
+      standingColor = warningOrange;
+    } else {
+      standing = 'At Risk';
+      standingColor = errorRed;
+    }
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
@@ -222,7 +241,7 @@ class _LeaveApplicationPageState extends State<LeaveApplicationPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    "92.5%",
+                    "$pctStr%",
                     style: TextStyle(
                       color: slate900,
                       fontSize: 36,
@@ -231,16 +250,16 @@ class _LeaveApplicationPageState extends State<LeaveApplicationPage> {
                     ),
                   ),
                   Text(
-                    "High Standing",
+                    standing,
                     style: TextStyle(
-                      color: successGreen,
+                      color: standingColor,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
               ),
-              // Clean Minimalist Circle
+              // Circular progress ring
               Stack(
                 alignment: Alignment.center,
                 children: [
@@ -248,15 +267,17 @@ class _LeaveApplicationPageState extends State<LeaveApplicationPage> {
                     width: 70,
                     height: 70,
                     child: CircularProgressIndicator(
-                      value: 0.92,
+                      value: pct / 100,
                       strokeWidth: 8,
                       strokeCap: StrokeCap.round,
                       backgroundColor: surfaceColor,
-                      valueColor: AlwaysStoppedAnimation<Color>(brandAccent),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        pct >= 90 ? brandAccent : (pct >= 75 ? warningOrange : errorRed),
+                      ),
                     ),
                   ),
                   Text(
-                    "92",
+                    "$pctInt",
                     style: TextStyle(
                       color: slate900,
                       fontSize: 18,
@@ -268,7 +289,7 @@ class _LeaveApplicationPageState extends State<LeaveApplicationPage> {
             ],
           ),
           const SizedBox(height: 28),
-          // Stats Row with a subtle "Surface" background
+          // Stats Row
           Container(
             padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
             decoration: BoxDecoration(
@@ -278,11 +299,11 @@ class _LeaveApplicationPageState extends State<LeaveApplicationPage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _miniStatLight("180", "Total Days"),
+                _miniStatLight("${_attendance.totalDays}", "Total Days"),
                 _vDividerSlate(),
-                _miniStatLight("166", "Present"),
+                _miniStatLight("${_attendance.presentDays}", "Present"),
                 _vDividerSlate(),
-                _miniStatLight("14", "Absent"),
+                _miniStatLight("${_attendance.absentDays}", "Absent"),
               ],
             ),
           ),

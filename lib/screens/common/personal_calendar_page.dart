@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../services/task_service.dart';
+import '../../services/venue_notifier.dart';
+import 'task_detail_page.dart';
 
 class PersonalCalendarPage extends StatefulWidget {
   const PersonalCalendarPage({super.key});
@@ -26,6 +28,13 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
   void initState() {
     super.initState();
     _fetchMonthlySchedule();
+    VenueNotifier.venueNotifier.addListener(_fetchMonthlySchedule);
+  }
+
+  @override
+  void dispose() {
+    VenueNotifier.venueNotifier.removeListener(_fetchMonthlySchedule);
+    super.dispose();
   }
 
   Future<void> _fetchMonthlySchedule() async {
@@ -347,72 +356,88 @@ class _PersonalCalendarPageState extends State<PersonalCalendarPage> {
       left: left,
       width: cardWidth,
       height: cardHeight,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: [
-            BoxShadow(
-              color: taskColor.withOpacity(0.06),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-          border: Border.all(color: taskColor.withOpacity(0.12), width: 1),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Row(
-            children: [
-              Container(
-                width: 3.5,
-                margin: const EdgeInsets.symmetric(vertical: 6),
-                decoration: BoxDecoration(
-                  color: taskColor,
-                  borderRadius: const BorderRadius.horizontal(
-                    right: Radius.circular(4),
-                  ),
+      child: GestureDetector(
+        onTap: () {
+          final taskId = task['task_id'] ?? task['id'];
+          if (taskId != null) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TaskDetailsPage(
+                  taskData: {'task_id': taskId, 'title': task['title']},
+                  viewMode: 'default',
                 ),
               ),
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: duration < 0.4 ? 2 : 6,
+            ).then((_) => _fetchMonthlySchedule());
+          }
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: [
+              BoxShadow(
+                color: taskColor.withOpacity(0.06),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+            border: Border.all(color: taskColor.withOpacity(0.12), width: 1),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Row(
+              children: [
+                Container(
+                  width: 3.5,
+                  margin: const EdgeInsets.symmetric(vertical: 6),
+                  decoration: BoxDecoration(
+                    color: taskColor,
+                    borderRadius: const BorderRadius.horizontal(
+                      right: Radius.circular(4),
+                    ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        task['title'] ?? "Event",
-                        style: TextStyle(
-                          color: taskColor.withAlpha(220),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                          height: 1.1,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (duration > 0.6) ...[
-                        const SizedBox(height: 1),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: duration < 0.4 ? 2 : 6,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
                         Text(
-                          task['sub'] ?? "",
+                          task['title'] ?? "Event",
                           style: TextStyle(
-                            color: slate500.withOpacity(0.55),
-                            fontSize: 10,
+                            color: taskColor.withAlpha(220),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
                             height: 1.1,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        if (duration > 0.6) ...[
+                          const SizedBox(height: 1),
+                          Text(
+                            task['sub'] ?? "",
+                            style: TextStyle(
+                              color: slate500.withOpacity(0.55),
+                              fontSize: 10,
+                              height: 1.1,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ).animate().fadeIn().moveY(begin: 5, end: 0),

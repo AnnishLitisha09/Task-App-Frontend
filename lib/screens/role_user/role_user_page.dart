@@ -20,10 +20,16 @@ import '../common/task_detail_page.dart';
 import '../../models/departmental_dashboard_model.dart';
 import './venue_history_page.dart';
 import './venue_approvals_page.dart';
-import './venue_schedule_page.dart';
 import './venue_availability_page.dart';
+import '../faculty/all_schedule_page.dart';
 import '../common/generic_view_all_page.dart';
 import '../faculty/all_proofs_page.dart';
+import '../faculty/all_directives_page.dart';
+import '../faculty/all_escalations_page.dart';
+import '../faculty/task_verification_page.dart';
+import '../faculty/verify_users_proof_page.dart';
+import '../../components/unified_reject_dialog.dart';
+import '../common/user_selection_page.dart';
 import 'package:provider/provider.dart';
 import '../../store/app_store.dart';
 
@@ -114,8 +120,30 @@ class _RoleUserPageState extends State<RoleUserPage> {
       VenueNotifier.venueNotifier.addListener(_onVenueChanged);
     } else if (scope == 'department') {
       _fetchDepartmentalDashboard();
+      // If also a faculty, load their personal task data
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _ensureUserRolesAndHydrateFaculty();
+      });
     } else if (scope == 'institution') {
       _fetchInstitutionalDashboard();
+    }
+  }
+
+  bool get _isDualFacultyHod {
+    final store = context.read<AppStore>();
+    final roles = store.allRoles.map((r) => r.toLowerCase()).toList();
+    return roles.contains('faculty') &&
+        (roles.contains('hod') || store.userRole?.toLowerCase() == 'hod');
+  }
+
+  Future<void> _ensureUserRolesAndHydrateFaculty() async {
+    final store = context.read<AppStore>();
+    await store.ensureUserRole();
+    if (_isDualFacultyHod) {
+      await Future.wait([
+        store.fetchFacultyStats(),
+        store.fetchPendingVerifications(),
+      ]);
     }
   }
 
@@ -133,12 +161,18 @@ class _RoleUserPageState extends State<RoleUserPage> {
 
   Future<void> _fetchDepartmentalDashboard({bool force = false}) async {
     final store = context.read<AppStore>();
-    await Future.wait([
+    final futures = [
       store.fetchDeptDashboard(force: force),
       store.fetchEscalations(force: force),
       store.fetchPendingProofs(force: force),
       store.fetchAuthorityApprovals(force: force),
-    ]);
+    ];
+    // Also refresh faculty personal data if dual-role
+    if (_isDualFacultyHod) {
+      futures.add(store.fetchFacultyStats(force: force));
+      futures.add(store.fetchPendingVerifications(force: force));
+    }
+    await Future.wait(futures);
   }
 
   Future<void> _fetchInstitutionalDashboard({bool force = false}) async {
@@ -184,6 +218,120 @@ class _RoleUserPageState extends State<RoleUserPage> {
       return _fetchInstitutionalDashboard(force: true);
     if (scope == 'department') return _fetchDepartmentalDashboard(force: true);
     return _fetchVenueDashboard(force: true);
+  }
+
+  // ─── Faculty-side helpers (used when dual role hod+faculty) ──────────────
+
+  Future<void> _acceptFacultyTask(int index) async {
+    final store = context.read<AppStore>();
+    final stats = store.facultyStats;
+    if (stats == null) return;
+    final task = stats.pendingTasks[index];
+    final taskId = task['task_id'];
+    if (taskId == null) return;
+    stats.pendingTasks.removeAt(index);
+    store.triggerUpdate();
+    try {
+      await _taskService.acceptTask(taskId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Task accepted successfully"),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+        await store.fetchFacultyStats(force: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        final errorMsg = e.toString().replaceAll('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error: $errorMsg"),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+        await store.fetchFacultyStats(force: true);
+      }
+    }
+  }
+
+  List<String> _getFacultyTransferableRoles() {
+    const hierarchy = ['admin', 'principal', 'dean', 'hod', 'faculty', 'student', 'staff'];
+    const keyMap = {
+      'hod': 'hods', 'student': 'students', 'faculty': 'faculty',
+      'staff': 'staff', 'admin': 'admin', 'principal': 'principal', 'dean': 'dean',
+    };
+    const userIndex = 4; // faculty is at index 4
+    return hierarchy.sublist(0, userIndex + 1).map((r) => keyMap[r] ?? r).toList();
+  }
+
+  void _showFacultyRejectDialog(int index) {
+    final stats = context.read<AppStore>().facultyStats;
+    if (stats == null) return;
+    final task = stats.pendingTasks[index];
+    final taskId = task['task_id'];
+    final taskTitle = task['title'] ?? 'Task';
+    if (taskId == null) return;
+    UnifiedRejectDialog.show(
+      context,
+      taskTitle: taskTitle,
+      onTransfer: () async {
+        final result = await Navigator.push<List<Map<String, dynamic>>>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => UserSelectionPage(
+              multiSelect: false,
+              allowedRoles: _getFacultyTransferableRoles(),
+            ),
+          ),
+        );
+        if (result != null && result.isNotEmpty) {
+          final selectedUser = result.first;
+          final selectedUserId = selectedUser['user_id'] ?? selectedUser['id'];
+          if (selectedUserId == null || !mounted) return;
+          try {
+            await _taskService.rejectTask(
+              taskId,
+              "Transferred to ${selectedUser['name']}",
+              transferToUserId: selectedUserId,
+            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text("Task transferred to ${selectedUser['name']}"),
+                  backgroundColor: AppTheme.success,
+                ),
+              );
+              _refresh();
+            }
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text("Error: $e"), backgroundColor: AppTheme.danger),
+              );
+            }
+          }
+        }
+      },
+      onReject: (reason, details) async {
+        try {
+          await _taskService.rejectTask(taskId, reason);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Task rejected"), backgroundColor: AppTheme.success),
+            );
+            _refresh();
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Error: $e"), backgroundColor: AppTheme.danger),
+            );
+          }
+        }
+      },
+    );
   }
 
   @override
@@ -636,7 +784,14 @@ class _RoleUserPageState extends State<RoleUserPage> {
         SectionHeader(
           title: "Today's Schedule",
           count: schedule.length,
-          onViewAll: () {},
+          onViewAll: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => AllSchedulePage(
+                userRole: context.read<AppStore>().userRole ?? 'User',
+              ),
+            ),
+          ).then((result) { if (mounted && result == true) _refresh(); }),
         ),
       );
       if (isInitialLoad) {
@@ -663,6 +818,8 @@ class _RoleUserPageState extends State<RoleUserPage> {
               sub: task['timing']?.toString() ?? task['time']?.toString() ?? '',
               accent: AppTheme.brandAccent,
               icon: Icons.event_rounded,
+              priority: task['priority']?.toString(),
+              taskTypeName: task['task_type']?.toString() ?? task['type']?.toString(),
               onTap: () {},
             ),
           );
@@ -724,6 +881,8 @@ class _RoleUserPageState extends State<RoleUserPage> {
               icon: Icons.assignment_turned_in_rounded,
               isRequest: true,
               acceptLabel: "Executive Directive",
+              priority: task['priority']?.toString(),
+              taskTypeName: task['task_type']?.toString() ?? task['type']?.toString(),
               onAccept: taskId != null
                   ? () => _handleAcceptDirective(taskId, true)
                   : null,
@@ -937,11 +1096,8 @@ class _RoleUserPageState extends State<RoleUserPage> {
           onViewAll: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => GenericViewAllPage(
-                title: "Today's Schedule",
-                tasks: _deptDetails?.todaysSchedule ?? [],
-                viewMode: 'viewonly',
-                accentColor: AppTheme.brandAccent,
+              builder: (_) => AllSchedulePage(
+                userRole: context.read<AppStore>().userRole ?? 'Department',
               ),
             ),
           ).then((result) { if (mounted && result == true) _refresh(); }),
@@ -1111,6 +1267,8 @@ class _RoleUserPageState extends State<RoleUserPage> {
               accent: AppTheme.warning,
               icon: Icons.how_to_reg_rounded,
               isApproval: true,
+              priority: task['priority']?.toString(),
+              taskTypeName: task['task_type']?.toString() ?? task['type']?.toString(),
               onAccept: taskId != null
                   ? () => _handleApproveTask(taskId, true)
                   : null,
@@ -1180,6 +1338,8 @@ class _RoleUserPageState extends State<RoleUserPage> {
               sub: "Assignee: ${task['assignee_name'] ?? 'N/A'}",
               accent: AppTheme.danger,
               icon: Icons.priority_high_rounded,
+              priority: task['priority']?.toString(),
+              taskTypeName: task['task_type']?.toString() ?? task['type']?.toString(),
               onTap: taskId != null
                   ? () => Navigator.push(
                       context,
@@ -1295,6 +1455,8 @@ class _RoleUserPageState extends State<RoleUserPage> {
               sub: task['description']?.toString() ?? "No description",
               accent: AppTheme.brandAccent,
               icon: Icons.task_alt_rounded,
+              priority: task['priority']?.toString(),
+              taskTypeName: task['task_type']?.toString() ?? task['type']?.toString(),
               onTap: taskId != null
                   ? () => Navigator.push(
                       context,
@@ -1308,6 +1470,386 @@ class _RoleUserPageState extends State<RoleUserPage> {
                   : null,
             ),
           );
+        }
+      }
+
+      // ── Dual-role (Faculty + HOD): Personal Faculty Tasks ─────────────────
+      if (_isDualFacultyHod) {
+        final store = context.read<AppStore>();
+        final facultyStats = store.facultyStats;
+        final isFacultyLoading = store.isLoading('facultyStats') && facultyStats == null;
+
+        // Divider heading
+        sections.add(const SizedBox(height: 32));
+        sections.add(
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppTheme.brandAccent.withOpacity(0.08),
+                  AppTheme.success.withOpacity(0.05),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AppTheme.brandAccent.withOpacity(0.15),
+                width: 1.5,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.brandAccent.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.person_rounded,
+                    color: AppTheme.brandAccent,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "My Personal Tasks",
+                        style: AppTheme.h2.copyWith(fontSize: 15),
+                      ),
+                      Text(
+                        "Tasks assigned to you as Faculty",
+                        style: AppTheme.bodySub.copyWith(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.success.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    "FACULTY",
+                    style: TextStyle(
+                      color: AppTheme.success,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ).animate().fadeIn().slideY(begin: 0.1),
+        );
+        sections.add(const SizedBox(height: 20));
+
+        // Faculty: Today's Schedule
+        final facultySchedule = facultyStats?.allTasksToday ?? [];
+        final facultySchedulePreview = facultySchedule.take(2).toList();
+        final userRole = store.userRole;
+        sections.add(
+          SectionHeader(
+            title: "Today's Schedule",
+            count: facultySchedule.length,
+            onViewAll: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AllSchedulePage(userRole: userRole ?? 'faculty'),
+              ),
+            ).then((result) { if (mounted && result == true) _refresh(); }),
+          ),
+        );
+        if (isFacultyLoading) {
+          sections.add(const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]));
+        } else if (facultySchedulePreview.isEmpty) {
+          sections.add(
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text("No tasks scheduled for today", style: TextStyle(color: AppTheme.textSub)),
+              ),
+            ),
+          );
+        } else {
+          for (final item in facultySchedulePreview) {
+            final taskId = item['task_id'];
+            final heroTag = "hod_fac_task_${taskId}_today";
+            sections.add(
+              TaskCard(
+                title: item['title'] ?? 'Task',
+                sub: item['status'] ?? 'Scheduled',
+                accent: AppTheme.success,
+                icon: Icons.calendar_today_rounded,
+                heroTag: heroTag,
+                actionButton: item['action_button'],
+                onTap: taskId != null
+                    ? () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TaskDetailsPage(
+                            taskData: {
+                              'task_id': taskId,
+                              'title': item['title'],
+                              'sub': item['status'],
+                              'startDate': item['start_date'] ?? 'N/A',
+                              'deadline': item['end_date'] ?? 'N/A',
+                              'userRole': userRole ?? 'Faculty',
+                            },
+                          ),
+                        ),
+                      ).then((result) { if (mounted && result == true) _refresh(); })
+                    : null,
+              ),
+            );
+          }
+        }
+
+        sections.add(const SizedBox(height: 24));
+
+        // Faculty: Incoming Directives (pending tasks)
+        final facultyPending = facultyStats?.pendingTasks ?? [];
+        final facultyPendingPreview = facultyPending.take(2).toList();
+        sections.add(
+          SectionHeader(
+            title: "Incoming Directives",
+            isStatus: true,
+            count: facultyPending.length,
+            onViewAll: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AllDirectivesPage(
+                  isBlocked: widget.isBlocked,
+                  userRole: userRole ?? 'faculty',
+                  onRefreshParent: _refresh,
+                ),
+              ),
+            ).then((result) { if (mounted && result == true) _refresh(); }),
+          ),
+        );
+        if (isFacultyLoading) {
+          sections.add(const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]));
+        } else if (facultyPendingPreview.isEmpty) {
+          sections.add(
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text("No pending directives", style: TextStyle(color: AppTheme.textSub)),
+              ),
+            ),
+          );
+        } else {
+          for (var i = 0; i < facultyPendingPreview.length; i++) {
+            final data = facultyPendingPreview[i];
+            final heroTag = "hod_fac_directive_${data['task_id']}_$i";
+            sections.add(
+              TaskCard(
+                title: data['title'] ?? 'Task',
+                sub: data['description'] ?? 'No description',
+                accent: AppTheme.brandAccent,
+                icon: Icons.assignment_turned_in_rounded,
+                heroTag: heroTag,
+                actionButton: data['action_button'],
+                isRequest: true,
+                onAccept: () {
+                  if (widget.isBlocked) return;
+                  _acceptFacultyTask(i);
+                },
+                onReject: () {
+                  if (widget.isBlocked) return;
+                  _showFacultyRejectDialog(i);
+                },
+                onTap: data['task_id'] != null
+                    ? () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TaskDetailsPage(
+                            taskData: {
+                              'task_id': data['task_id'],
+                              'title': data['title'],
+                              'sub': data['description'],
+                              'userRole': userRole ?? 'Faculty',
+                            },
+                          ),
+                        ),
+                      ).then((result) { if (mounted && result == true) _refresh(); })
+                    : null,
+              ),
+            );
+          }
+        }
+
+        sections.add(const SizedBox(height: 24));
+
+        // Faculty: Escalated Tasks (personal)
+        final facultyEscalations = store.escalations;
+        final facultyEscalationsPreview = facultyEscalations.take(2).toList();
+        sections.add(
+          SectionHeader(
+            title: "My Escalated Tasks",
+            isStatus: true,
+            count: facultyEscalations.length,
+            onViewAll: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AllEscalationsPage(userRole: userRole ?? 'faculty'),
+              ),
+            ).then((result) { if (mounted && result == true) _refresh(); }),
+          ),
+        );
+        if (isFacultyLoading) {
+          sections.add(const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]));
+        } else if (facultyEscalationsPreview.isEmpty) {
+          sections.add(
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text("No personal escalated tasks", style: TextStyle(color: AppTheme.textSub)),
+              ),
+            ),
+          );
+        } else {
+          for (var i = 0; i < facultyEscalationsPreview.length; i++) {
+            final esc = facultyEscalationsPreview[i];
+            final heroTag = "hod_fac_esc_${esc['task_id']}_$i";
+            sections.add(
+              TaskCard(
+                title: esc['title'] ?? "Escalated Task",
+                sub: esc['escalated_reason'] ?? esc['description'] ?? "High Priority",
+                accent: AppTheme.danger,
+                icon: Icons.priority_high_rounded,
+                heroTag: heroTag,
+                actionButton: esc['action_button'],
+                onTap: esc['task_id'] != null
+                    ? () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TaskDetailsPage(
+                            taskData: {
+                              'task_id': esc['task_id'],
+                              'title': esc['title'],
+                              'isEscalated': true,
+                              'userRole': 'Faculty',
+                            },
+                          ),
+                        ),
+                      ).then((result) { if (mounted && result == true) _refresh(); })
+                    : null,
+              ),
+            );
+          }
+        }
+
+        sections.add(const SizedBox(height: 24));
+
+        // Faculty: Pending Verifications
+        final pendingVerif = store.pendingVerifications;
+        if (pendingVerif.isNotEmpty) {
+          sections.add(
+            SectionHeader(
+              title: "Pending Verifications",
+              isStatus: true,
+              count: pendingVerif.length,
+              onViewAll: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const TaskVerificationPage(),
+                ),
+              ).then((result) { if (mounted && result == true) _refresh(); }),
+            ),
+          );
+          for (final verify in pendingVerif.take(1)) {
+            final heroTag = "hod_fac_verify_${verify['assignment_id']}_dash";
+            sections.add(
+              TaskCard(
+                title: verify['title'] ?? 'Task Review',
+                sub: 'By: ${verify['assignee_name']} (${verify['assignee_role']})',
+                accent: AppTheme.brandAccent,
+                icon: Icons.fact_check_rounded,
+                heroTag: heroTag,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => VerifyUsersProofPage(
+                      taskId: verify['task_id'],
+                      taskTitle: verify['title'] ?? 'Task Review',
+                    ),
+                  ),
+                ).then((result) { if (mounted && result == true) _refresh(); }),
+              ),
+            );
+          }
+          sections.add(const SizedBox(height: 24));
+        }
+
+        // Faculty: Pending Proofs (personal)
+        sections.add(
+          SectionHeader(
+            title: "My Pending Proofs",
+            isStatus: true,
+            count: _pendingProofs.length,
+            onViewAll: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AllProofsPage()),
+            ).then((result) { if (mounted && result == true) _refresh(); }),
+          ),
+        );
+        if (isFacultyLoading) {
+          sections.add(const Column(children: [SkeletonTaskCard(), SkeletonTaskCard()]));
+        } else if (_pendingProofs.isEmpty) {
+          sections.add(
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text("No pending proofs to review", style: TextStyle(color: AppTheme.textSub)),
+              ),
+            ),
+          );
+        } else {
+          for (var i = 0; i < _pendingProofs.take(2).length; i++) {
+            final proof = _pendingProofs[i];
+            final taskId = proof['task_id'] ?? proof['id'];
+            final heroTag = "hod_fac_proof_${proof['task_id']}_$i";
+            final dl = proof['deadline'];
+            final dlStr = dl != null
+                ? "${dl['end_date'] ?? 'N/A'} ${dl['end_time'] ?? ''}"
+                : "N/A";
+            sections.add(
+              TaskCard(
+                title: proof['title'] ?? 'Proof Task',
+                sub: proof['description'] ?? 'Proof Status: ${proof['proof_status'] ?? 'Pending'}',
+                accent: Colors.orange,
+                icon: Icons.photo_camera_rounded,
+                heroTag: heroTag,
+                onTap: taskId != null
+                    ? () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TaskDetailsPage(
+                            taskData: {
+                              'task_id': taskId,
+                              'assignment_id': proof['assignment_id'],
+                              'title': proof['title'],
+                              'sub': proof['description'] ?? 'Awaiting proof verification',
+                              'deadline': dlStr,
+                              'completionType': "PROOF_REVIEW",
+                              'is_document': proof['is_document'],
+                              'status': proof['status'],
+                              'proof_status': proof['proof_status'],
+                              'userRole': 'Faculty',
+                            },
+                          ),
+                        ),
+                      ).then((result) { if (mounted && result == true) _refresh(); })
+                    : null,
+              ),
+            );
+          }
         }
       }
     } else if (scope == 'infrastructure') {
@@ -1329,7 +1871,11 @@ class _RoleUserPageState extends State<RoleUserPage> {
             title: "Today's Schedule",
             onViewAll: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const VenueSchedulePage()),
+              MaterialPageRoute(
+                builder: (_) => AllSchedulePage(
+                  userRole: context.read<AppStore>().userRole ?? 'Infrastructure',
+                ),
+              ),
             ).then((result) { if (mounted && result == true) _refresh(); }),
           ),
         );
@@ -1363,6 +1909,8 @@ class _RoleUserPageState extends State<RoleUserPage> {
                 icon: isCompleted
                     ? Icons.check_circle_rounded
                     : Icons.meeting_room_rounded,
+                priority: booking.priority,
+                taskTypeName: booking.taskType,
                 onTap: () async {
                   final result = await Navigator.push(
                     context,

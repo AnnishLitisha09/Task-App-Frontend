@@ -5,9 +5,9 @@ import '../../components/skeleton_loader.dart';
 import '../../models/activity_history_model.dart';
 import '../../models/staff_dashboard_model.dart';
 import '../../services/user_service.dart';
-import 'all_staff_schedule_page.dart';
 import 'staff_history_page.dart';
 import '../../services/task_service.dart';
+import '../faculty/all_schedule_page.dart';
 import '../common/generic_view_all_page.dart';
 
 class StaffPage extends StatefulWidget {
@@ -189,7 +189,9 @@ class _StaffPageState extends State<StaffPage> {
                             onViewAll: () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => const AllStaffSchedulePage(),
+                                builder: (_) => const AllSchedulePage(
+                                  userRole: 'staff',
+                                ),
                               ),
                             ).then((result) { if (mounted && result == true) _fetchDashboardData(); }),
                           ),

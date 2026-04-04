@@ -84,7 +84,7 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
 
   bool _isSelected(String id) {
     return _selectedItems.any(
-      (u) => u['id'] == id || u['user_id']?.toString() == id,
+      (u) => (u['user_id'] ?? u['id'])?.toString() == id,
     );
   }
 
@@ -93,12 +93,12 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
     final isRoleOrDept = item['type'] == 'role' || item['type'] == 'dept';
 
     if (!isRoleOrDept) {
-      final id = (item['id'] ?? item['user_id'])?.toString() ?? '';
+      final id = (item['user_id'] ?? item['id'])?.toString() ?? '';
       setState(() {
         if (_isSelected(id)) {
           if (widget.multiSelect) {
             _selectedItems.removeWhere(
-              (u) => (u['id'] ?? u['user_id'])?.toString() == id,
+              (u) => (u['user_id'] ?? u['id'])?.toString() == id,
             );
           }
         } else {
@@ -364,18 +364,17 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
       },
     ];
 
-    // Filter by allowedRoles
-    final filteredRoles = widget.allowedRoles == null
-        ? roles
-        : roles
-              .where(
-                (r) =>
-                    widget.allowedRoles!.contains(r['roleKey']) ||
-                    widget.allowedRoles!.contains(
-                      r['title'].toString().replaceFirst('All ', ''),
-                    ),
-              )
-              .toList();
+    // Filter by allowedRoles and user count
+    final filteredRoles = roles.where((r) {
+      if (_getUserCount('role', roleKey: r['roleKey']) == 0) return false;
+      if (widget.allowedRoles == null) return true;
+
+      final allowed = widget.allowedRoles!.map((e) => e.toLowerCase()).toList();
+      final roleKey = r['roleKey'].toString().toLowerCase();
+      final roleTitle = r['title'].toString().toLowerCase().replaceFirst('all ', '');
+
+      return allowed.contains(roleKey) || allowed.contains(roleTitle);
+    }).toList();
 
     // Filter by search query
     final displayRoles = _searchQuery.isEmpty
@@ -421,7 +420,9 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
   Widget _buildDeptList() {
     final Map<String, dynamic> roleDepts =
         _apiData![_selectedRole] as Map<String, dynamic>? ?? {};
-    final depts = roleDepts.keys.toList();
+    final depts = roleDepts.keys
+        .where((d) => _getUserCount('dept', deptName: d) > 0)
+        .toList();
 
     final displayDepts = _searchQuery.isEmpty
         ? depts

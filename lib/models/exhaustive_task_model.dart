@@ -46,7 +46,7 @@ class ExhaustiveTaskModel {
       closureIds: List<int>.from(json['closure_ids'] ?? []),
       people: PeopleInfo.fromJson(json['people'] ?? {}),
       summaryStats: SummaryStats.fromJson(json['summary_stats'] ?? {}),
-      assignmentStats: AssignmentStats.fromJson(json['assignment_stats'] ?? {}),
+      assignmentStats: AssignmentStats.fromJson(json['summary_stats'] ?? json['assignment_stats'] ?? {}),
       assignments: assigneeList.map((e) => Assignment.fromJson(e)).toList(),
       historyLogs:
           (json['history_logs'] as List?)

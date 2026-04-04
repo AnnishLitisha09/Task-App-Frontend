@@ -21,7 +21,6 @@ import '../role_user/maintenance_logs_page.dart';
 import 'score_performance_page.dart';
 import '../../services/venue_notifier.dart';
 
-
 class ProfilePage extends StatefulWidget {
   final String role;
   final String? title;
@@ -74,8 +73,10 @@ class _ProfilePageState extends State<ProfilePage> {
       final allRolesString = prefs.getString('allRoles') ?? '';
       _currentScopeDetails = prefs.getString('scopeDetails') ?? 'none';
 
-      final roles =
-          allRolesString.split(',').where((e) => e.isNotEmpty).toList();
+      final roles = allRolesString
+          .split(',')
+          .where((e) => e.isNotEmpty)
+          .toList();
 
       // NEW: Load incharge venues
       final venuesJson = prefs.getString('inchargeVenues');
@@ -234,7 +235,10 @@ class _ProfilePageState extends State<ProfilePage> {
             if (widget.scope == 'infrastructure' && _inchargeVenues.length > 1)
               _buildSettingsGroup("Active Workplace", [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
                   child: Row(
                     children: [
                       Container(
@@ -243,7 +247,11 @@ class _ProfilePageState extends State<ProfilePage> {
                           color: brandAccent.withOpacity(0.08),
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: Icon(Icons.storefront_rounded, color: brandAccent, size: 20),
+                        child: Icon(
+                          Icons.storefront_rounded,
+                          color: brandAccent,
+                          size: 20,
+                        ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -263,10 +271,16 @@ class _ProfilePageState extends State<ProfilePage> {
                               child: DropdownButton<int>(
                                 value: _selectedVenueId,
                                 isDense: true,
-                                icon: Icon(Icons.keyboard_arrow_down_rounded, color: slate500, size: 18),
+                                icon: Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: slate500,
+                                  size: 18,
+                                ),
                                 items: _inchargeVenues.map((v) {
                                   return DropdownMenuItem<int>(
-                                    value: int.tryParse(v['venue_id'].toString()),
+                                    value: int.tryParse(
+                                      v['venue_id'].toString(),
+                                    ),
                                     child: Text(
                                       v['name'] ?? 'Unnamed',
                                       style: TextStyle(
@@ -280,7 +294,11 @@ class _ProfilePageState extends State<ProfilePage> {
                                 onChanged: (val) async {
                                   if (val == null) return;
                                   final selected = _inchargeVenues.firstWhere(
-                                    (v) => int.tryParse(v['venue_id'].toString()) == val,
+                                    (v) =>
+                                        int.tryParse(
+                                          v['venue_id'].toString(),
+                                        ) ==
+                                        val,
                                   );
                                   // Notify all pages globally
                                   await VenueNotifier.switchVenue(
@@ -291,7 +309,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text("Workplace switched to ${selected['name']}"),
+                                        content: Text(
+                                          "Workplace switched to ${selected['name']}",
+                                        ),
                                         behavior: SnackBarBehavior.floating,
                                         backgroundColor: brandAccent,
                                       ),
@@ -393,7 +413,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 _settingsTile(
                   Icons.account_balance_wallet_outlined,
                   "On-Duty Wallet",
-                  "12 Active coupons • Next expiry Feb 12",
+                  "View and apply for OD Coupons",
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -524,13 +544,19 @@ class _ProfilePageState extends State<ProfilePage> {
       Map<String, dynamic> statData = details?.stats ?? {};
 
       if (widget.scope == 'infrastructure') {
-        // ... existing infrastructure logic ...
+        int totalVenues =
+            int.tryParse(statData['total_venues']?.toString() ?? '0') ?? 0;
+        int bookingsToday =
+            int.tryParse(statData['bookings_today']?.toString() ?? '0') ?? 0;
+        int underRepair =
+            int.tryParse(statData['under_repair']?.toString() ?? '0') ?? 0;
+
         stats = [
-          _performanceStat("45", "Total Venues", brandAccent),
+          _performanceStat("$totalVenues", "Total Venues", brandAccent),
           _vDivider(),
-          _performanceStat("12", "Bookings Today", successGreen),
+          _performanceStat("$bookingsToday", "Bookings Today", successGreen),
           _vDivider(),
-          _performanceStat("02", "Under Repair", penaltyRed),
+          _performanceStat("$underRepair", "Under Repair", penaltyRed),
         ];
       } else {
         // Department / Institution Stats

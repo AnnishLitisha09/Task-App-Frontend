@@ -253,4 +253,74 @@ class UserService {
       throw Exception('Error fetching departmental tasks: $e');
     }
   }
+
+  // --- Admin User Management APIs ---
+
+  /// Fetches all active users with their primary and secondary roles
+  Future<Map<String, dynamic>> getAllUsersWithDetails() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.get(
+        Uri.parse('${backendUrl}users/dashboard/all'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception(
+          'Failed to load user management data: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      throw Exception('Error fetching all users: $e');
+    }
+  }
+
+  /// Updates primary and secondary roles for a specific user
+  Future<Map<String, dynamic>> updateUserRoles(
+    String userId, {
+    String? primaryRole,
+    String? removeProfile,
+    List<Map<String, dynamic>>? addAssignments,
+    List<Map<String, dynamic>>? removeAssignments,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final Map<String, dynamic> body = {};
+      if (primaryRole != null) body['primary_role'] = primaryRole;
+      if (removeProfile != null) body['remove_profile'] = removeProfile;
+      if (addAssignments != null) body['add_assignments'] = addAssignments;
+      if (removeAssignments != null) body['remove_assignments'] = removeAssignments;
+
+      final response = await http.put(
+        Uri.parse('${backendUrl}users/$userId/roles'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['message'] ?? 'Failed to update user roles');
+      }
+    } catch (e) {
+      throw Exception('Error updating user roles: $e');
+    }
+  }
 }

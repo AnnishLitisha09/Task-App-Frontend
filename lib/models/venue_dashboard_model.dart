@@ -151,6 +151,9 @@ class ConfirmedBooking {
   final String toTime;
   final String bookedBy;
   final String status;
+  final String? priority;
+  final String? taskType;
+  final bool? isPackage;
 
   ConfirmedBooking({
     required this.taskId,
@@ -159,6 +162,9 @@ class ConfirmedBooking {
     required this.toTime,
     required this.bookedBy,
     required this.status,
+    this.priority,
+    this.taskType,
+    this.isPackage,
   });
 
   factory ConfirmedBooking.fromJson(dynamic json) {
@@ -189,6 +195,9 @@ class ConfirmedBooking {
           json['venue_approval_status']?.toString() ??
           json['status']?.toString() ??
           'pending',
+      priority: json['priority']?.toString(),
+      taskType: json['task_type']?.toString() ?? timing?['task_name']?.toString(),
+      isPackage: json['is_package'] == true,
     );
   }
 }
