@@ -115,13 +115,12 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
       List<Map<String, dynamic>> usersInGroup = [];
       if (item['type'] == 'role') {
         final roleKey = item['roleKey'];
-        if (roleKey == 'staff') {
-          usersInGroup = List<Map<String, dynamic>>.from(
-            _apiData!['staff'] ?? [],
-          );
-        } else {
-          final Map<String, dynamic> depts = _apiData![roleKey] ?? {};
-          for (var deptUsers in depts.values) {
+        // Handle flat lists (staff, principal, dean) or department-grouped maps
+        final data = _apiData![roleKey];
+        if (data is List) {
+          usersInGroup = List<Map<String, dynamic>>.from(data);
+        } else if (data is Map<String, dynamic>) {
+          for (var deptUsers in data.values) {
             usersInGroup.addAll(List<Map<String, dynamic>>.from(deptUsers));
           }
         }
@@ -162,15 +161,17 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
   int _getUserCount(String type, {String? roleKey, String? deptName}) {
     if (_apiData == null) return 0;
     if (type == 'role') {
-      if (roleKey == 'staff') return (_apiData!['staff'] as List?)?.length ?? 0;
-      final Map<String, dynamic>? depts =
-          _apiData![roleKey] as Map<String, dynamic>?;
-      if (depts == null) return 0;
-      int count = 0;
-      for (var userList in depts.values) {
-        count += (userList as List).length;
+      final data = _apiData![roleKey];
+      if (data is List) {
+        return data.length;
+      } else if (data is Map<String, dynamic>) {
+        int count = 0;
+        for (var userList in data.values) {
+          count += (userList as List).length;
+        }
+        return count;
       }
-      return count;
+      return 0;
     } else if (type == 'dept') {
       final Map<String, dynamic>? depts =
           _apiData![_selectedRole!] as Map<String, dynamic>?;
@@ -402,10 +403,11 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
           roleKey: role['roleKey'],
           onTap: () => setState(() {
             _selectedRole = role['roleKey'];
-            // Staff jump straight to users (level 2) since it's a flat list
-            if (_selectedRole == 'staff') {
+            // Flat roles jump straight to users (level 2)
+            final data = _apiData![_selectedRole];
+            if (data is List) {
               _currentLevel = 2;
-              _selectedDept = 'Staff';
+              _selectedDept = role['title'].toString().replaceFirst('All ', '');
             } else {
               _currentLevel = 1;
             }
@@ -459,11 +461,12 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
   Widget _buildUserList() {
     List<Map<String, dynamic>> users = [];
 
-    if (_selectedRole == 'staff') {
-      users = List<Map<String, dynamic>>.from(_apiData!['staff'] ?? []);
+    final data = _apiData![_selectedRole];
+    if (data is List) {
+      users = List<Map<String, dynamic>>.from(data);
     } else {
       final Map<String, dynamic> roleDepts =
-          _apiData![_selectedRole] as Map<String, dynamic>? ?? {};
+          data as Map<String, dynamic>? ?? {};
       users = List<Map<String, dynamic>>.from(roleDepts[_selectedDept] ?? []);
     }
 
@@ -564,20 +567,20 @@ class _UserSelectionPageState extends State<UserSelectionPage> {
   }) {
     List<Map<String, dynamic>> usersInGroup = [];
     if (type == 'role') {
-      if (roleKey == 'staff') {
-        usersInGroup = List<Map<String, dynamic>>.from(
-          _apiData!['staff'] ?? [],
-        );
-      } else if (roleKey != null) {
-        final Map<String, dynamic> depts = _apiData![roleKey] ?? {};
-        for (var deptUsers in depts.values) {
+      final data = _apiData![roleKey];
+      if (data is List) {
+        usersInGroup = List<Map<String, dynamic>>.from(data);
+      } else if (data is Map<String, dynamic>) {
+        for (var deptUsers in data.values) {
           usersInGroup.addAll(List<Map<String, dynamic>>.from(deptUsers));
         }
       }
     } else if (type == 'dept') {
-      final Map<String, dynamic> depts = _apiData![_selectedRole!] ?? {};
-      final deptName = title.split(' (').first; // Extract name from title
-      usersInGroup = List<Map<String, dynamic>>.from(depts[deptName] ?? []);
+      final depts = _apiData![_selectedRole!];
+      if (depts is Map<String, dynamic>) {
+        final deptName = title.split(' (').first; // Extract name from title
+        usersInGroup = List<Map<String, dynamic>>.from(depts[deptName] ?? []);
+      }
     }
 
     final isSelectedItem =

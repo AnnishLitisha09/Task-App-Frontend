@@ -89,8 +89,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'selectedAssignees': <Map<String, dynamic>>[],
       // Self Log specific fields
       'activityDate': DateTime.now(),
-      'startTime': const TimeOfDay(hour: 8, minute: 30),
-      'endTime': const TimeOfDay(hour: 10, minute: 30),
+      'startTime': const TimeOfDay(hour: 9, minute: 0),
+      'endTime': const TimeOfDay(hour: 17, minute: 0),
       'calculatedHours': 2.0,
       'activityTags': <String>[],
       'attachDocuments': false,
@@ -2361,20 +2361,30 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
     // Removed working hours check for directives (allowed 24/7)
 
-    // --- NEW: Deadline Validation (Prevent creating past tasks) ---
+    // --- Deadline Validation (Prevent creating past tasks) ---
     if (_taskData['taskType'] == 'Fixed Time Task' ||
         _taskData['taskType'] == 'Bidding Task') {
-      final DateTime selectedDate = _taskData['selectedDate'] ?? DateTime.now();
+      final DateTime? rawDate = _taskData['selectedDate'];
       final TimeOfDay? et = _taskData['endTime'];
-      if (et != null) {
-        final deadline = DateTime(
-          selectedDate.year,
-          selectedDate.month,
-          selectedDate.day,
-          et.hour,
-          et.minute,
-        );
-        if (deadline.isBefore(DateTime.now())) {
+      if (rawDate != null && et != null) {
+        final now = DateTime.now();
+        // Normalize to local date-only (strip time zone from UTC-parsed dates)
+        final DateTime localDate = DateTime(rawDate.year, rawDate.month, rawDate.day);
+        final DateTime todayDate = DateTime(now.year, now.month, now.day);
+
+        // Only check time if the date is today; past dates always fail
+        bool isPast;
+        if (localDate.isBefore(todayDate)) {
+          isPast = true;
+        } else if (localDate.isAtSameMomentAs(todayDate)) {
+          // Same day: check if end time has already passed (with 1-min grace)
+          final deadline = DateTime(now.year, now.month, now.day, et.hour, et.minute);
+          isPast = deadline.isBefore(now.subtract(const Duration(minutes: 1)));
+        } else {
+          isPast = false; // Future date
+        }
+
+        if (isPast) {
           _showErrorSnackBar("Cannot create a task with a past deadline.");
           return;
         }
