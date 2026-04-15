@@ -1523,29 +1523,64 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
         widget.taskData['deadline']?.toString() ??
         "Not Specified";
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border.all(color: surfaceColor),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          _timeTile(
-            "START DATE",
-            startVal,
-            Icons.calendar_today_rounded,
-            brandAccent,
-          ),
+    final String recurrence = firstTaskType?.recurrence ?? "None";
+    final bool isRecursive = recurrence.toLowerCase() != "none" && recurrence.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (isRecursive) ...[
           Container(
-            width: 1,
-            height: 30,
-            color: surfaceColor,
-            margin: const EdgeInsets.symmetric(horizontal: 20),
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: brandAccent.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: brandAccent.withOpacity(0.1)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.cached_rounded, size: 14, color: brandAccent),
+                const SizedBox(width: 8),
+                Text(
+                  "RECURRING: ${recurrence.toUpperCase()}",
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: brandAccent,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
           ),
-          _timeTile("DEADLINE", endVal, Icons.alarm_on_rounded, destructive),
         ],
-      ),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            border: Border.all(color: surfaceColor),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              _timeTile(
+                "FROM",
+                startVal,
+                Icons.calendar_today_rounded,
+                brandAccent,
+              ),
+              Container(
+                width: 1,
+                height: 30,
+                color: surfaceColor,
+                margin: const EdgeInsets.symmetric(horizontal: 20),
+              ),
+              _timeTile("TO", endVal, Icons.alarm_on_rounded, destructive),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

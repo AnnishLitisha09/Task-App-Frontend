@@ -37,6 +37,7 @@ class _ProfilePageState extends State<ProfilePage> {
   List<String> _availableRoles = [];
   String _currentScopeDetails = 'none';
   DepartmentUsersResponse? _hodData;
+  bool _isHighAuthority = false;
 
   List<dynamic> _inchargeVenues = [];
   int? _selectedVenueId;
@@ -70,29 +71,44 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _fetchUserProfile() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final allRolesString = prefs.getString('allRoles') ?? '';
+      final rolesString = prefs.getString('allRoles') ?? '';
       _currentScopeDetails = prefs.getString('scopeDetails') ?? 'none';
 
-      final roles = allRolesString
-          .split(',')
-          .where((e) => e.isNotEmpty)
-          .toList();
+      final service = UserService();
+      final profile = await service.getUserProfile();
 
-      // NEW: Load incharge venues
+      // Load incharge venues - CRITICAL for infrastructure scope
       final venuesJson = prefs.getString('inchargeVenues');
       if (venuesJson != null) {
         _inchargeVenues = jsonDecode(venuesJson);
       }
       _selectedVenueId = prefs.getInt('selectedVenueId');
 
-      final service = UserService();
-      final profile = await service.getUserProfile();
+      // If they are an authority (HOD/Principal/Incharge), we filter out redundant individual roles
+      // to prevent users from switching back to more restrictive dashboards now that features are unified.
+      // High Authority (HOD, Dean, Principal) use unified dashboard features.
+      final highAuthorityKeywords = ['hod', 'dean', 'principal'];
+      final roles = rolesString
+          .split(',')
+          .where((e) => e.isNotEmpty)
+          .toList();
+
+      final hasHighAuthority = roles.any((r) => highAuthorityKeywords.any((k) => r.toLowerCase().contains(k)));
+
       if (mounted) {
         setState(() {
           _userProfile = profile;
-          _availableRoles = roles;
+          _isHighAuthority = hasHighAuthority;
+          if (hasHighAuthority) {
+            _availableRoles = roles.where((r) {
+              final lower = r.toLowerCase();
+              return !(['faculty', 'staff', 'student'].contains(lower)) || roles.length == 1;
+            }).toList();
+          } else {
+            _availableRoles = roles;
+          }
         });
-
+        
         // If HOD, fetch department users for stats
         if (widget.role == 'role-user' && widget.scope == 'department') {
           _fetchHodStats();
@@ -110,13 +126,25 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget build(BuildContext context) {
     // If profile is loaded, use its role, otherwise fallback to widget.role
 
-    // Helper booleans MUST be based on the injected routing role (widget.role), NOT the base API profile role,
-    // otherwise settings blocks will bleed across different role dashboards when a user switches roles.
-    final bool isFaculty = widget.role == 'faculty';
-    final bool isStudent = widget.role == 'student';
-    final bool isAuthority =
-        widget.role == 'role-user' || widget.role == 'admin';
-    final bool isStaff = widget.role == 'staff';
+    // Role-strict helper booleans for rendering segments based on the ACTIVE DASHBOARD context
+    // Hardened with case-normalization to prevent crossover bleed
+    final String normalizedRole = widget.role.toLowerCase();
+    final bool isFaculty = normalizedRole == 'faculty';
+    final bool isStudent = normalizedRole == 'student';
+    final bool isAuthority = normalizedRole == 'role-user' || normalizedRole == 'admin';
+    final bool isStaff = normalizedRole == 'staff';
+
+    // Profile discovery flags (used for merging identity data across roles for high authorities)
+    final bool hasFacultyProfile = _userProfile?.profileData.hasFacultyProfile ?? isFaculty;
+
+    // Logic to allow HODs who are also Faculty to see their personal faculty settings/stats on the same page.
+    // This allows unified management for dual-role users while keeping student roles isolated.
+    final bool showFacultyContent = isFaculty || (isAuthority && hasFacultyProfile);
+
+    // Authority specificity
+    final bool isInstitutional = isAuthority && (widget.scope == 'institution' || (_userProfile?.profileData.roleAssignments.any((a) => a.role.toLowerCase().contains('principal')) ?? false));
+    final bool isDepartmental = isAuthority && (widget.scope == 'department' || (_userProfile?.profileData.roleAssignments.any((a) => a.role == 'HOD') ?? false));
+    final bool isInfrastructure = isAuthority && (widget.scope == 'infrastructure' || (_userProfile?.profileData.roleAssignments.any((a) => a.role == 'Incharge') ?? false));
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -147,15 +175,15 @@ class _ProfilePageState extends State<ProfilePage> {
         child: Column(
           children: [
             const SizedBox(height: 10),
-            _buildIdentityHeader(isFaculty, isAuthority, isStaff),
+            _buildIdentityHeader(isFaculty, isAuthority, isStaff, hasFaculty: hasFacultyProfile),
             const SizedBox(height: 24),
 
             _buildPerformanceBar(widget.role),
 
             const SizedBox(height: 32),
 
-            if (isFaculty)
-              _buildSettingsGroup("Performance Tracking", [
+            if (showFacultyContent)
+              _buildSettingsGroup("Personal Performance", [
                 _settingsTile(
                   Icons.analytics_outlined,
                   "Score & Performance",
@@ -172,7 +200,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ]),
 
             if (isAuthority)
-              if (widget.scope == 'institution')
+              if (isInstitutional)
                 _buildSettingsGroup("Institutional Management", [
                   _settingsTile(
                     Icons.people_outline,
@@ -202,7 +230,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ]),
 
-            if (widget.role == 'role-user' && widget.scope == 'department')
+            if (isAuthority && isDepartmental)
               _buildSettingsGroup("Departmental Control", [
                 _settingsTile(
                   Icons.groups_outlined,
@@ -232,7 +260,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ]),
 
-            if (widget.scope == 'infrastructure' && _inchargeVenues.length > 1)
+            if (isInfrastructure && _inchargeVenues.length > 1)
               _buildSettingsGroup("Active Workplace", [
                 Padding(
                   padding: const EdgeInsets.symmetric(
@@ -328,7 +356,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ]),
 
-            if (widget.scope == 'infrastructure')
+            if (isInfrastructure)
               _buildSettingsGroup("Asset Management", [
                 _settingsTile(
                   Icons.meeting_room_outlined,
@@ -365,7 +393,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ]),
 
-            if (isFaculty)
+            if (showFacultyContent)
               _buildSettingsGroup("View Students", [
                 _settingsTile(
                   Icons.assignment_ind_outlined,
@@ -452,12 +480,17 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   String _getPageTitle(bool isFaculty, bool isAuthority, bool isStaff) {
-    if (isAuthority) return "${widget.title} Profile";
+    if (isAuthority) {
+      if (widget.title != null && widget.title != 'null') return "${widget.title} Profile";
+      if (widget.scope == 'infrastructure') return "Venue Incharge Profile";
+      if (widget.scope == 'department') return "Department Head Profile";
+      return "Administrator Profile";
+    }
     if (isStaff) return "Staff Profile";
     return isFaculty ? "Faculty Profile" : "Student Identity";
   }
 
-  Widget _buildIdentityHeader(bool isFaculty, bool isAuthority, bool isStaff) {
+  Widget _buildIdentityHeader(bool isActingFaculty, bool isAuthority, bool isStaff, {required bool hasFaculty}) {
     String name = _userProfile?.profileData.name ?? "User";
 
     // Fallback if API hasn't loaded yet
@@ -465,28 +498,30 @@ class _ProfilePageState extends State<ProfilePage> {
       name = "Loading...";
     }
 
-    String idLabel;
+    String idLabel = "";
     final details = _userProfile?.profileData;
 
     if (isAuthority) {
       idLabel = widget.title ?? "Administrator";
-    } else if (isFaculty) {
-      idLabel =
-          "Faculty ID: ${details?.regNo ?? '232CS1021'}\n${details?.department ?? 'CSE'}";
+      // Only merge Faculty ID for High Authorities (HOD/Dean/Principal) if they have a faculty profile
+      if (_isHighAuthority && hasFaculty && details?.regNo != null) {
+        idLabel += "\nFaculty ID: ${details?.regNo} (${details?.department ?? ''})";
+      }
+    } else if (isActingFaculty) {
+      idLabel = "Faculty ID: ${details?.regNo ?? 'N/A'}\n${details?.department ?? ''}";
     } else if (isStaff) {
-      idLabel = "Designation: ${details?.designation ?? 'Lab Assistant'}";
+      idLabel = "Designation: ${details?.designation ?? 'N/A'}";
     } else {
-      idLabel =
-          "Register No: ${details?.regNo ?? '7376232IT110'}\n${details?.department ?? 'CSE'}";
+      idLabel = "Register No: ${details?.regNo ?? 'N/A'}\n${details?.department ?? ''}";
     }
 
     if (isAuthority) {
-      if (widget.scope == 'institution') {
-        name = _userProfile?.profileData.name ?? "Administrator";
-      } else if (widget.scope == 'department')
-        name = _userProfile?.profileData.name ?? "Head of Department";
-      else
-        name = _userProfile?.profileData.name ?? "Role User";
+       name = _userProfile?.profileData.name ?? name; // Preserving name if available
+    }
+    
+    // Safety check for empty name
+    if (name == "Loading..." || name.isEmpty) {
+       name = _userProfile?.profileData.name ?? "User";
     }
 
     return Column(
@@ -532,18 +567,17 @@ class _ProfilePageState extends State<ProfilePage> {
     List<Widget> stats = [];
     final details = _userProfile?.profileData;
 
-    // Normalize role checking
-    bool isRoleUser =
-        userRole == 'role-user' ||
-        (details != null && details.roleAssignments.isNotEmpty);
-    bool isFaculty = userRole == 'faculty';
-    bool isStaff = userRole == 'staff';
+    final String normalizedRole = widget.role.toLowerCase();
+    final bool isAuthority = normalizedRole == 'role-user' || normalizedRole == 'admin';
+    final bool isInfrastructure = widget.scope == 'infrastructure';
+    final bool isFaculty = normalizedRole == 'faculty';
+    final bool isStaff = normalizedRole == 'staff';
 
-    if (isRoleUser) {
+    if (isAuthority) {
       // HOD / Principal Stats
       Map<String, dynamic> statData = details?.stats ?? {};
 
-      if (widget.scope == 'infrastructure') {
+      if (isInfrastructure) {
         int totalVenues =
             int.tryParse(statData['total_venues']?.toString() ?? '0') ?? 0;
         int bookingsToday =
@@ -573,39 +607,45 @@ class _ProfilePageState extends State<ProfilePage> {
           _performanceStat("$studentCount", "Students", successGreen),
           _vDivider(),
           _performanceStat("$facultyCount", "Faculty", brandAccent),
-          _vDivider(),
         ];
+
+        // If high authority and ALSO has faculty profile, inject their personal score
+        final hasFaculty = _userProfile?.profileData.hasFacultyProfile ?? false;
+        if (_isHighAuthority && hasFaculty) {
+          stats.add(_vDivider());
+          stats.add(_performanceStat("${details?.score?.toInt() ?? 0}", "My Score", successGreen));
+        }
       }
     } else if (isFaculty) {
       stats = [
         _performanceStat(
-          "${details?.score ?? 850}", // Mock or real score
+          "${details?.score?.toInt() ?? 0}",
           "Score",
           successGreen,
         ),
         _vDivider(),
         _performanceStat(
-          "${details?.penalty ?? 0}", // Mock or real penalty
+          "${details?.penalty?.toInt() ?? 0}",
           "Penalty",
           penaltyRed,
         ),
         _vDivider(),
         _performanceStat(
-          "${details?.studentCount ?? 45}", // Mock or real student count
-          "Students",
+          "${details?.studentCount ?? 0}",
+          "Mentees",
           brandAccent,
         ),
       ];
     } else if (isStaff) {
       stats = [
         _performanceStat(
-          "${details?.completedTasks ?? 142}",
+          "${details?.completedTasks ?? 0}",
           "Completed",
           successGreen,
         ),
         _vDivider(),
         _performanceStat(
-          "${details?.pendingTasks ?? 5}",
+          "${details?.pendingTasks ?? 0}",
           "Pending",
           Colors.orange,
         ),
@@ -615,7 +655,7 @@ class _ProfilePageState extends State<ProfilePage> {
       stats = [
         _performanceStat("${details?.score ?? 0}", "Total Score", brandAccent),
         _vDivider(),
-        _performanceStat("0", "Penalties", penaltyRed),
+        _performanceStat("${details?.penalty ?? 0}", "Penalties", penaltyRed),
         _vDivider(),
         _performanceStat("${details?.cGpa ?? 0}", "CGPA", successGreen),
       ];
@@ -738,6 +778,31 @@ class _ProfilePageState extends State<ProfilePage> {
         size: 14,
       ),
       onTap: onTap,
+    );
+  }
+
+  Widget _performanceTileRow() {
+    final details = _userProfile?.profileData;
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _statMiniItem("My Score", "${details?.score?.toInt() ?? 0}", successGreen),
+          _statMiniItem("Penalty", "${details?.penalty?.toInt() ?? 0}", penaltyRed),
+          _statMiniItem("Mentees", "${details?.studentCount ?? 0}", brandAccent),
+        ],
+      ),
+    );
+  }
+
+  Widget _statMiniItem(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(value, style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 18)),
+        const SizedBox(height: 2),
+        Text(label, style: TextStyle(color: slate500, fontSize: 10, fontWeight: FontWeight.bold)),
+      ],
     );
   }
 

@@ -26,7 +26,6 @@ class _SplashPageState extends State<SplashPage> {
       // Small artificial delay to show off the splash
       await Future.delayed(const Duration(milliseconds: 1500));
 
-      await dotenv.load(fileName: ".env");
       final prefs = await SharedPreferences.getInstance();
       await VenueNotifier.init();
 

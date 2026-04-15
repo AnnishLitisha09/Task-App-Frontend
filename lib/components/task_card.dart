@@ -18,6 +18,7 @@ class TaskCard extends StatelessWidget {
   final Map<String, dynamic>? actionButton;
   final String? priority;
   final String? taskTypeName;
+  final String? recurrence;
 
   const TaskCard({
     super.key,
@@ -37,6 +38,7 @@ class TaskCard extends StatelessWidget {
     this.actionButton,
     this.priority,
     this.taskTypeName,
+    this.recurrence,
   });
 
   Widget _miniBadge(String label, Color color) {
@@ -109,6 +111,10 @@ class TaskCard extends StatelessWidget {
                         if (taskTypeName != null && (taskTypeName!.toLowerCase().contains('floating') || taskTypeName!.toLowerCase().contains('long'))) ...[
                           const SizedBox(width: 4),
                           _miniBadge(taskTypeName!.toUpperCase(), AppTheme.brandPrimary),
+                        ],
+                        if (recurrence != null && recurrence!.toLowerCase() != 'none' && recurrence!.isNotEmpty) ...[
+                          const SizedBox(width: 4),
+                          _miniBadge(recurrence!.toUpperCase(), AppTheme.brandAccent),
                         ],
                       ],
                     ),

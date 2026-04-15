@@ -464,6 +464,32 @@ class _AllSchedulePageState extends State<AllSchedulePage> {
                               ),
                               const SizedBox(width: 8),
                             ],
+                            if (timing['recurrence'] != null && timing['recurrence'].toString().toLowerCase() != 'none' && timing['recurrence'].toString().isNotEmpty) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.brandAccent.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.cached_rounded, size: 10, color: AppTheme.brandAccent),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      timing['recurrence'].toString().toUpperCase(),
+                                      style: const TextStyle(
+                                        color: AppTheme.brandAccent,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
                             if (startTime != 'N/A') ...[
                               Icon(Icons.schedule_rounded, size: 12, color: AppTheme.textSub.withOpacity(0.5)),
                               const SizedBox(width: 4),

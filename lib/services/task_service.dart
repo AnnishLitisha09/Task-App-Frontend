@@ -237,7 +237,7 @@ class TaskService {
           body: jsonEncode(payload),
         );
 
-        if (response.statusCode == 200 || response.statusCode == 201) {
+        if (response.statusCode == 200 || response.statusCode == 201 || response.statusCode == 202) {
           final data = jsonDecode(response.body);
           return data;
         } else {
@@ -264,7 +264,7 @@ class TaskService {
         final streamedResponse = await request.send();
         final response = await http.Response.fromStream(streamedResponse);
 
-        if (response.statusCode == 200 || response.statusCode == 201) {
+        if (response.statusCode == 200 || response.statusCode == 201 || response.statusCode == 202) {
           final data = jsonDecode(response.body);
           return data;
         } else {
@@ -301,7 +301,7 @@ class TaskService {
           body: jsonEncode(payload),
         );
         
-        if (response.statusCode == 200 || response.statusCode == 201) {
+        if (response.statusCode == 200 || response.statusCode == 201 || response.statusCode == 202) {
           final data = jsonDecode(response.body);
           return data;
         } else {
@@ -330,7 +330,7 @@ class TaskService {
         final streamedResponse = await request.send();
         final response = await http.Response.fromStream(streamedResponse);
 
-        if (response.statusCode == 200 || response.statusCode == 201) {
+        if (response.statusCode == 200 || response.statusCode == 201 || response.statusCode == 202) {
           final data = jsonDecode(response.body);
           return data;
         } else {

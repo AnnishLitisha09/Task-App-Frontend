@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_service.dart';
 import '../../services/venue_notifier.dart';
+import '../../services/socket_service.dart';
+import '../../services/onesignal_service.dart';
+import 'package:workmanager/workmanager.dart';
 
 class LoginPage extends StatefulWidget {
   // Matches the parameter name used in your RootWrapper
@@ -78,13 +81,33 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       // Determine effective routing role:
-      // If the user has an authority assignment (HOD, Dean, Principal, Incharge)
-      // route them to the role-user (authority) page regardless of primary role.
-      final authorityKeywords = ['hod', 'dean', 'principal', 'incharge'];
-      final hasAuthority = specificRole.isNotEmpty &&
-          authorityKeywords.any((k) => specificRole.toLowerCase().contains(k));
+      // Define authority keywords that MANDATE unified dashboard view (HOD, Dean, Principal)
+      final highAuthorityKeywords = ['hod', 'dean', 'principal'];
+      final hasHighAuthority = specificRole.isNotEmpty &&
+          highAuthorityKeywords.any((k) => specificRole.toLowerCase().contains(k));
 
-      String effectiveRole = (role == 'role-user' || hasAuthority) ? 'role-user' : role;
+      // Separate logic for Incharges (Infrastructure scope) who are often also Faculty
+      final isIncharge = specificRole.toLowerCase().contains('incharge');
+
+      String effectiveRole = role; // Default to primary role
+
+      if (hasHighAuthority) {
+        effectiveRole = 'role-user';
+      } else if (isIncharge) {
+        // For Venue Incharge + Faculty/Student, default to the individual profile (Faculty/Student)
+        // rather than the authority dashboard, as requested.
+        final rolesList = allRolesSaved.toLowerCase().split(',');
+        if (rolesList.contains('faculty')) {
+          effectiveRole = 'faculty';
+        } else if (rolesList.contains('student')) {
+          effectiveRole = 'student';
+        } else {
+          effectiveRole = 'role-user'; // Default fallback for pure incharge
+        }
+      } else if (role == 'role-user') {
+        effectiveRole = 'role-user';
+      }
+
       String category = role.toUpperCase();
       String scope = 'none';
 
@@ -124,11 +147,18 @@ class _LoginPageState extends State<LoginPage> {
       debugPrint('Login success and session saved');
     } catch (e) {
       debugPrint('Login Error: $e');
-      _showError(e.toString().replaceAll('Exception: ', ''));
+      final errStr = e.toString();
+      if (errStr.contains('Session already active')) {
+        _showSessionConflictDialog();
+      } else {
+        _showError(errStr.replaceAll('Exception: ', ''));
+      }
     } finally {
-      if (mounted) setState(() => _isEmailLoading = false); // BUG-14 FIX
+      if (mounted) setState(() => _isEmailLoading = false);
     }
   }
+
+
 
   // Helper to keep code clean
   Future<void> _saveUserSession(
@@ -144,6 +174,20 @@ class _LoginPageState extends State<LoginPage> {
     String scopeDetails = 'none',
     List<dynamic>? inchargeVenues,
   }) async {
+    // 1. OneSignal & Socket Connection
+    if (userId != 0) {
+      OneSignalService.login(userId.toString());
+      SocketService.connect(userId.toString());
+      
+      // Setup periodic background check (runs every 15m)
+      Workmanager().registerPeriodicTask(
+        "task_check_$userId",
+        "fetch_notifications_task",
+        frequency: const Duration(minutes: 15),
+        constraints: Constraints(networkType: NetworkType.connected),
+      );
+    }
+
     // BUG-15 FIX: Do NOT set isLoggedIn=true here. Save it last so success is atomic.
     await prefs.setInt('userId', userId);
     await prefs.setString('userEmail', email);
@@ -262,10 +306,61 @@ class _LoginPageState extends State<LoginPage> {
       debugPrint('Google Sign-In success and session saved');
     } catch (e) {
       debugPrint('Google Sign-In Error: $e');
-      _showError('Google Sign-In failed: ${e.toString()}');
+      final errStr = e.toString();
+      if (errStr.contains('Session already active')) {
+        _showSessionConflictDialog();
+      } else {
+        _showError('Google Sign-In failed: ${errStr.replaceAll('Exception: ', '')}');
+      }
     } finally {
-      if (mounted) setState(() => _isGoogleLoading = false); // BUG-14 FIX
+      if (mounted) setState(() => _isGoogleLoading = false);
     }
+  }
+
+  void _showSessionConflictDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.devices_other_rounded, color: Colors.orange, size: 28),
+            ),
+            const SizedBox(width: 16),
+            const Text(
+              "Active Session",
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20),
+            ),
+          ],
+        ),
+        content: const Text(
+          "You are already logged in on another device. \n\nPlease contact your infrastructure administrator to revoke that session, or sign out from your previous device to log in here.",
+          style: TextStyle(color: Color(0xFF42474E), fontSize: 15, height: 1.6),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(0, 0, 20, 20),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2D62ED),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text("Understood", style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showError(String message) {

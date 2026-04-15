@@ -35,7 +35,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   bool _isLoadingTitles = false;
   bool _isLoadingDetails = false;
   String? _userRole;
+  int? _currentUserId;
   String? _excelFilePath; // Track uploaded excel file
+  bool _isSubmitting = false; // NEW: Prevent represses
 
   @override
   void initState() {
@@ -469,6 +471,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       final profile = await _userService.getUserProfile();
       setState(() {
         _userRole = profile.role;
+        _currentUserId = profile.userId; // Fixed: use camelCase userId
       });
     } catch (e) {
       // Fallback
@@ -1516,10 +1519,12 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                         assignees.isEmpty
                             ? "Select Users, Roles or Depts"
                             : (_taskData['task_id'] != null
-                                ? "${assignees.length} Total Users"
-                                : "${assignees.length} assigned"),
+                                  ? "${assignees.length} Total Users"
+                                  : "${assignees.length} assigned"),
                         style: TextStyle(
-                          color: assignees.isEmpty ? Colors.grey : Colors.black87,
+                          color: assignees.isEmpty
+                              ? Colors.grey
+                              : Colors.black87,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -1527,13 +1532,17 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                     if (_taskData['task_id'] != null) ...[
                       _statBadge(
                         "ACCEPTED",
-                        assignees.where((a) => a['status'] == 'accepted').length,
+                        assignees
+                            .where((a) => a['status'] == 'accepted')
+                            .length,
                         Colors.green,
                       ),
                       const SizedBox(width: 8),
                       _statBadge(
                         "REJECTED",
-                        assignees.where((a) => a['status'] == 'rejected').length,
+                        assignees
+                            .where((a) => a['status'] == 'rejected')
+                            .length,
                         Colors.red,
                       ),
                       const SizedBox(width: 8),
@@ -2236,11 +2245,13 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           width: double.infinity,
           height: 60,
           child: ElevatedButton(
-            onPressed: isCreationAllowed
+            onPressed: isCreationAllowed && !_isSubmitting
                 ? (isSelfLog ? _submitSelfLog : _finishTaskCreation)
-                : () => _showErrorSnackBar(
-                    "Self logs can only be created between 08:30 AM and 04:30 PM",
-                  ),
+                : (isCreationAllowed
+                      ? null // Disable while submitting
+                      : () => _showErrorSnackBar(
+                          "Self logs can only be created between 08:30 AM and 04:30 PM",
+                        )),
             style: ElevatedButton.styleFrom(
               backgroundColor: isCreationAllowed ? accent : Colors.grey[100],
               foregroundColor: isCreationAllowed
@@ -2252,35 +2263,48 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                 borderRadius: BorderRadius.circular(20),
               ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  isCreationAllowed
-                      ? Icons.rocket_launch_rounded
-                      : Icons.lock_person_rounded,
-                  size: 20,
-                  color: isCreationAllowed ? Colors.white : Colors.grey[400],
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  isCreationAllowed
-                      ? (isSelfLog
-                            ? (_taskData['task_id'] != null
-                                  ? "Update Log"
-                                  : "Log Achievement")
-                            : (_taskData['task_id'] != null
-                                  ? "Update Directive"
-                                  : "Create Directive"))
-                      : "LOCKED: 08:30-16:30",
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
-                    color: isCreationAllowed ? Colors.white : Colors.grey[400],
+            child: _isSubmitting
+                ? const SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 3,
+                    ),
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        isCreationAllowed
+                            ? Icons.rocket_launch_rounded
+                            : Icons.lock_person_rounded,
+                        size: 20,
+                        color: isCreationAllowed
+                            ? Colors.white
+                            : Colors.grey[400],
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        isCreationAllowed
+                            ? (isSelfLog
+                                  ? (_taskData['task_id'] != null
+                                        ? "Update Log"
+                                        : "Log Achievement")
+                                  : (_taskData['task_id'] != null
+                                        ? "Update Directive"
+                                        : "Create Directive"))
+                            : "LOCKED: 08:30-16:30",
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                          color: isCreationAllowed
+                              ? Colors.white
+                              : Colors.grey[400],
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
           ),
         ),
       ),
@@ -2348,6 +2372,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   }
 
   void _finishTaskCreation() async {
+    if (_isSubmitting) return;
+
     // Map completion methods to closure IDs
     List<int> closureIds = [];
     final methods = _taskData['completionMethods'] as List;
@@ -2369,7 +2395,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       if (rawDate != null && et != null) {
         final now = DateTime.now();
         // Normalize to local date-only (strip time zone from UTC-parsed dates)
-        final DateTime localDate = DateTime(rawDate.year, rawDate.month, rawDate.day);
+        final DateTime localDate = DateTime(
+          rawDate.year,
+          rawDate.month,
+          rawDate.day,
+        );
         final DateTime todayDate = DateTime(now.year, now.month, now.day);
 
         // Only check time if the date is today; past dates always fail
@@ -2378,7 +2408,13 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           isPast = true;
         } else if (localDate.isAtSameMomentAs(todayDate)) {
           // Same day: check if end time has already passed (with 1-min grace)
-          final deadline = DateTime(now.year, now.month, now.day, et.hour, et.minute);
+          final deadline = DateTime(
+            now.year,
+            now.month,
+            now.day,
+            et.hour,
+            et.minute,
+          );
           isPast = deadline.isBefore(now.subtract(const Duration(minutes: 1)));
         } else {
           isPast = false; // Future date
@@ -2402,6 +2438,12 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         'recurrence': recurrence,
         'start_date': DateFormat('yyyy-MM-dd').format(_taskData['startDate']),
         'end_date': DateFormat('yyyy-MM-dd').format(_taskData['endDate']),
+        'start_time': _taskData['startTime'] != null
+            ? '${_taskData['startTime'].hour.toString().padLeft(2, '0')}:${_taskData['startTime'].minute.toString().padLeft(2, '0')}:00'
+            : '09:00:00',
+        'end_time': _taskData['endTime'] != null
+            ? '${_taskData['endTime'].hour.toString().padLeft(2, '0')}:${_taskData['endTime'].minute.toString().padLeft(2, '0')}:00'
+            : '17:00:00',
         'time_quota_hours': _taskData['maxHours'] ?? 2.0,
       };
     } else if (_taskData['taskType'] == 'Fixed Time Task') {
@@ -2547,16 +2589,26 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
     if (_taskData['isPackageTask']) {
       double totalStepsHours = 0;
+      Set<int> subAssigneeIds = {};
       payload['sub_tasks'] = (_taskData['subTasks'] as List).map((s) {
         final d = (s['duration'] as num?)?.toDouble() ?? 0.0;
         totalStepsHours += d;
+        final sid = s['assignee_id'];
+        if (sid != null) subAssigneeIds.add(sid as int);
         return {
           'title': s['title'],
-          'user_id': s['assignee_id'], // Changed from assignee_id to user_id
+          'user_id': sid,
           'order_index': s['order'],
           'allocated_hours': d,
         };
       }).toList();
+
+      // Ensure root assignee_ids includes all sub-task assignees for package robustnes
+      for (var sid in subAssigneeIds) {
+        if (!assigneeIds.contains(sid)) {
+          assigneeIds.add(sid);
+        }
+      }
 
       final maxLimit = (_taskData['maxHours'] as num?)?.toDouble() ?? 0.0;
       if (maxLimit > 0 && totalStepsHours > maxLimit) {
@@ -2592,6 +2644,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     payload['assignee_ids'] = assigneeIds;
 
     try {
+      if (mounted) setState(() => _isSubmitting = true);
+
       final isEdit = _taskData['task_id'] != null;
       print(
         "========== DIRECTIVE ${isEdit ? 'UPDATE' : 'CREATE'} PAYLOAD ==========",
@@ -2630,6 +2684,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           'Failed to ${(_taskData['task_id'] != null) ? 'update' : 'create'} task: $e',
         );
       }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -2652,6 +2708,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   }
 
   void _submitSelfLog() async {
+    if (_isSubmitting) return;
+
     if (!_isSystemWithinWorkingHours()) {
       _showErrorSnackBar(
         'Task creation is only allowed between 08:45 AM and 04:30 PM!',
@@ -2712,6 +2770,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     };
 
     try {
+      if (mounted) setState(() => _isSubmitting = true);
+
       final isEdit = _taskData['task_id'] != null;
       print(
         "========== SELF LOG ${isEdit ? 'UPDATE' : 'CREATE'} PAYLOAD ==========",
@@ -2750,6 +2810,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           'Failed to ${(_taskData['task_id'] != null) ? 'update' : 'submit'} log: $e',
         );
       }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -2829,8 +2891,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
                     if (result != null && result.isNotEmpty) {
                       setState(() {
+                        // FIX: Always prioritize user_id (global) over id (table-specific PK)
                         subTask['assignee_id'] =
-                            result.first['id'] ?? result.first['user_id'];
+                            result.first['user_id'] ?? result.first['id'];
                         subTask['assignee_name'] = result.first['name'];
                       });
                     }

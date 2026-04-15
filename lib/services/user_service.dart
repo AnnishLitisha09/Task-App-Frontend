@@ -10,6 +10,7 @@ import '../models/department_wise_users_model.dart';
 import '../models/activity_history_model.dart';
 import '../models/staff_dashboard_model.dart';
 import '../models/institutional_dashboard_model.dart';
+import 'package:flutter/foundation.dart';
 
 class UserService {
   Future<ActivityHistoryResponse> getActivityHistory() async {
@@ -321,6 +322,29 @@ class UserService {
       }
     } catch (e) {
       throw Exception('Error updating user roles: $e');
+    }
+  }
+  /// Updates the FCM token for the current user to support push notifications
+  Future<bool> updateFcmToken(String fcmToken) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
+      final backendUrl =
+          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+
+      final response = await http.post(
+        Uri.parse('${backendUrl}users/fcm-token'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'fcm_token': fcmToken}),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error updating FCM token: $e');
+      return false;
     }
   }
 }

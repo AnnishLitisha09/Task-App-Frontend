@@ -46,6 +46,9 @@ class ProfileData {
   final int? pendingTasks; // For staff
   final Map<String, dynamic> stats; // For HOD/Principal
   final List<RoleAssignment> roleAssignments; // For role-users
+  final bool hasFacultyProfile;
+  final bool hasStudentProfile;
+  final bool hasStaffProfile;
 
   ProfileData({
     required this.id,
@@ -63,6 +66,9 @@ class ProfileData {
     this.avatarUrl,
     this.stats = const {},
     this.roleAssignments = const [],
+    this.hasFacultyProfile = false,
+    this.hasStudentProfile = false,
+    this.hasStaffProfile = false,
   });
 
   factory ProfileData.fromJson(Map<String, dynamic> json, String? role) {
@@ -79,33 +85,21 @@ class ProfileData {
     final email =
         json['email'] ?? getNested(json, 'AuthAccount', 'email') ?? '';
 
-    // Specialized parsing based on role (or best effort)
-
-    // Student Specific
-    String? regNo = json['reg_no']; // Student/Faculty
-    String? department = getNested(json, 'Department', 'name'); // Student
+    // Specialized parsing - Unified
+    String? regNo = json['reg_no'];
+    String? department = getNested(json, 'Department', 'name');
     double? score = double.tryParse(json['total_score']?.toString() ?? '0');
     double? cGpa = double.tryParse(json['c_gpa']?.toString() ?? '0');
-
-    // Faculty Specific
-    double? penalty;
-    int? studentCount;
-    if (role == 'faculty') {
-      regNo = json['reg_no'];
-      // Assuming penalty is available in faculty profile response
-      penalty = double.tryParse(json['penalty']?.toString() ?? '0');
-      studentCount = int.tryParse(json['student_count']?.toString() ?? '0');
-    }
-
-    // Staff Specific
+    double? penalty = double.tryParse(json['penalty']?.toString() ?? '0');
+    int? studentCount = int.tryParse(json['mentee_count']?.toString() ?? json['student_count']?.toString() ?? '0');
     String? designation = json['designation'];
-    int? completedTasks;
-    int? pendingTasks;
+    int? completedTasks = int.tryParse(json['completed_tasks']?.toString() ?? '0');
+    int? pendingTasks = int.tryParse(json['pending_tasks']?.toString() ?? '0');
 
-    if (role == 'staff') {
-      completedTasks = int.tryParse(json['completed_tasks']?.toString() ?? '0');
-      pendingTasks = int.tryParse(json['pending_tasks']?.toString() ?? '0');
-    }
+    // Profile type flags
+    bool hasFaculty = json['mentee_count'] != null || json['penalty'] != null || json['type'] != null;
+    bool hasStudent = json['c_gpa'] != null || role == 'student';
+    bool hasStaff = json['designation'] != null || role == 'staff';
 
     // Role User Specific (HOD/Principal)
     List<RoleAssignment> assignments = [];
@@ -136,6 +130,9 @@ class ProfileData {
       pendingTasks: pendingTasks,
       stats: statsParams,
       roleAssignments: assignments,
+      hasFacultyProfile: hasFaculty,
+      hasStudentProfile: hasStudent,
+      hasStaffProfile: hasStaff,
       // Generate standard avatar if not provided
       avatarUrl:
           'https://ui-avatars.com/api/?name=${name.replaceAll(' ', '+')}&background=random',

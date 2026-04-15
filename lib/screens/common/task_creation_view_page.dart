@@ -259,48 +259,76 @@ class _TaskViewPageState extends State<TaskViewPage> {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: accent.withOpacity(0.1)),
           ),
-          child: Row(
+          child: Column(
             children: [
-              Icon(Icons.calendar_month_rounded, color: accent, size: 20),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "SCHEDULE",
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        color: accent,
-                        letterSpacing: 1,
+              if (schedule?.recurrence != null && schedule!.recurrence.toLowerCase() != 'none' && schedule!.recurrence.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.cached_rounded, color: accent, size: 14),
+                      const SizedBox(width: 8),
+                      Text(
+                        "RECURRING: ${schedule!.recurrence.toUpperCase()}",
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          color: accent,
+                          letterSpacing: 0.5,
+                        ),
                       ),
+                    ],
+                  ),
+                ),
+              Row(
+                children: [
+                  Icon(Icons.calendar_month_rounded, color: accent, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "TIMELINE",
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            color: accent,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        Text(
+                          schedule != null
+                              ? "${DateFormat('MMM dd').format(DateTime.parse(schedule.startDate))} • ${schedule.startTime} - ${schedule.endTime}"
+                              : "No schedule set",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: textDark,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
+                  if (_exhaustiveData!.venue != null) ...[
+                    Container(
+                      height: 30,
+                      width: 1,
+                      color: accent.withOpacity(0.1),
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                    ),
+                    Icon(Icons.location_on_rounded, color: accent, size: 20),
+                    const SizedBox(width: 8),
                     Text(
-                      schedule != null
-                          ? "${DateFormat('MMM dd').format(DateTime.parse(schedule.startDate))} • ${schedule.startTime} - ${schedule.endTime}"
-                          : "No schedule set",
+                      _exhaustiveData!.venue!.name,
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: textDark,
-                        fontSize: 14,
                       ),
                     ),
                   ],
-                ),
+                ],
               ),
-              if (_exhaustiveData!.venue != null) ...[
-                const VerticalDivider(),
-                Icon(Icons.location_on_rounded, color: accent, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  _exhaustiveData!.venue!.name,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: textDark,
-                  ),
-                ),
-              ],
             ],
           ),
         ),

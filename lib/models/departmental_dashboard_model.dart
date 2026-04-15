@@ -14,6 +14,11 @@ class DepartmentalDashboard {
   final List<dynamic> departmentTasks;
   final int assignedToMeCount;
   final List<dynamic> assignedToMeTasks;
+  final int pendingProofsCount;
+  final List<dynamic> pendingProofs;
+  final int verificationTasksCount;
+  final List<dynamic> verificationTasks;
+  final dynamic facultyDetails;
 
   DepartmentalDashboard({
     required this.success,
@@ -31,6 +36,11 @@ class DepartmentalDashboard {
     required this.departmentTasks,
     required this.assignedToMeCount,
     required this.assignedToMeTasks,
+    required this.pendingProofsCount,
+    required this.pendingProofs,
+    required this.verificationTasksCount,
+    required this.verificationTasks,
+    this.facultyDetails,
   });
 
   factory DepartmentalDashboard.fromJson(Map<String, dynamic> json) {
@@ -50,6 +60,11 @@ class DepartmentalDashboard {
       departmentTasks: json['department_tasks'] ?? [],
       assignedToMeCount: json['assigned_to_me_count'] ?? 0,
       assignedToMeTasks: json['assigned_to_me'] ?? [],
+      pendingProofsCount: json['pending_proofs_count'] ?? 0,
+      pendingProofs: json['pending_proofs'] ?? [],
+      verificationTasksCount: json['verification_tasks_count'] ?? 0,
+      verificationTasks: json['verification_tasks'] ?? [],
+      facultyDetails: json['faculty_details'],
     );
   }
 }

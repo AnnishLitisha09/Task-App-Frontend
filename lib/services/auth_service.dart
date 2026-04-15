@@ -33,13 +33,8 @@ class AuthService {
         final data = jsonDecode(response.body);
         return data;
       } else {
-        // Parse error message if available
-        String errorMessage = 'Login failed';
-        try {
-          final errorData = jsonDecode(response.body);
-          errorMessage = errorData['message'] ?? errorMessage;
-        } catch (_) {}
-        throw Exception(errorMessage);
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['message'] ?? 'Login failed');
       }
     } catch (e) {
       print('Error during login: $e');
@@ -96,9 +91,8 @@ class AuthService {
         final data = jsonDecode(response.body);
         return data;
       } else {
-        throw Exception(
-          'Backend authentication failed: ${response.statusCode} - ${response.body}',
-        );
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['message'] ?? 'Backend authentication failed');
       }
     } catch (e) {
       print('Error authenticating with backend: $e');

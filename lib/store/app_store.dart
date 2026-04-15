@@ -14,6 +14,8 @@ import '../services/task_service.dart';
 import '../services/user_service.dart';
 import '../services/notification_service.dart';
 import '../services/student_service.dart';
+import '../services/socket_service.dart';
+import 'package:workmanager/workmanager.dart';
 
 // ─── Cache Entry ──────────────────────────────────────────────────────────────
 class _CacheEntry<T> {
@@ -317,7 +319,26 @@ class AppStore extends ChangeNotifier {
     try {
       final dashboard = await _userService.getDepartmentalDashboard();
       _deptDashboardCache = _CacheEntry(dashboard);
+
+      // Sink unified personal/verification/escalation tasks from HOD response into global lists
+      pendingProofs = dashboard.pendingProofs;
+      pendingVerifications = dashboard.verificationTasks;
+      escalations = dashboard.escalatedTasks;
+      authorityApprovals = dashboard.pendingApprovals;
+
       _setSection('deptDashboard', SectionState.loaded);
+      
+      // Mark sub-sections as loaded since we just hydrated them
+      _states['pendingProofs'] = SectionState.loaded;
+      _states['pendingVerifications'] = SectionState.loaded;
+      _states['escalations'] = SectionState.loaded;
+      _states['authorityApprovals'] = SectionState.loaded;
+      _errors.remove('pendingProofs');
+      _errors.remove('pendingVerifications');
+      _errors.remove('escalations');
+      _errors.remove('authorityApprovals');
+      
+      notifyListeners();
     } catch (e) {
       _setSection('deptDashboard', SectionState.error, error: e.toString());
     }
@@ -456,6 +477,8 @@ class AppStore extends ChangeNotifier {
     unreadNotifications = 0;
     _states.clear();
     _errors.clear();
+    SocketService.disconnect();
+    Workmanager().cancelAll();
     notifyListeners();
   }
 }

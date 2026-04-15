@@ -394,6 +394,7 @@ class _FacultyPageState extends State<FacultyPage>
                     icon: Icons.calendar_today_rounded,
                     heroTag: heroTag,
                     actionButton: item['action_button'],
+                    recurrence: item['time']?['recurrence'] ?? item['recurrence'],
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -455,6 +456,7 @@ class _FacultyPageState extends State<FacultyPage>
                     icon: Icons.assignment_turned_in_rounded,
                     heroTag: heroTag,
                     actionButton: data['action_button'],
+                    recurrence: data['time']?['recurrence'] ?? data['recurrence'],
                     isRequest: true,
                     onAccept: () {
                       if (widget.isBlocked) {
