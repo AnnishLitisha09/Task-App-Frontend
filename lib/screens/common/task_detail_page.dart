@@ -161,6 +161,31 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     }
   }
 
+  bool _isDeadlinePassed() {
+    if (_taskDetail == null) return false;
+    if (_activityStatus == ActivityStatus.COMPLETED) return false;
+    
+    final firstTaskType = _taskDetail!.taskTypes.firstOrNull;
+    final String? endDateStr = firstTaskType?.endDate;
+    final String? endTimeStr = firstTaskType?.endTime;
+
+    if (endDateStr == null) return false;
+
+    try {
+      DateTime deadline;
+      final datePart = endDateStr.split('T')[0];
+      if (endTimeStr != null && endTimeStr.isNotEmpty) {
+        deadline = DateTime.parse("${datePart}T$endTimeStr");
+      } else {
+        deadline = DateTime.parse(datePart).add(const Duration(days: 1)); // End of the day
+      }
+
+      return DateTime.now().isAfter(deadline);
+    } catch (e) {
+      return false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -246,12 +271,12 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
               ],
             ),
           ),
-          if ('Standard' != 'NoAction' && widget.viewMode != 'viewonly')
+          if ('Standard' != 'NoAction' && (widget.viewMode != 'viewonly' || _isDeadlinePassed()))
             _buildFloatingBottomAction(
               // Only pass isApproval=true for authority-level approval tasks
               // and for incharge request handling
-              (isApprovalWorkflow && !isSubmissionCheck) ||
-                  (widget.viewMode == 'incharge' && isRequest),
+              ((isApprovalWorkflow && !isSubmissionCheck) ||
+                  (widget.viewMode != 'incharge' && isRequest)) && !_isDeadlinePassed(),
             ),
         ],
       ),
@@ -577,7 +602,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
                     ),
                   ),
                   Text(
-                    log is HistoryLog ? DateFormat('jm').format(DateTime.parse(log.timestamp)) : "",
+                    log is HistoryLog ? DateFormat('jm').format(DateTime.parse(log.timestamp).toLocal()) : "",
                     style: TextStyle(fontSize: 11, color: textSub),
                   ),
                 ],
@@ -670,6 +695,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
     }
 
     // Legacy fallback for edge cases where actionButton is null
+    if (_isDeadlinePassed()) return _buildMissedBadge();
     if (isApproval) return _buildApprovalActions();
 
     final List<TaskAssignee> assignees = _taskDetail?.assignees ?? [];
@@ -1228,7 +1254,7 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       // ── Activity Lifecycle ────────────────────────────────────────────────
       case 'activity':
         // State badges (no action button)
-        if (actionButton.action == 'missed') return _buildMissedBadge();
+        if (actionButton.action == 'missed' || _isDeadlinePassed()) return _buildMissedBadge();
         if (actionButton.action == 'too_early') return _buildPendingStartBadge();
         if (actionButton.action == 'completed') return _buildCompletedBadge();
 
@@ -2507,21 +2533,21 @@ class _TaskDetailsPageState extends State<TaskDetailsPage> {
       width: double.infinity,
       height: 64,
       decoration: BoxDecoration(
-        color: destructive.withOpacity(0.1),
+        color: Colors.amber.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: destructive.withOpacity(0.2)),
+        border: Border.all(color: Colors.amber.withOpacity(0.2)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error_outline_rounded, color: destructive, size: 24),
+          Icon(Icons.history_toggle_off_rounded, color: Colors.amber[800], size: 24),
           const SizedBox(width: 12),
           Text(
-            "Activity Missed",
+            "Task Deadline Passed",
             style: TextStyle(
               fontWeight: FontWeight.w800,
               fontSize: 16,
-              color: destructive,
+              color: Colors.amber[800],
             ),
           ),
         ],

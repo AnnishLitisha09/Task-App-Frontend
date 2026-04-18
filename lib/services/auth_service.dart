@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/network_utils.dart';
 
 class AuthService {
   late final GoogleSignIn _googleSignIn;
@@ -20,22 +21,19 @@ class AuthService {
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
       final backendUrl =
-          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+          dotenv.env['BACKEND_URL'] ?? 'https://h6sp3f89-3002.inc1.devtunnels.ms/api/';
       final url = Uri.parse('${backendUrl}auth/login');
 
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'password': password}),
+        body: jsonEncode({
+          'email': email, 
+          'password': password
+        }),
       );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = jsonDecode(response.body);
-        return data;
-      } else {
-        final errorData = jsonDecode(response.body);
-        throw Exception(errorData['message'] ?? 'Login failed');
-      }
+      return NetworkUtils.handleResponse(response) as Map<String, dynamic>;
     } catch (e) {
       print('Error during login: $e');
       rethrow;
@@ -84,29 +82,24 @@ class AuthService {
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'token': idToken}),
+        body: jsonEncode({
+          'token': idToken
+        }),
       );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = jsonDecode(response.body);
-        return data;
-      } else {
-        final errorData = jsonDecode(response.body);
-        throw Exception(errorData['message'] ?? 'Backend authentication failed');
-      }
+      return NetworkUtils.handleResponse(response) as Map<String, dynamic>;
     } catch (e) {
       print('Error authenticating with backend: $e');
       rethrow;
     }
   }
 
-  /// Sign out from Google
+  /// Sign out locally and from Google
   Future<void> signOut() async {
     try {
       await _googleSignIn.signOut();
     } catch (e) {
-      print('Error signing out: $e');
-      rethrow;
+      print('Error during logout: $e');
     }
   }
 

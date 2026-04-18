@@ -25,7 +25,7 @@ class NotificationModel {
       msg: json['msg'] ?? '',
       type: json['type'] ?? 'general',
       isRead: json['is_read'] == 1 || json['is_read'] == true,
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: DateTime.parse(json['created_at']).toLocal(),
     );
   }
 

@@ -26,7 +26,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Future<void> _fetchNotifications() async {
     setState(() => _isLoading = true);
     try {
-      final notifications = await _notificationService.getNotifications(venueId: widget.venueId);
+      final notifications = await _notificationService.getNotifications(
+        venueId: widget.venueId,
+      );
       setState(() {
         _notifications = notifications;
         _isLoading = false;
@@ -147,19 +149,20 @@ class _NotificationsPageState extends State<NotificationsPage> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : filteredNotifications.isEmpty
-                    ? _buildEmptyState()
-                    : RefreshIndicator(
-                        onRefresh: _fetchNotifications,
-                        child: ListView.separated(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: filteredNotifications.length,
-                          separatorBuilder: (context, index) => const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final notification = filteredNotifications[index];
-                            return _buildNotificationCard(notification);
-                          },
-                        ),
-                      ),
+                ? _buildEmptyState()
+                : RefreshIndicator(
+                    onRefresh: _fetchNotifications,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: filteredNotifications.length,
+                      separatorBuilder: (context, index) =>
+                          const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final notification = filteredNotifications[index];
+                        return _buildNotificationCard(notification);
+                      },
+                    ),
+                  ),
           ),
         ],
       ),
@@ -193,7 +196,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
             color: isSelected ? Colors.indigo : Colors.grey.shade300,
           ),
           boxShadow: isSelected
-              ? [BoxShadow(color: Colors.indigo.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))]
+              ? [
+                  BoxShadow(
+                    color: Colors.indigo.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
               : null,
         ),
         child: Text(
@@ -234,7 +243,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: notification.isRead ? Colors.grey.shade100 : Colors.indigo.withOpacity(0.2),
+              color: notification.isRead
+                  ? Colors.grey.shade100
+                  : Colors.indigo.withOpacity(0.2),
             ),
             boxShadow: [
               BoxShadow(
@@ -271,9 +282,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
                           child: Text(
                             notification.title,
                             style: TextStyle(
-                              fontWeight: notification.isRead ? FontWeight.bold : FontWeight.w900,
+                              fontWeight: notification.isRead
+                                  ? FontWeight.bold
+                                  : FontWeight.w900,
                               fontSize: 15,
-                              color: notification.isRead ? Colors.black87 : Colors.black,
+                              color: notification.isRead
+                                  ? Colors.black87
+                                  : Colors.black,
                             ),
                           ),
                         ),
@@ -295,12 +310,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         color: Colors.black54,
                         fontSize: 14,
                         height: 1.4,
-                        fontWeight: notification.isRead ? FontWeight.normal : FontWeight.w500,
+                        fontWeight: notification.isRead
+                            ? FontWeight.normal
+                            : FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      DateFormat('MMM d, h:mm a').format(notification.createdAt),
+                      DateFormat(
+                        'MMM d, h:mm a',
+                      ).format(notification.createdAt),
                       style: TextStyle(
                         color: Colors.grey.shade400,
                         fontSize: 11,
@@ -322,11 +341,19 @@ class _NotificationsPageState extends State<NotificationsPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.notifications_none_rounded, size: 80, color: Colors.grey.shade200),
+          Icon(
+            Icons.notifications_none_rounded,
+            size: 80,
+            color: Colors.grey.shade200,
+          ),
           const SizedBox(height: 16),
           Text(
             'All caught up!',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey.shade400),
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade400,
+            ),
           ),
           const SizedBox(height: 8),
           Text(

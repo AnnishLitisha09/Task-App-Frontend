@@ -81,39 +81,34 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       // Determine effective routing role:
-      // Define authority keywords that MANDATE unified dashboard view (HOD, Dean, Principal)
       final highAuthorityKeywords = ['hod', 'dean', 'principal'];
       final hasHighAuthority = specificRole.isNotEmpty &&
           highAuthorityKeywords.any((k) => specificRole.toLowerCase().contains(k));
-
-      // Separate logic for Incharges (Infrastructure scope) who are often also Faculty
       final isIncharge = specificRole.toLowerCase().contains('incharge');
 
-      String effectiveRole = role; // Default to primary role
+      String effectiveRole = role; 
+      final rolesList = allRolesSaved.toLowerCase().split(',');
 
       if (hasHighAuthority) {
         effectiveRole = 'role-user';
       } else if (isIncharge) {
-        // For Venue Incharge + Faculty/Student, default to the individual profile (Faculty/Student)
-        // rather than the authority dashboard, as requested.
-        final rolesList = allRolesSaved.toLowerCase().split(',');
         if (rolesList.contains('faculty')) {
           effectiveRole = 'faculty';
         } else if (rolesList.contains('student')) {
           effectiveRole = 'student';
         } else {
-          effectiveRole = 'role-user'; // Default fallback for pure incharge
+          effectiveRole = 'role-user';
         }
       } else if (role == 'role-user') {
         effectiveRole = 'role-user';
       }
 
-      String category = role.toUpperCase();
+      String category = (effectiveRole == 'role-user') 
+          ? (specificRole.isNotEmpty ? specificRole : 'User')
+          : effectiveRole.toUpperCase();
+          
       String scope = 'none';
-
       if (effectiveRole == 'role-user') {
-        category = specificRole.isNotEmpty ? specificRole : (user['specific_role'] ?? 'User').toString();
-        // Map scope_details to internal scope values
         String rawScope = scopeDetailsSaved.toLowerCase();
         if (rawScope.contains('department')) {
           scope = 'department';
@@ -134,7 +129,7 @@ class _LoginPageState extends State<LoginPage> {
       await _saveUserSession(
         prefs,
         userEmail,
-        effectiveRole,   // Use effectiveRole so HOD/authority routing works
+        effectiveRole,
         category,
         userId: userId,
         scope: scope,
@@ -158,8 +153,6 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-
-
   // Helper to keep code clean
   Future<void> _saveUserSession(
     SharedPreferences prefs,
@@ -178,14 +171,6 @@ class _LoginPageState extends State<LoginPage> {
     if (userId != 0) {
       OneSignalService.login(userId.toString());
       SocketService.connect(userId.toString());
-      
-      // Setup periodic background check (runs every 15m)
-      Workmanager().registerPeriodicTask(
-        "task_check_$userId",
-        "fetch_notifications_task",
-        frequency: const Duration(minutes: 15),
-        constraints: Constraints(networkType: NetworkType.connected),
-      );
     }
 
     // BUG-15 FIX: Do NOT set isLoggedIn=true here. Save it last so success is atomic.
@@ -261,18 +246,35 @@ class _LoginPageState extends State<LoginPage> {
             .join(',');
       }
 
-      // Determine effective routing role (same logic as email login)
-      final authorityKeywords = ['hod', 'dean', 'principal', 'incharge'];
-      final hasAuthority = specificRole.isNotEmpty &&
+      // Determine effective routing role (unified logic)
+      final authorityKeywords = ['hod', 'dean', 'principal'];
+      final hasHighAuthority = specificRole.isNotEmpty &&
           authorityKeywords.any((k) => specificRole.toLowerCase().contains(k));
+      final isIncharge = specificRole.toLowerCase().contains('incharge');
 
-      String effectiveRole = (role == 'role-user' || hasAuthority) ? 'role-user' : role;
-      String category = role.toUpperCase();
+      String effectiveRole = role;
+      final rolesList = allRolesSaved.toLowerCase().split(',');
+
+      if (hasHighAuthority) {
+        effectiveRole = 'role-user';
+      } else if (isIncharge) {
+        if (rolesList.contains('faculty')) {
+          effectiveRole = 'faculty';
+        } else if (rolesList.contains('student')) {
+          effectiveRole = 'student';
+        } else {
+          effectiveRole = 'role-user';
+        }
+      } else if (role == 'role-user') {
+        effectiveRole = 'role-user';
+      }
+
+      String category = (effectiveRole == 'role-user') 
+          ? (specificRole.isNotEmpty ? specificRole : 'User')
+          : effectiveRole.toUpperCase();
+
       String scope = 'none';
-
       if (effectiveRole == 'role-user') {
-        category = specificRole.isNotEmpty ? specificRole : (user['specific_role'] ?? 'User').toString();
-        // Map scope_details to internal scope values
         String rawScope = scopeDetailsSaved.toLowerCase();
         if (rawScope.contains('department')) {
           scope = 'department';
@@ -293,7 +295,7 @@ class _LoginPageState extends State<LoginPage> {
       await _saveUserSession(
         prefs,
         email,
-        effectiveRole,   // Use effectiveRole so HOD/authority routing works
+        effectiveRole,
         category,
         userId: userId,
         scope: scope,
@@ -579,7 +581,12 @@ class _LoginPageState extends State<LoginPage> {
         ],
       ),
       child: Center(
-        child: Icon(Icons.bolt_rounded, color: primaryColor, size: 42),
+        child: Image.asset(
+          'assets/logo.png',
+          width: 54,
+          height: 54,
+          fit: BoxFit.contain,
+        ),
       ),
     );
   }

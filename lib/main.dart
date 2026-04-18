@@ -16,18 +16,18 @@ void callbackDispatcher() {
     // This runs in the background even if the app is closed!
     try {
       await dotenv.load(fileName: ".env");
-      
+
       // Initialize notification plugin
       await SocketService.initialize();
-      
+
       // Check for unread notifications from API
       final count = await NotificationService().getUnreadCount();
-      
+
       if (count > 0) {
         // Trigger a local notification
         await SocketService.showBackgroundAlert(
           "New Updates Available",
-          "You have $count unread notifications/tasks pending."
+          "You have $count unread notifications/tasks pending.",
         );
       }
       return Future.value(true);
@@ -40,7 +40,7 @@ void callbackDispatcher() {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   try {
     // 1. Load Environment Variables
     await dotenv.load(fileName: ".env");
@@ -51,11 +51,7 @@ void main() async {
     await SocketService.initialize();
 
     // 4. Initialize Workmanager
-    Workmanager().initialize(
-      callbackDispatcher,
-      isInDebugMode: false,
-    );
-
+    Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
   } catch (e) {
     debugPrint("Initialization Warning: $e");
   }
@@ -71,10 +67,9 @@ class TaskApp extends StatelessWidget {
     return ChangeNotifierProvider<AppStore>(
       create: (_) => AppStore(),
       child: MaterialApp(
+        title: 'Task Sync',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          fontFamily: 'Inter',
-        ),
+        theme: ThemeData(fontFamily: 'Inter'),
         home: const SplashPage(),
       ),
     );

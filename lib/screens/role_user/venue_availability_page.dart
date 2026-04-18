@@ -354,7 +354,7 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(venue.name, style: AppTheme.h2),
+                                        Text(venue.name, style: AppTheme.h2, overflow: TextOverflow.ellipsis, maxLines: 1),
                                         const SizedBox(height: 4),
                                         Row(
                                           children: [
@@ -364,9 +364,12 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
                                               decoration: BoxDecoration(color: color, shape: BoxShape.circle),
                                             ),
                                             const SizedBox(width: 8),
-                                            Text(
-                                              displayStatus,
-                                              style: AppTheme.overline.copyWith(color: color, fontSize: 10),
+                                            Flexible(
+                                              child: Text(
+                                                displayStatus,
+                                                style: AppTheme.overline.copyWith(color: color, fontSize: 10),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
                                             ),
                                           ],
                                         ),
@@ -449,11 +452,14 @@ class _VenueAvailabilityPageState extends State<VenueAvailabilityPage> {
                       children: [
                         Row(
                           children: [
-                            Text(
-                              log['issue_title'] ?? "State Change",
-                              style: AppTheme.bodySub.copyWith(fontWeight: FontWeight.w900),
+                            Expanded(
+                              child: Text(
+                                log['issue_title'] ?? "State Change",
+                                style: AppTheme.bodySub.copyWith(fontWeight: FontWeight.w900),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            const Spacer(),
+                            const SizedBox(width: 12),
                             Text(
                               "${logDate.day}/${logDate.month} ${logDate.hour}:${logDate.minute.toString().padLeft(2, '0')}",
                               style: AppTheme.caption,

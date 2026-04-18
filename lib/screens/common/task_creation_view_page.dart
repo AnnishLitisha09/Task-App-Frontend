@@ -193,12 +193,21 @@ class _TaskViewPageState extends State<TaskViewPage> {
 
   Widget _buildStatusBanner() {
     final status = _exhaustiveData!.taskInfo.status;
-    final Color bannerColor = status.toLowerCase() == 'active'
-        ? Colors.indigo.shade50
-        : accent.withOpacity(0.1);
-    final Color textColor = status.toLowerCase() == 'active'
-        ? Colors.indigo.shade700
-        : accent;
+    final bool isExpired = _isTaskExpired();
+    
+    final Color bannerColor = isExpired 
+        ? Colors.amber.shade50 
+        : status.toLowerCase() == 'active'
+            ? Colors.indigo.shade50
+            : accent.withOpacity(0.1);
+            
+    final Color textColor = isExpired
+        ? Colors.amber.shade900
+        : status.toLowerCase() == 'active'
+            ? Colors.indigo.shade700
+            : accent;
+            
+    final String statusText = isExpired ? "DEADLINE OVER" : "TASK STATUS: ${status.toUpperCase()}";
 
     return Container(
       width: double.infinity,
@@ -206,10 +215,10 @@ class _TaskViewPageState extends State<TaskViewPage> {
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
       child: Row(
         children: [
-          Icon(Icons.info_outline, color: textColor, size: 20),
+          Icon(isExpired ? Icons.history_toggle_off_rounded : Icons.info_outline, color: textColor, size: 20),
           const SizedBox(width: 12),
           Text(
-            "TASK STATUS: ${status.toUpperCase()}",
+            statusText,
             style: TextStyle(
               color: textColor,
               fontWeight: FontWeight.w800,
@@ -637,7 +646,7 @@ class _TaskViewPageState extends State<TaskViewPage> {
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
             subtitle: Text(
-              "${DateFormat('MMM d, hh:mm a').format(DateTime.parse(log.timestamp))} • ${log.actor.name}",
+              "${DateFormat('MMM d, hh:mm a').format(DateTime.parse(log.timestamp).toLocal())} • ${log.actor.name}",
               style: TextStyle(fontSize: 11, color: textLight),
             ),
           );
@@ -754,7 +763,7 @@ class _TaskViewPageState extends State<TaskViewPage> {
 
   Widget _buildActionButton(String status) {
     final TaskActionButton? actionButton = _exhaustiveData?.actionButton;
-    if (actionButton == null) return const SizedBox.shrink();
+    if (actionButton == null || _isTaskExpired()) return const SizedBox.shrink();
 
     return SizedBox(
       width: double.infinity,

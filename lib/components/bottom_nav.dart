@@ -16,6 +16,7 @@ import '../screens/admin/admin_page.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../services/socket_service.dart';
 
 class MainWrapper extends StatefulWidget {
   final String userRole;
@@ -50,6 +51,14 @@ class _MainWrapperState extends State<MainWrapper> {
       _userTitle = prefs.getString('userTitle') ?? 'User';
       _scopeType = prefs.getString('userScope') ?? 'none';
     });
+    
+    // --- SOCKET RECONNECTION ---
+    // Ensure socket is connected if we bypassed the login page (Auto-Login)
+    final userId = prefs.getInt('userId');
+    if (userId != null && userId != 0) {
+      debugPrint('🔄 Auto-connecting Socket for User: $userId');
+      SocketService.connect(userId.toString());
+    }
     
     // Fetch real acknowledgment status from backend
     await _refreshAcknowledgementStatus();

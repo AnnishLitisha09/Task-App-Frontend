@@ -141,10 +141,15 @@ class _ProfilePageState extends State<ProfilePage> {
     // This allows unified management for dual-role users while keeping student roles isolated.
     final bool showFacultyContent = isFaculty || (isAuthority && hasFacultyProfile);
 
-    // Authority specificity
-    final bool isInstitutional = isAuthority && (widget.scope == 'institution' || (_userProfile?.profileData.roleAssignments.any((a) => a.role.toLowerCase().contains('principal')) ?? false));
-    final bool isDepartmental = isAuthority && (widget.scope == 'department' || (_userProfile?.profileData.roleAssignments.any((a) => a.role == 'HOD') ?? false));
-    final bool isInfrastructure = isAuthority && (widget.scope == 'infrastructure' || (_userProfile?.profileData.roleAssignments.any((a) => a.role == 'Incharge') ?? false));
+    // Authority specificity - Hardened to prioritize active scope to prevent UI bleed
+    final bool isInstitutional = isAuthority && 
+        (widget.scope == 'institution' || (widget.scope == null && (_userProfile?.profileData.roleAssignments.any((a) => a.role.toLowerCase().contains('principal')) ?? false)));
+    
+    final bool isDepartmental = isAuthority && 
+        (widget.scope == 'department' || (widget.scope == null && (_userProfile?.profileData.roleAssignments.any((a) => a.role == 'HOD') ?? false)));
+    
+    final bool isInfrastructure = isAuthority && 
+        (widget.scope == 'infrastructure' || (widget.scope == null && (_userProfile?.profileData.roleAssignments.any((a) => a.role == 'Incharge') ?? false)));
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -182,7 +187,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
             const SizedBox(height: 32),
 
-            if (showFacultyContent)
+            if (showFacultyContent && !isInfrastructure)
               _buildSettingsGroup("Personal Performance", [
                 _settingsTile(
                   Icons.analytics_outlined,
@@ -393,7 +398,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ]),
 
-            if (showFacultyContent)
+            // Only show student management for Faculty and HOD scopes to prevent clutter on Incharge/Principal pages
+            if (showFacultyContent && (isFaculty || isDepartmental))
               _buildSettingsGroup("View Students", [
                 _settingsTile(
                   Icons.assignment_ind_outlined,
@@ -569,7 +575,8 @@ class _ProfilePageState extends State<ProfilePage> {
 
     final String normalizedRole = widget.role.toLowerCase();
     final bool isAuthority = normalizedRole == 'role-user' || normalizedRole == 'admin';
-    final bool isInfrastructure = widget.scope == 'infrastructure';
+    final bool isInfrastructure = widget.scope == 'infrastructure' || 
+        (widget.scope == null && (_userProfile?.profileData.roleAssignments.any((a) => a.role == 'Incharge') ?? false));
     final bool isFaculty = normalizedRole == 'faculty';
     final bool isStaff = normalizedRole == 'staff';
 
@@ -781,30 +788,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _performanceTileRow() {
-    final details = _userProfile?.profileData;
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _statMiniItem("My Score", "${details?.score?.toInt() ?? 0}", successGreen),
-          _statMiniItem("Penalty", "${details?.penalty?.toInt() ?? 0}", penaltyRed),
-          _statMiniItem("Mentees", "${details?.studentCount ?? 0}", brandAccent),
-        ],
-      ),
-    );
-  }
-
-  Widget _statMiniItem(String label, String value, Color color) {
-    return Column(
-      children: [
-        Text(value, style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 18)),
-        const SizedBox(height: 2),
-        Text(label, style: TextStyle(color: slate500, fontSize: 10, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
 
   void _showLogoutConfirmation(BuildContext context) {
     showDialog(
@@ -908,19 +891,19 @@ class _ProfilePageState extends State<ProfilePage> {
 
                 // Highlight currently active role
                 bool isActive = false;
-                if (displayName.toLowerCase() == 'faculty' &&
-                    widget.role == 'faculty') {
+                final lowerDisplay = displayName.toLowerCase();
+                final lowerActiveRole = widget.role.toLowerCase();
+                final lowerActiveTitle = (widget.title ?? '').toLowerCase();
+
+                if (lowerDisplay == 'faculty' && lowerActiveRole == 'faculty') {
                   isActive = true;
-                } else if (widget.title != null &&
-                    widget.title!.toLowerCase().contains(
-                      displayName.toLowerCase().replaceAll(' ', ''),
-                    )) {
+                } else if (lowerDisplay == 'student' && lowerActiveRole == 'student') {
                   isActive = true;
-                } else if (displayName.toLowerCase() == 'hod' &&
-                    widget.title == 'HEAD OF DEPARTMENT') {
+                } else if (lowerDisplay.contains('incharge') && lowerActiveTitle.contains('incharge')) {
                   isActive = true;
-                } else if (displayName.toLowerCase() == 'venue incharge' &&
-                    widget.title == 'VENUE INCHARGE') {
+                } else if (lowerDisplay.contains('hod') && lowerActiveTitle.contains('hod')) {
+                  isActive = true;
+                } else if (lowerDisplay.contains('principal') && lowerActiveTitle.contains('principal')) {
                   isActive = true;
                 }
 
@@ -993,32 +976,32 @@ class _ProfilePageState extends State<ProfilePage> {
 
     final targetLower = targetRoleStr.toLowerCase();
 
-    if (targetLower == 'faculty') {
+    if (targetLower.contains('faculty')) {
       newRole = 'faculty';
-    } else if (targetLower == 'student') {
+    } else if (targetLower.contains('student')) {
       newRole = 'student';
-    } else if (targetLower == 'incharge') {
+    } else if (targetLower.contains('incharge')) {
       newRole = 'role-user';
       newTitle = 'VENUE INCHARGE';
-      newScope = 'infrastructure'; // Fallback
+      newScope = 'infrastructure';
       if (_currentScopeDetails.toLowerCase().contains('infrastructure')) {
         newScope = 'infrastructure';
       }
-    } else if (targetLower == 'hod') {
+    } else if (targetLower.contains('hod')) {
       newRole = 'role-user';
       newTitle = 'HEAD OF DEPARTMENT';
-      newScope = 'department'; // Fallback
+      newScope = 'department';
       if (_currentScopeDetails.toLowerCase().contains('department')) {
         newScope = 'department';
       }
-    } else if (targetLower == 'principal') {
+    } else if (targetLower.contains('principal')) {
       newRole = 'role-user';
       newTitle = 'PRINCIPAL';
-      newScope = 'institution'; // Fallback
+      newScope = 'institution';
       if (_currentScopeDetails.toLowerCase().contains('institution')) {
         newScope = 'institution';
       }
-    } // New fallback below just in case.
+    }
 
     await prefs.setString('userRole', newRole);
     if (newTitle.isNotEmpty) {

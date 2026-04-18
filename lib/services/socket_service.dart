@@ -29,8 +29,9 @@ class SocketService {
     debugPrint('🔌 Connecting to Socket: $backendUrl');
     
     _socket = IO.io(backendUrl, IO.OptionBuilder()
-      .setTransports(['websocket'])
+      .setTransports(['websocket', 'polling']) // Added polling for stability
       .enableAutoConnect()
+      .enableReconnection()
       .build());
 
     _socket!.onConnect((_) {
@@ -39,8 +40,10 @@ class SocketService {
     });
 
     _socket!.on('notification', (data) {
-      debugPrint('🔔 Socket Notification received: $data');
-      _showLocalNotification(data['title'], data['msg']);
+      debugPrint('🔔 [SOCKET] Notification data: $data');
+      final String title = data['title']?.toString() ?? 'New Alert';
+      final String body = data['msg']?.toString() ?? data['body']?.toString() ?? '';
+      _showLocalNotification(title, body);
     });
 
     _socket!.onDisconnect((_) => debugPrint('❌ Socket Disconnected'));
@@ -61,13 +64,18 @@ class SocketService {
       'Task Alerts',
       channelDescription: 'Notification channel for task alerts',
       importance: Importance.max,
-      priority: Priority.high,
+      priority: Priority.max,
+      ticker: 'ticker',
+      playSound: true,
+      enableVibration: true,
+      fullScreenIntent: true, // Critical for some devices to show popup
+      category: AndroidNotificationCategory.alarm,
     );
 
     const NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
 
     await _notificationsPlugin.show(
-      id: DateTime.now().millisecond % 10000, 
+      id: DateTime.now().hashCode % 2147483647, // More unique ID
       title: title,
       body: body,
       notificationDetails: platformDetails,

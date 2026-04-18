@@ -22,7 +22,7 @@ class TaskService {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken') ?? '';
       final backendUrl =
-          dotenv.env['BACKEND_URL'] ?? 'http://localhost:3002/api/';
+          dotenv.env['BACKEND_URL'] ?? 'https://h6sp3f89-3002.inc1.devtunnels.ms/api/';
 
       final response = await http.get(
         Uri.parse('${backendUrl}tasks/${taskId.toString()}/details'),

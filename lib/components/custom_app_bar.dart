@@ -47,19 +47,28 @@ class CustomAppBar extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (date != null)
-                  Text(
-                    date!,
-                    style: AppTheme.bodySub.copyWith(
-                      color: Colors.black,
-                      fontWeight: FontWeight.bold,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (date != null)
+                    Text(
+                      date!,
+                      style: AppTheme.bodySub.copyWith(
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
+                  Text(
+                    title, 
+                    style: AppTheme.h2.copyWith(fontSize: 18),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                Text(title, style: AppTheme.h2.copyWith(fontSize: 18)),
-              ],
+                ],
+              ),
             ),
             const Spacer(),
             if (actions != null) ...actions!,
